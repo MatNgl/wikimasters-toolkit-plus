@@ -125,9 +125,13 @@ html.wmx-opening .wmx-cover { display: block; }
 
 /* Images : portrait = pleine carte ; paysage/carré = image entière sur fond flou */
 .wmx-art-img, .wmx-art-blur { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.wmx-art-blur { display: none; filter: blur(14px) brightness(.7); transform: scale(1.3); }
+.wmx-art-blur { display: none; filter: blur(22px) saturate(1.3) brightness(.9); transform: scale(1.5); }
 .wmx-wide .wmx-art-blur { display: block; }
-.wmx-wide .wmx-art-img { inset: 0 0 34% 0; height: 66%; object-fit: contain; }
+/* Image entière centrée dans la moitié haute ; ses bords haut et bas se fondent dans le flou (masque dégradé). */
+.wmx-wide .wmx-art-img { inset: auto; left: 0; top: 36%; transform: translateY(-50%); width: 100%; height: auto; max-height: 74%; object-fit: contain;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 18%, #000 82%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 18%, #000 82%, transparent 100%); }
+.wmx-ct .wmx-meta strong, .wmx-face .wmx-meta strong { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 
 /* ===== Collection+ ===== */
 html:not([data-wmx-route^="/collection"]) .wmx-launch, html:not([data-wmx-route^="/collection"]) .wmx-cplus { display: none; }

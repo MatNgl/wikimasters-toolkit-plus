@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WikiMasters Toolkit+",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Ouverture groupée des paquets, statistiques, valeur des cartes, filtres et enchères rapides pour WikiMasters.",
   "permissions": [
     "storage"
@@ -49,5 +49,5 @@
       "run_at": "document_idle"
     }
   ],
-  "version_name": "0.2.2 · prix : reprise sur 403"
+  "version_name": "0.2.3 · flou des images paysage"
 }
