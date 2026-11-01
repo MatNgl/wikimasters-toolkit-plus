@@ -19,6 +19,14 @@ Légende : ✅ fait et vérifié · 🟡 écrit, à tester · ⬜ à faire
 | ⬜ | Cas où la vérification humaine demande un clic | l'extension attend, l'utilisateur clique |
 | ⬜ | Animation légendaire du jeu | impossible à déclencher depuis l'extension ; on garde notre halo |
 
+### Ajouts de cette itération (🟡 à tester)
+- Pause entre paquets supprimée (« Tout ouvrir » suit le rythme du jeu).
+- Ouverture auto : intervalle en minutes (1 à 60), badge rouge, bouton Arrêter rouge.
+- Volet ⚙ Paramètres : vitesse et ordre de la révélation, arrêt sur SR/UR/L, réserve de paquets.
+- Auto intelligente : stock plein → ouvre tout (au-dessus de la réserve) ; ouverture anticipée si le stock risque d'être plein avant la prochaine ouverture planifiée.
+- Historique par jour + export CSV ; menu flottant repliable avec animation.
+- À vérifier : durée de régénération déduite du compteur « Prochain dans » (10 min par défaut) ; compte Pro.
+
 ## 2. Collection (`/collection`)
 - ⬜ Filtre par valeur (min/max) : cartes identifiées par `data-wm-card-id` ; prix depuis le cache.
 - ⬜ Vérifier avec l'ancienne extension désactivée que `data-wm-card-id` vient bien du jeu.

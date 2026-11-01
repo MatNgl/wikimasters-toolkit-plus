@@ -8,6 +8,7 @@
     return ALIASES[s] || (WMX.RARITIES.includes(r) ? r : WMX.RARITIES.find((x) => x.toLowerCase() === s) || null);
   };
 
+  const today = () => new Date().toLocaleDateString('sv-SE'); // AAAA-MM-JJ, heure locale
   const empty = () => ({ packs: 0, cards: 0, rarity: Object.fromEntries(WMX.RARITIES.map((r) => [r, 0])), since: Date.now() });
   WMX.stats = {
     async get() { return WMX.store.get('stats', empty()); },
@@ -21,6 +22,26 @@
         if (r) s.rarity[r] += 1;
       }
       await WMX.store.set('stats', s);
+      // Historique par jour (conservé même après « Réinitialiser les statistiques »).
+      const h = await WMX.store.get('history', {});
+      const d = (h[today()] ||= { packs: 0, cards: 0, rarity: Object.fromEntries(WMX.RARITIES.map((r) => [r, 0])) });
+      d.packs += 1;
+      for (const c of cards) {
+        const r = WMX.normRarity(c.rarity);
+        d.cards += 1;
+        if (r) d.rarity[r] += 1;
+      }
+      await WMX.store.set('history', h);
+    },
+    async exportCsv() {
+      const h = await WMX.store.get('history', {});
+      const rows = ['date,paquets,cartes,' + WMX.RARITIES.join(',')];
+      for (const day of Object.keys(h).sort()) rows.push([day, h[day].packs, h[day].cards, ...WMX.RARITIES.map((r) => h[day].rarity[r])].join(','));
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([rows.join('\n') + '\n'], { type: 'text/csv' }));
+      a.download = 'wikimasters-historique.csv';
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
     },
   };
 

@@ -76,8 +76,12 @@
       close() { overlay.remove(); },
       async finish() {
         if (!all.length) { overlay.remove(); return; }
-        const sorted = WMX.sortCards(all);
-        title.textContent = `${sorted.length} cartes — des plus communes aux plus rares`;
+        const cfg = WMX.settings || {};
+        const f = cfg.speed === 'fast' ? 0.4 : 1; // facteur de durée des animations
+        if (cfg.speed === 'instant') skip = true;
+        const byRarity = cfg.order !== 'draw';
+        const sorted = byRarity ? WMX.sortCards(all) : all;
+        title.textContent = `${sorted.length} cartes — ${byRarity ? 'des plus communes aux plus rares' : 'dans l’ordre du tirage'}`;
         remaining.textContent = '';
         const tiles = sorted.map(realTile);
         grid.replaceChildren(...tiles);
@@ -86,11 +90,11 @@
             // La couleur n'apparaît qu'au moment où CETTE carte se révèle : pas de spoil des suivantes.
             t.classList.add('shake');
             const ticks = { C: 5, PC: 6, R: 8, SR: 11, UR: 16, L: 30 }[t.dataset.r] || 5;
-            for (let i = 0; i < ticks && !skip; i++) await sleep(90);
+            for (let i = 0; i < ticks && !skip; i++) await sleep(90 * f);
             t.classList.remove('shake');
           }
           t.classList.add('flip');
-          if (!skip) await sleep({ UR: 900, L: 2200 }[t.dataset.r] || 280);
+          if (!skip) await sleep(({ UR: 900, L: 2200 }[t.dataset.r] || 280) * f);
         }
         tiles.forEach((t) => t.classList.add('flip'));
         skipBtn.remove();

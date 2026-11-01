@@ -2,6 +2,7 @@
 .wmx-btn--ghost { background: transparent; color: #ddd; border: 1px solid #555; }
 .wmx-btn[disabled] { opacity: .4; cursor: default; }
 .wmx-btn--wide { width: 100%; }
+.wmx-btn--danger { background: #ef4444; color: #fff; }
 .wmx-input { width: 64px; padding: 6px; border-radius: 8px; border: 1px solid #444; background: #0d0d0d; color: #eee; }
 
 /* Panneau latéral (entre la sidebar du jeu et la zone centrale) */
@@ -11,7 +12,26 @@
 .wmx-panel label { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .wmx-status { min-height: 14px; color: #fbbf24; }
 .wmx-link { background: none; border: 0; color: #7a8a83; text-align: left; cursor: pointer; padding: 0; font-family: inherit; }
-.wmx-badge { align-self: flex-start; padding: 3px 10px; border-radius: 999px; background: #2dd4a0; color: #04130d; font-weight: 800; }
+.wmx-badge { align-self: stretch; text-align: center; padding: 5px 10px; border-radius: 999px; background: #ef4444; color: #fff; font-weight: 800; letter-spacing: .03em; box-shadow: 0 0 0 0 #ef444488; animation: wmx-pulse 1.8s infinite; }
+@keyframes wmx-pulse { 70% { box-shadow: 0 0 0 9px #ef444400; } 100% { box-shadow: 0 0 0 0 #ef444400; } }
+.wmx-select { width: 128px; }
+.wmx-settings { display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 12px; background: #0a0f0d; border: 1px solid #1e2b26; }
+.wmx-settings[hidden] { display: none; }
+.wmx-settings h4:first-child { margin-top: 0; }
+
+/* En-tête + menu repliable (animation autour du bouton) */
+.wmx-head { display: flex; align-items: center; gap: 8px; }
+.wmx-head h3 { flex: 1; white-space: nowrap; transition: opacity .2s; }
+.wmx-fab { position: relative; flex: none; width: 36px; height: 36px; border-radius: 50%; border: 0; cursor: pointer; background: #2dd4a0; color: #04130d; font: 900 17px Outfit, system-ui; transition: transform .25s; }
+.wmx-fab:hover { transform: scale(1.08); }
+.wmx-fab-count { position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; background: #ef4444; color: #fff; font: 800 11px/18px system-ui; text-align: center; }
+.wmx-fab-count[hidden] { display: none; }
+.wmx-icon { flex: none; background: none; border: 0; color: #9aa; font-size: 17px; cursor: pointer; transition: opacity .2s; }
+.wmx-icon:hover { color: #fff; }
+.wmx-panel { overflow: hidden; transition: width .3s ease, max-height .35s ease, padding .3s ease, border-radius .3s ease; }
+.wmx-body { display: flex; flex-direction: column; gap: 8px; transition: opacity .2s; }
+.wmx-panel.wmx-collapsed { width: 46px; padding: 4px; border-radius: 23px; }
+.wmx-panel.wmx-collapsed .wmx-body, .wmx-panel.wmx-collapsed .wmx-head h3, .wmx-panel.wmx-collapsed .wmx-icon { opacity: 0; pointer-events: none; }
 .wmx-badge[hidden] { display: none; }
 @media (max-width: 1250px) { .wmx-panel { display: none; } }
 
