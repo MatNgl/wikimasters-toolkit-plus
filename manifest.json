@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WikiMasters Toolkit+",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "Ouverture groupée des paquets, statistiques, valeur des cartes, filtres et enchères rapides pour WikiMasters.",
   "permissions": [
     "storage"
@@ -48,7 +48,18 @@
         "src/toolkit.css"
       ],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.wiki-masters.com/*"
+      ],
+      "js": [
+        "src/frame-hook.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": true,
+      "world": "MAIN"
     }
   ],
-  "version_name": "0.3.4 · annulation instantanée"
+  "version_name": "0.3.5 · plus d alerte à l annulation"
 }

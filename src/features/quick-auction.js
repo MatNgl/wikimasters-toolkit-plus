@@ -88,14 +88,14 @@
   function prewarm(auction) {
     if (!auction || warm.has(auction.id)) return;
     if (warm.size >= 3) { const [oldId, oldFrame] = warm.entries().next().value; oldFrame.remove(); warm.delete(oldId); }
-    const f = el('iframe', { class: 'wmx-sheet-frame', src: `/marketplace/${auction.id}`, title: 'Annulation', tabindex: '-1' });
+    const f = el('iframe', { class: 'wmx-sheet-frame', src: `/marketplace/${auction.id}#wmx-auto`, title: 'Annulation', tabindex: '-1' });
     document.body.append(f);
     warm.set(auction.id, f);
     setTimeout(() => { if (warm.get(auction.id) === f) { f.remove(); warm.delete(auction.id); } }, 15 * 60000);
   }
 
   async function cancelAuction(auction) {
-    const f = warm.get(auction.id) || el('iframe', { class: 'wmx-sheet-frame', src: `/marketplace/${auction.id}`, title: 'Annulation', tabindex: '-1' });
+    const f = warm.get(auction.id) || el('iframe', { class: 'wmx-sheet-frame', src: `/marketplace/${auction.id}#wmx-auto`, title: 'Annulation', tabindex: '-1' });
     if (!f.isConnected) document.body.append(f);
     try {
       const find = (re) => { try { return [...f.contentDocument.querySelectorAll('button')].find((b) => re.test(b.textContent)); } catch (_) { return null; } };
