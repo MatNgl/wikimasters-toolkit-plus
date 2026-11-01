@@ -45,8 +45,12 @@
       if (i.img) art.style.backgroundImage = `url("${i.img}")`;
       if (i.desc) desc.textContent = i.desc;
     });
-    return el('div', { class: 'wmx-tile', 'data-r': r, style: styleVars(r) },
+    const tile = el('div', { class: 'wmx-tile', 'data-r': r, style: styleVars(r) },
       el('div', { class: 'wmx-inner' }, el('div', { class: 'wmx-back' }, 'W'), face));
+    // Une fois retournée, un clic ouvre la fiche du jeu (étiquette, enchère…).
+    tile.addEventListener('click', () => { if (tile.classList.contains('flip')) WMX.openCardDetail?.(c); });
+    tile.title = 'Cliquer pour ouvrir la fiche dans le jeu';
+    return tile;
   }
 
   WMX.revealSession = function revealSession() {
@@ -100,6 +104,7 @@
         tiles.forEach((t) => t.classList.add('flip'));
         skipBtn.remove();
         cont.removeAttribute('disabled');
+        remaining.textContent = 'Cliquez sur une carte pour ouvrir sa fiche (étiquette, enchère…)';
       },
     };
   };
