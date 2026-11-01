@@ -90,7 +90,15 @@
       if (!btn) return { error: 'Annulation impossible : bouton introuvable (enchère déjà misée ou terminée ?).' };
       // L'utilisateur a déjà décidé en cliquant sur ⚡ : la confirmation du jeu (alerte du navigateur) répond « oui »
       // d'elle-même, sans second clic. Réglé juste avant le clic, dans la page d'annulation uniquement.
-      try { f.contentWindow.confirm = () => true; f.contentWindow.alert = () => {}; } catch (_) { /* page non accessible */ }
+      // L'extension vit dans un monde JavaScript isolé : modifier `confirm` d'ici ne change pas celui de la page.
+      // On injecte donc un petit script DANS la page du cadre (monde principal) avant de cliquer.
+      try {
+        const d = f.contentDocument;
+        const s = d.createElement('script');
+        s.textContent = 'window.confirm=function(){return true};window.alert=function(){}';
+        d.head.append(s);
+        s.remove();
+      } catch (_) { /* page non accessible */ }
       btn.click();
       // Une confirmation peut s'afficher : on la valide comme le ferait l'utilisateur.
       const confirm = await waitFor(() => find(/^(Confirmer|Oui|Valider|Annuler la vente|Annuler l.enchère)/i), 2500, 150);
