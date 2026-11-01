@@ -6,7 +6,7 @@
 .wmx-input { width: 64px; padding: 6px; border-radius: 8px; border: 1px solid #444; background: #0d0d0d; color: #eee; }
 
 /* Panneau latéral (entre la sidebar du jeu et la zone centrale) */
-.wmx-panel { position: fixed; top: 84px; left: 272px; width: 250px; z-index: 40; padding: 14px; display: flex; flex-direction: column; gap: 8px; font: 12px Outfit, system-ui, sans-serif; color: #ddd; background: #0f1412e6; border: 1px solid #23302b; border-radius: 16px; box-shadow: 0 12px 28px #0008; }
+.wmx-panel { position: fixed; top: 84px; left: 272px; width: 300px; z-index: 40; padding: 14px; display: flex; flex-direction: column; gap: 8px; font: 12px Outfit, system-ui, sans-serif; color: #ddd; background: #0f1412e6; border: 1px solid #23302b; border-radius: 16px; box-shadow: 0 12px 28px #0008; }
 .wmx-panel h3 { margin: 0; font-size: 14px; color: var(--acc,#2dd4a0); }
 .wmx-panel h4 { margin: 8px 0 0; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: #7a8a83; }
 .wmx-panel label { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
@@ -78,19 +78,22 @@
 .wmx-settings-btn span { font-size: 15px; line-height: 1; }
 .wmx-settings-btn:hover { background: #12261d; border-color: var(--acc); }
 .wmx-ver { text-align: center; font-size: 10px; color: #4d6a5e; }
-.wmx-donutrow { display: flex; align-items: center; gap: 12px; }
-.wmx-donut { flex: none; width: 84px; height: 84px; border-radius: 50%; display: grid; place-items: center; }
-.wmx-donut-c { width: 56px; height: 56px; border-radius: 50%; background: #08120e; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.1; }
+.wmx-donutrow { display: flex; align-items: center; gap: 14px; }
+.wmx-donut { flex: none; width: 96px; height: 96px; border-radius: 50%; display: grid; place-items: center; }
+.wmx-donut-c { width: 64px; height: 64px; border-radius: 50%; background: #08120e; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.1; }
 .wmx-donut-c b { font-size: 14px; color: #fff; }
 .wmx-donut-c small { font-size: 9px; color: #6f9486; }
-.wmx-legend { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 3px 8px; font-variant-numeric: tabular-nums; }
-.wmx-legend div { display: flex; align-items: center; gap: 5px; }
+.wmx-legend { flex: 1; display: flex; flex-direction: column; gap: 4px; font-variant-numeric: tabular-nums; }
+.wmx-legend div { display: flex; align-items: center; gap: 6px; }
+.wmx-lp { margin-left: auto; color: #e6efe9; font-weight: 600; }
+.wmx-ln { min-width: 30px; text-align: right; color: #7f9a8d; }
 .wmx-legend i { width: 7px; height: 7px; border-radius: 50%; background: rgb(var(--rgb)); }
 .wmx-legend b { color: rgb(var(--rgb)); width: 20px; }
 
 /* Menu réduit : toujours sans fond, quelle que soit la variante */
 .wmx-panel.wmx-collapsed { background: transparent; border-color: transparent; box-shadow: none; backdrop-filter: none; }
 .wmx-badge[hidden] { display: none; }
+@media (max-width: 1450px) { .wmx-panel { width: 250px; } }
 @media (max-width: 1250px) { .wmx-panel { display: none; } }
 html:not([data-wmx-route^="/pulls"]) .wmx-panel { display: none; }
 

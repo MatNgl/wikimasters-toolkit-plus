@@ -341,12 +341,13 @@
       const pct = (r) => (s.cards ? (s.rarity[r] / s.cards) * 100 : 0);
       let acc = 0;
       const stops = WMX.RARITIES.map((r) => { const a = acc; acc += pct(r); return `rgb(${RGB[r]}) ${a}% ${acc}%`; }).join(',');
+      const fmt = (r) => `${pct(r).toFixed(1).replace('.', ',')} %`;
       ui.stats.replaceChildren(el('div', { class: 'wmx-sbox' },
-        el('div', { class: 'wmx-shead' }, el('span', {}, 'Vos statistiques'), el('span', {}, `${s.cards} carte${s.cards > 1 ? 's' : ''}`)),
         el('div', { class: 'wmx-donutrow' },
           el('div', { class: 'wmx-donut', style: `background:conic-gradient(${s.cards ? stops : '#1a2a24 0 100%'})` },
-            el('div', { class: 'wmx-donut-c' }, el('b', {}, String(s.cards)), el('small', {}, 'cartes'))),
-          el('div', { class: 'wmx-legend' }, ...WMX.RARITIES.map((r) => el('div', { style: `--rgb:${RGB[r]}` }, el('i'), el('b', {}, r), String(s.rarity[r])))))));
+            el('div', { class: 'wmx-donut-c' }, el('b', {}, String(s.cards)), el('small', {}, s.cards > 1 ? 'cartes' : 'carte'))),
+          el('div', { class: 'wmx-legend' }, ...WMX.RARITIES.map((r) => el('div', { style: `--rgb:${RGB[r]}` },
+            el('i'), el('b', {}, r), el('span', { class: 'wmx-lp' }, fmt(r)), el('span', { class: 'wmx-ln' }, String(s.rarity[r]))))))));
     };
     WMX.applySettings = render;
     render();
