@@ -1,5 +1,44 @@
-.wmx-bar { position: fixed; bottom: 16px; right: 16px; z-index: 9999; display: flex; gap: 8px; padding: 8px; background: #111a; border: 1px solid #333; border-radius: 10px; backdrop-filter: blur(6px); }
-.wmx-bar--top { bottom: auto; top: 16px; }
 .wmx-btn { padding: 6px 12px; border-radius: 8px; border: 0; background: #2dd4a0; color: #04130d; font-weight: 600; cursor: pointer; }
-.wmx-input { width: 130px; padding: 6px; border-radius: 8px; border: 1px solid #444; background: #0d0d0d; color: #eee; }
-.wmx-chip { position: fixed; bottom: 16px; left: 16px; z-index: 9999; padding: 6px 10px; font: 12px system-ui; color: #cfe; background: #111a; border: 1px solid #333; border-radius: 8px; }
+.wmx-btn--ghost { background: transparent; color: #ddd; border: 1px solid #555; }
+.wmx-btn[disabled] { opacity: .4; cursor: default; }
+.wmx-btn--wide { width: 100%; }
+.wmx-input { width: 64px; padding: 6px; border-radius: 8px; border: 1px solid #444; background: #0d0d0d; color: #eee; }
+.wmx-bar { position: fixed; top: 16px; right: 16px; z-index: 9999; display: flex; gap: 8px; padding: 8px; background: #111a; border: 1px solid #333; border-radius: 10px; }
+
+/* Panneau latéral (entre la sidebar du jeu et la zone centrale) */
+.wmx-panel { position: fixed; top: 84px; left: 224px; width: 236px; z-index: 40; padding: 12px; display: flex; flex-direction: column; gap: 8px; font: 12px system-ui; color: #ddd; background: #111c; border: 1px solid #2a2a2a; border-radius: 12px; }
+.wmx-panel h3 { margin: 0; font-size: 14px; color: #2dd4a0; }
+.wmx-panel h4 { margin: 6px 0 0; font-size: 11px; text-transform: uppercase; color: #888; }
+.wmx-panel label { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.wmx-status { min-height: 14px; color: #fbbf24; }
+.wmx-row { display: flex; gap: 8px; }
+.wmx-row b { width: 24px; }
+.wmx-link { background: none; border: 0; color: #888; text-align: left; cursor: pointer; padding: 0; }
+.wmx-badge { align-self: flex-start; padding: 3px 10px; border-radius: 999px; background: #2dd4a0; color: #04130d; font-weight: 700; }
+.wmx-badge[hidden] { display: none; }
+@media (max-width: 1250px) { .wmx-panel { display: none; } }
+
+/* Voile pendant l'ouverture masquée (sous la vérification humaine du jeu, qui reste cliquable) */
+.wmx-cover { display: none; position: fixed; inset: 0 0 0 208px; z-index: 20; background: #0d0d0d; pointer-events: none; }
+html.wmx-opening .wmx-cover { display: block; }
+
+/* Révélation */
+.wmx-overlay { position: fixed; inset: 0; z-index: 10000; overflow: auto; padding: 24px; background: #000d; display: flex; flex-direction: column; align-items: center; gap: 16px; color: #eee; font-family: system-ui; }
+.wmx-grid { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; max-width: 1100px; }
+.wmx-actions { display: flex; gap: 10px; position: sticky; bottom: 0; }
+.wmx-tile { width: 128px; height: 180px; perspective: 800px; }
+.wmx-inner { position: relative; width: 100%; height: 100%; transform-style: preserve-3d; transition: transform .6s; }
+.wmx-tile.flip .wmx-inner { transform: rotateY(180deg); }
+.wmx-back, .wmx-face { position: absolute; inset: 0; border-radius: 12px; backface-visibility: hidden; border: 2px solid var(--c); }
+.wmx-back { display: grid; place-items: center; font: 800 40px system-ui; color: var(--c); background: #151515; box-shadow: 0 0 10px var(--c); }
+.wmx-face { transform: rotateY(180deg); padding: 8px; display: flex; flex-direction: column; gap: 4px; background: linear-gradient(160deg, #1b1b1b, #0c0c0c); box-shadow: 0 0 18px var(--c), inset 0 0 14px color-mix(in srgb, var(--c) 35%, transparent); font-size: 12px; }
+.wmx-face strong { font-size: 13px; }
+.wmx-face small { color: var(--c); }
+.wmx-rar { align-self: flex-start; padding: 1px 6px; border-radius: 6px; background: var(--c); color: #000; font-weight: 800; }
+.wmx-stat { color: #bbb; }
+.wmx-tile.shake .wmx-back { animation: wmx-shake .35s infinite, wmx-glow .7s infinite alternate; }
+@keyframes wmx-shake { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-5deg) translateX(-3px); } 75% { transform: rotate(5deg) translateX(3px); } }
+@keyframes wmx-glow { to { box-shadow: 0 0 34px 6px var(--c); } }
+.wmx-tile[data-r=UR].flip .wmx-face { box-shadow: 0 0 26px 3px var(--c), inset 0 0 14px var(--c); }
+.wmx-tile[data-r=L].flip .wmx-face { animation: wmx-legend 1.6s infinite alternate; }
+@keyframes wmx-legend { from { box-shadow: 0 0 20px 2px #facc15; } to { box-shadow: 0 0 46px 12px #fff2a8, 0 0 70px 20px #f59e0b88; } }

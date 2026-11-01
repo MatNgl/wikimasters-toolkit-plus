@@ -3,31 +3,47 @@
   "name": "WikiMasters Toolkit+",
   "version": "0.1.0",
   "description": "Ouverture groupée des paquets, statistiques, valeur des cartes, filtres et enchères rapides pour WikiMasters.",
-  "permissions": ["storage"],
-  "host_permissions": ["https://www.wiki-masters.com/*"],
-  "action": { "default_title": "WikiMasters Toolkit+", "default_popup": "src/popup/popup.html" },
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://www.wiki-masters.com/*"
+  ],
+  "action": {
+    "default_title": "WikiMasters Toolkit+",
+    "default_popup": "src/popup/popup.html"
+  },
   "content_scripts": [
     {
-      "matches": ["https://www.wiki-masters.com/*"],
-      "js": ["src/page-hook.js"],
+      "matches": [
+        "https://www.wiki-masters.com/*"
+      ],
+      "js": [
+        "src/page-hook.js"
+      ],
       "run_at": "document_start",
       "world": "MAIN"
     },
     {
-      "matches": ["https://www.wiki-masters.com/*"],
+      "matches": [
+        "https://www.wiki-masters.com/*"
+      ],
       "js": [
         "src/lib/namespace.js",
         "src/lib/storage.js",
         "src/lib/dom.js",
         "src/lib/sniffer.js",
         "src/features/stats.js",
+        "src/features/reveal.js",
         "src/features/boosters.js",
         "src/features/prices.js",
         "src/features/collection-filter.js",
         "src/features/market.js",
         "src/content.js"
       ],
-      "css": ["src/toolkit.css"],
+      "css": [
+        "src/toolkit.css"
+      ],
       "run_at": "document_idle"
     }
   ]
