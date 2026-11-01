@@ -8,13 +8,14 @@ Légende : ✅ fait et vérifié · 🟡 écrit, à tester · ⬜ à faire
 | ✅ | Ouverture groupée masquée | pilote le bouton natif, cartes lues dans `POST /api/packs/open` |
 | ✅ | Sortie de l'écran natif | flèche ronde puis « Continuer » |
 | ✅ | Statistiques cumulées | paquets, cartes, répartition par rareté |
-| 🟡 | Style des cartes du jeu | couleurs, bordures, halos relevés sur le marché ; image + description via l'API Wikipédia |
-| 🟡 | Écran progressif | 5 cartes neutres par paquet ouvert, compteur « N paquets restants » |
-| 🟡 | Vitesse | pas de 100–120 ms, pause entre paquets 0,3 s par défaut |
-| 🟡 | Statistiques en barres colorées | à comparer à l'ancienne extension |
+| ✅ | Style des cartes du jeu | couleurs, bordures, halos relevés sur le marché ; image + description via l'API Wikipédia |
+| ✅ | Écran progressif | 5 cartes neutres par paquet ouvert, compteur « N paquets restants » |
+| ✅ | Vitesse | pas de 100–120 ms, pause entre paquets 0,3 s par défaut |
+| ✅ | Statistiques en barres colorées | |
+| ✅ | Bouton « Passer » | toutes les cartes retournées d'un coup |
+| ✅ | Ouverture auto (min/max, badge, arrêt → révélation) | testée avec 2 paquets, intervalle 5–6 s |
+| 🟡 | Reprise de la révélation après rechargement de la page | cartes mémorisées ; non observé en conditions réelles |
 | ⬜ | Test d'une carte UR / SR / L à la révélation | aucune n'est encore tombée pendant les essais |
-| ⬜ | Test du bouton « Passer » | |
-| ⬜ | Test de l'ouverture auto (min/max, badge, arrêt → révélation) | demande ≥ 2 paquets disponibles |
 | ⬜ | Cas où la vérification humaine demande un clic | l'extension attend, l'utilisateur clique |
 | ⬜ | Animation légendaire du jeu | impossible à déclencher depuis l'extension ; on garde notre halo |
 

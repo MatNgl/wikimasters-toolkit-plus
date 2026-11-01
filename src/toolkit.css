@@ -17,7 +17,7 @@
 
 /* Statistiques (barres par rareté) */
 .wmx-sbox { display: flex; flex-direction: column; gap: 5px; padding: 8px 10px; border-radius: 12px; background: #0a0f0d; border: 1px solid #1e2b26; }
-.wmx-shead { display: flex; justify-content: space-between; font-weight: 700; color: #cfe; }
+.wmx-shead { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 8px; font-weight: 700; color: #cfe; }
 .wmx-shead span:last-child { color: #7a8a83; font-weight: 500; }
 .wmx-srow { display: grid; grid-template-columns: 22px 1fr 44px 34px; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
 .wmx-srow b { color: rgb(var(--rgb)); font-weight: 800; }
