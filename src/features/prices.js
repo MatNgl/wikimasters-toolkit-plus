@@ -9,9 +9,9 @@
   let cache = null;             // card_id -> { t, s: { RARETÉ: { average, count, latest } } }
   let saveTimer = null;
   const listeners = new Set();
-  const job = { running: false, paused: false, done: 0, total: 0, blocks: 0, wait: 0, token: 0 };
+  const job = { running: false, paused: false, done: 0, total: 0, blocks: 0, wait: 0, failed: 0, token: 0 };
 
-  const snapshot = () => ({ running: job.running, paused: job.paused, done: job.done, total: job.total, wait: job.wait });
+  const snapshot = () => ({ running: job.running, paused: job.paused, done: job.done, total: job.total, wait: job.wait, failed: job.failed });
   const emit = () => listeners.forEach((cb) => { try { cb(snapshot()); } catch (_) { /* écouteur obsolète */ } });
   const scheduleSave = () => {
     clearTimeout(saveTimer);
@@ -22,28 +22,32 @@
     const u = new URL(`/api/marketplace/cards/${cardId}/sales`, location.origin);
     u.searchParams.set('scope', 'summary');
     const res = await fetch(u);
-    if (res.status === 429) return { limited: true };
+    // Le jeu freine par rafales : 429, mais aussi 403 sur ce point d'accès. On attend puis on réessaie.
+    if (res.status === 429 || res.status === 403) return { limited: true };
     if (!res.ok) return { error: res.status };
     const j = await res.json();
     return { summary: j.summary || {} };
   }
 
   async function run(items, token) {
-    Object.assign(job, { running: true, paused: false, done: 0, total: items.length, blocks: 0, wait: 0 });
+    Object.assign(job, { running: true, paused: false, done: 0, total: items.length, blocks: 0, wait: 0, failed: 0 });
     emit();
     for (const it of items) {
       if (token !== job.token || !WMX.alive()) break;
       while (job.paused && token === job.token) await sleep(300);
+      let tries = 0;
       for (;;) {
         if (token !== job.token) break;
         let r;
         try { r = await fetchSummary(it.card_id); } catch (_) { r = { error: 0 }; }
         if (r.limited) { // le jeu freine : on attend de plus en plus longtemps (4, 5, 6… s) puis on réessaie
           job.blocks += 1;
+          if (++tries > 8) { job.failed += 1; break; } // carte abandonnée pour cette passe, retentée au prochain chargement
           for (let s = Math.min(120, 3 + job.blocks); s > 0 && token === job.token; s--) { job.wait = s; emit(); await sleep(1000); }
           job.wait = 0;
           continue;
         }
+        if (r.error) job.failed += 1;
         if (r.summary) { cache[it.card_id] = { t: Date.now(), s: r.summary }; scheduleSave(); }
         job.blocks = 0;
         break;

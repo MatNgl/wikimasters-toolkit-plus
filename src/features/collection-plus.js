@@ -168,8 +168,8 @@
     const st = WMX.prices.state();
     const fresh = S.items.filter((it) => WMX.prices.fresh(it.card_id)).length;
     ui.priceInfo.textContent = st.running
-      ? `Prix : ${fmt(st.done)} / ${fmt(st.total)}${st.wait ? ` · pause ${st.wait} s (limite du jeu)` : ''}${st.paused ? ' · en pause' : ''}`
-      : `Prix à jour : ${fmt(fresh)} / ${fmt(t.total)}`;
+      ? `Prix : ${fmt(st.done)} / ${fmt(st.total)}${st.wait ? ` · pause ${st.wait} s (limite du jeu)` : ''}${st.failed ? ` · ${st.failed} à réessayer` : ''}${st.paused ? ' · en pause' : ''}`
+      : `Prix à jour : ${fmt(fresh)} / ${fmt(t.total)}${st.failed ? ` · ${st.failed} à réessayer` : ''}`;
     ui.priceBar.firstChild.style.width = `${st.running && st.total ? (st.done / st.total) * 100 : (t.total ? (fresh / t.total) * 100 : 0)}%`;
     ui.priceBtn.textContent = st.running ? (st.paused ? 'Reprendre' : 'Pause') : 'Charger les prix';
     ui.priceStop.hidden = !st.running;
