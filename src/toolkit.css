@@ -77,6 +77,7 @@
 .wmx-settings-btn { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 2px; padding: 9px 12px; border-radius: 999px; border: 1px solid #27493b; background: #0e1b16; color: #cfe; font: 600 12px Outfit, system-ui, sans-serif; cursor: pointer; transition: background .2s, border-color .2s; }
 .wmx-settings-btn span { font-size: 15px; line-height: 1; }
 .wmx-settings-btn:hover { background: #12261d; border-color: var(--acc); }
+.wmx-ver { text-align: center; font-size: 10px; color: #4d6a5e; }
 .wmx-donutrow { display: flex; align-items: center; gap: 12px; }
 .wmx-donut { flex: none; width: 84px; height: 84px; border-radius: 50%; display: grid; place-items: center; }
 .wmx-donut-c { width: 56px; height: 56px; border-radius: 50%; background: #08120e; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.1; }

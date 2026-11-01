@@ -254,7 +254,8 @@
       field('Maximum (min)', ui.max, 'Jusqu’à 60 minutes.'),
       el('h4', {}, 'Statistiques'),
       ui.stats,
-      el('button', { class: 'wmx-settings-btn', onclick: () => WMX.openSettings() }, el('span', {}, '⚙'), 'Paramètres'));
+      el('button', { class: 'wmx-settings-btn', onclick: () => WMX.openSettings() }, el('span', {}, '⚙'), 'Paramètres'),
+      el('div', { class: 'wmx-ver' }, (() => { try { return `v${chrome.runtime.getManifest().version_name}`; } catch (_) { return ''; } })()));
 
     const panel = el('aside', { class: 'wmx-panel' },
       el('div', { class: 'wmx-head' }, fab, el('h3', {}, 'WikiMasters Toolkit+'), fold), body);
