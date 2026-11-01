@@ -14,3 +14,7 @@ Paquets : 5 cartes, 1 toutes les 10 min, 10 max en stock.
 
 Les formes de réponse exactes sont collectées automatiquement par l'extension dans `chrome.storage.local.apiShapes`
 (voir `src/lib/sniffer.js`) ; les copier ici une fois observées. Endpoints d'ouverture de paquet et de mise en vente : **à découvrir**.
+
+## DOM observé (à re-vérifier avec l'ancienne extension désactivée)
+- `/pulls` : bouton d'ouverture = `<button>` au texte exact « Ouvrir » ; compteur « 10 / 10 paquets disponibles ».
+- `/collection` : chaque carte est un `div[data-wm-card-id=<uuid>]` (origine jeu/ancienne extension non confirmée).

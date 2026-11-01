@@ -15,6 +15,11 @@ WMX.dom = {
     return [...document.querySelectorAll(selector)].find((e) => e.textContent.trim().toLowerCase().includes(t));
   },
   sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+  /** Bouton dont le texte est exactement `text` (évite « Tout ouvrir » pour « Ouvrir »). */
+  findExact(text, selector = 'button, a, [role=button]') {
+    const t = text.toLowerCase();
+    return [...document.querySelectorAll(selector)].find((e) => e.textContent.trim().toLowerCase() === t && !e.disabled);
+  },
   async waitFor(fn, timeout = 5000, step = 100) {
     const end = Date.now() + timeout;
     while (Date.now() < end) { const v = fn(); if (v) return v; await WMX.dom.sleep(step); }

@@ -10,8 +10,8 @@
       const apply = async () => {
         const prices = await WMX.prices.all();
         const lo = Number(min.value) || 0, hi = Number(max.value) || Infinity;
-        document.querySelectorAll('[data-card-id]').forEach((card) => {
-          const v = prices[card.dataset.cardId]?.avg;
+        document.querySelectorAll('[data-wm-card-id]').forEach((card) => {
+          const v = prices[card.dataset.wmCardId]?.avg;
           card.style.display = v == null || (v >= lo && v <= hi) ? '' : 'none';
         });
       };

@@ -1,7 +1,7 @@
 // Ouverture groupée : pilote le bouton natif du jeu (pas d'appel API forgé),
 // avec un délai configurable entre deux ouvertures.
 (() => {
-  const { el, findByText, sleep } = WMX.dom;
+  const { el, findExact, sleep } = WMX.dom;
   let running = false;
 
   async function openAll(delayMs) {
@@ -9,7 +9,7 @@
     running = true;
     try {
       for (let i = 0; i < 50 && running; i++) {
-        const btn = findByText('ouvrir', 'button, [role=button], div[class*=cursor-pointer]');
+        const btn = findExact('ouvrir', 'button');
         const left = document.body.innerText.match(/(\d+)\s*\/\s*10\s*paquets?/i);
         if (!btn || (left && Number(left[1]) === 0)) break;
         btn.click();
