@@ -83,20 +83,20 @@
         grid.replaceChildren(...tiles);
         for (const t of tiles) {
           if (!skip) {
+            // La couleur n'apparaît qu'au moment où CETTE carte se révèle : pas de spoil des suivantes.
             t.classList.add('shake');
-            const big = ['UR', 'L'].includes(t.dataset.r);
-            for (let i = 0; i < (big ? 12 : 5) && !skip; i++) await sleep(90);
+            const ticks = { C: 5, PC: 6, R: 8, SR: 11, UR: 16, L: 30 }[t.dataset.r] || 5;
+            for (let i = 0; i < ticks && !skip; i++) await sleep(90);
             t.classList.remove('shake');
           }
           t.classList.add('flip');
-          if (!skip) await sleep(big(t) ? 700 : 280);
+          if (!skip) await sleep({ UR: 900, L: 2200 }[t.dataset.r] || 280);
         }
         tiles.forEach((t) => t.classList.add('flip'));
         skipBtn.remove();
         cont.removeAttribute('disabled');
       },
     };
-    function big(t) { return ['UR', 'L'].includes(t.dataset.r); }
   };
 
   WMX.reveal = async (cards) => {

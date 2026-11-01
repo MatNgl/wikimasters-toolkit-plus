@@ -117,20 +117,21 @@
       if (state.auto) { stopAuto(); autoBtn.textContent = 'Ouvrir automatiquement'; }
       else { state.auto = true; autoBtn.textContent = 'Arrêter'; setBadge(); autoLoop(); }
     } }, 'Ouvrir automatiquement');
+    autoBtn.classList.add('wmx-btn--wide');
     const panel = el('aside', { class: 'wmx-panel' },
       ui.badge,
       el('h3', {}, 'WikiMasters Toolkit+'),
       el('button', { class: 'wmx-btn wmx-btn--wide', onclick: openAll }, 'Tout ouvrir'),
-      ui.status,
-      el('h4', {}, 'Ouverture auto'),
-      el('label', {}, 'Intervalle min (s)', ui.min),
-      el('label', {}, 'Intervalle max (s)', ui.max),
       autoBtn,
+      ui.status,
+      el('h4', {}, 'Intervalle de l’ouverture auto'),
+      el('label', {}, 'Minimum (s)', ui.min),
+      el('label', {}, 'Maximum (s)', ui.max),
       el('h4', {}, 'Réglages'),
-      el('label', {}, 'Pause entre paquets (s)', ui.delay),
+      el('label', { title: 'Délai entre la fin d’un paquet et l’ouverture du suivant, uniquement pour « Tout ouvrir ». 0 = le plus vite possible.' }, 'Pause entre paquets (s)', ui.delay),
       el('h4', {}, 'Statistiques'),
       ui.stats,
-      el('button', { class: 'wmx-link', onclick: () => WMX.stats.reset() }, 'Réinitialiser'));
+      el('button', { class: 'wmx-link', onclick: () => WMX.stats.reset() }, 'Réinitialiser les statistiques'));
     document.body.append(panel, el('div', { class: 'wmx-cover' }));
     const render = async () => {
       const s = await WMX.stats.get();
