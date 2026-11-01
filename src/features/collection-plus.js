@@ -105,11 +105,7 @@
       el('span', { class: 'wmx-rar' }, it.rarity),
       el('div', { class: 'wmx-ct-acts' }, it.starred ? el('i', {}, '★') : '', it.count > 1 ? el('i', { class: 'wmx-ct-n' }, `×${it.count}`) : ''),
       el('div', { class: 'wmx-meta' }, el('strong', {}, it.title), el('span', { class: 'wmx-ct-price' }, p ? `Moy. ${fmt(p.avg)} W` : 'Moy. —')));
-    if (it.image) {
-      const img = el('img', { class: 'wmx-ct-img', src: it.image, loading: 'lazy', alt: '' });
-      img.addEventListener('error', () => img.remove());
-      t.prepend(img);
-    }
+    if (it.image) WMX.dom.artLayers(it.image, t);
     t.addEventListener('click', () => WMX.openCardDetail?.({ id: it.card_id, wikipedia_title: it.title, rarity: it.rarity, lang: it.lang }));
     return t;
   }

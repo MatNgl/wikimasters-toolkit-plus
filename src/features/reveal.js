@@ -42,7 +42,7 @@
       el('span', { class: 'wmx-rar' }, r),
       el('div', { class: 'wmx-meta' }, el('strong', {}, c.wikipedia_title || '?'), desc));
     loadInfo(c).then((i) => {
-      if (i.img) art.style.backgroundImage = `url("${i.img}")`;
+      if (i.img) WMX.dom.artLayers(i.img, face);
       if (i.desc) desc.textContent = i.desc;
     });
     const tile = el('div', { class: 'wmx-tile', 'data-r': r, style: styleVars(r) },

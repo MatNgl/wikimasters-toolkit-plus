@@ -20,6 +20,20 @@ WMX.dom = {
     const t = text.toLowerCase();
     return [...document.querySelectorAll(selector)].find((e) => e.textContent.trim().toLowerCase() === t && !e.disabled);
   },
+  /**
+   * Illustration « pleine image » d'une carte : un portrait remplit la carte ; une image paysage ou carrée
+   * est affichée en entier (au lieu d'être rognée) sur un fond flou qui complète le haut et le bas.
+   */
+  artLayers(src, host) {
+    const blur = WMX.dom.el('img', { class: 'wmx-art-blur', src, alt: '', loading: 'lazy' });
+    const img = WMX.dom.el('img', { class: 'wmx-art-img', src, alt: '', loading: 'lazy' });
+    img.addEventListener('load', () => {
+      if (img.naturalHeight && img.naturalWidth / img.naturalHeight > 0.85) host.classList.add('wmx-wide');
+    });
+    img.addEventListener('error', () => { blur.remove(); img.remove(); });
+    host.prepend(img);
+    host.prepend(blur); // le flou passe dessous
+  },
   /** Bord droit de la barre latérale du jeu (elle s'élargit selon l'écran). */
   sidebarRight() {
     const edges = [...document.querySelectorAll('nav')].map((n) => n.getBoundingClientRect().right).filter((x) => x > 100 && x < 700);
