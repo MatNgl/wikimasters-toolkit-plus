@@ -25,8 +25,9 @@
     // Observé : flèche ronde sans texte pour passer les cartes ; « Encore N cartes » reste inactif
     // jusqu'à la dernière, puis le bouton devient « Continuer ».
     const outside = (e) => !e.closest('.wmx-panel, .wmx-overlay');
+    const nativeOpen = () => [...document.querySelectorAll('button')].find((b) => b.textContent.trim().toLowerCase() === 'ouvrir');
     for (let i = 0; i < 250; i++) {
-      if (findExact('ouvrir', 'button')) return true;
+      if (nativeOpen()) return true; // même désactivé : après le dernier paquet il reste grisé
       const cont = findExact('continuer', 'button');
       if (cont && !cont.disabled && outside(cont)) cont.click();
       else {
@@ -144,6 +145,9 @@
     };
     render();
     chrome.storage.onChanged.addListener((c) => { if (c.stats) render(); });
+    // Reprise : cartes tirées avant un rechargement de la page et jamais révélées.
+    const pending = await WMX.store.get('pendingCards', []);
+    if (pending.length) WMX.reveal(pending);
   }
 
   WMX.register({ name: 'boosters', match: /^\/pulls/, init: buildPanel });
