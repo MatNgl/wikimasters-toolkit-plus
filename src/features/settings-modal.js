@@ -5,11 +5,19 @@
   const plural = (n, w) => `${n} ${w}${n > 1 ? 's' : ''}`;
 
   WMX.DEFAULTS = {
-    speed: 'normal', order: 'rarity', images: true,
+    theme: 'green', speed: 'normal', order: 'rarity', images: true,
     stopOn: 'off', reserve: 0, fullStockOpen: true, anticipate: true,
   };
 
   const SECTIONS = [
+    {
+      title: 'Apparence',
+      desc: 'Style du menu flottant et de la révélation.',
+      items: [
+        { key: 'theme', type: 'select', label: 'Style de l’interface', desc: 'Vert : classique. Bleu : verre et anneau de statistiques. Rouge : arcade.',
+          options: [['green', 'Vert (classique)'], ['blue', 'Bleu (verre)'], ['red', 'Rouge (arcade)']] },
+      ],
+    },
     {
       title: 'Révélation',
       desc: 'Animation et ordre d’affichage des cartes après l’ouverture.',
@@ -85,6 +93,7 @@
           el('button', { class: 'wmx-btn', onclick: () => {
             Object.assign(WMX.settings, draft);
             WMX.store.set('wmxSettings', WMX.settings);
+            WMX.applySettings?.();
             close();
           } }, 'Appliquer'))));
     const backdrop = el('div', { class: 'wmx-modal-backdrop', onmousedown: (e) => { if (e.target === backdrop) close(); } }, modal);
