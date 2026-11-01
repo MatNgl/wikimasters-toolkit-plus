@@ -5,9 +5,14 @@
   window.__wmxHooked = true;
   const origFetch = window.fetch;
   window.fetch = async function (...args) {
+    let url = null;
+    try {
+      url = typeof args[0] === 'string' ? args[0] : args[0]?.url;
+      // Début d'appel : permet à l'extension de savoir si un clic a bien déclenché une requête.
+      if (url && url.includes('/api/')) window.dispatchEvent(new CustomEvent('wmx:start', { detail: { url } }));
+    } catch (_) {}
     const res = await origFetch.apply(this, args);
     try {
-      const url = typeof args[0] === 'string' ? args[0] : args[0]?.url;
       if (url && url.includes('/api/')) {
         const method = (args[1]?.method || args[0]?.method || 'GET').toUpperCase();
         let req = null;

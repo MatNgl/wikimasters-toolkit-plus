@@ -14,6 +14,13 @@
     return v === null ? 'null' : typeof v;
   };
 
+  // Débuts d'appels /api/* récents (chemin + heure), pour détecter un clic qui n'a rien déclenché.
+  WMX.apiStarts = [];
+  window.addEventListener('wmx:start', (e) => {
+    WMX.apiStarts.push({ path: new URL(e.detail.url, location.origin).pathname, t: Date.now() });
+    if (WMX.apiStarts.length > 60) WMX.apiStarts.shift();
+  });
+
   window.addEventListener('wmx:api', async (e) => {
     const { url, method, status, data, req } = e.detail;
     const path = new URL(url, location.origin).pathname;

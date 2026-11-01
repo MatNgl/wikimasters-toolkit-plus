@@ -103,17 +103,27 @@
     const snap = makeSnapshot(btn, packsLeft());
     document.documentElement.classList.add('wmx-opening');
     btn.click();
+    let clickedAt = Date.now();
     const end = Date.now() + 180000; // laisse le temps à la vérification humaine, faite par l'utilisateur
     while (!lastCards && Date.now() < end) {
       const hc = humanCheck();
       session?.yield(hc); // l'écran de révélation s'efface pour laisser la vérification du jeu cliquable
       setStatus(hc ? 'Vérification du jeu : cliquez-la si besoin…' : 'Ouverture…');
+      // Clic perdu (le jeu n'était pas encore prêt) : aucune requête d'ouverture n'est partie et le bouton est
+      // toujours là, on recommence au lieu d'attendre indéfiniment.
+      if (!hc && Date.now() - clickedAt > 2500 && !(WMX.apiStarts || []).some((a) => a.t >= clickedAt && /human-check|packs\/open/.test(a.path))) {
+        const again = [...document.querySelectorAll('button')]
+          .find((b) => !b.disabled && !b.closest('.wmx-cover, .wmx-panel') && b.textContent.trim().toLowerCase() === 'ouvrir');
+        if (again) again.click();
+        clickedAt = Date.now();
+      }
       await sleep(100);
     }
     session?.yield(false);
     const cards = lastCards;
     if (cards) consumeInSnapshot(snap);
     const ok = !cards || (await dismissResult());
+    if (ok && cards) await sleep(300); // laisse l'écran « Ouvrir » du jeu se remettre en place avant le clic suivant
     document.documentElement.classList.remove('wmx-opening');
     document.querySelector('.wmx-cover')?.replaceChildren();
     if (!ok) { setStatus('Écran de résultat inattendu : arrêt'); state.busy = false; state.auto = false; }
