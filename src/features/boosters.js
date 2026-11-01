@@ -22,13 +22,19 @@
 
   /** Étapes natives pour revenir à l'écran « Ouvrir » après un paquet (à confirmer en conditions réelles). */
   async function dismissResult() {
-    const re = /^(encore \d+ cartes?|continuer|fermer|terminer|passer|suivant)$/i;
-    for (let i = 0; i < 40; i++) {
+    // Observé : flèche ronde sans texte pour passer les cartes ; « Encore N cartes » reste inactif
+    // jusqu'à la dernière, puis le bouton devient « Continuer ».
+    const outside = (e) => !e.closest('.wmx-panel, .wmx-overlay');
+    for (let i = 0; i < 100; i++) {
       if (findExact('ouvrir', 'button')) return true;
-      const n = [...document.querySelectorAll('button, [role=button], a, div')]
-        .find((e) => e.children.length <= 2 && re.test(e.textContent.trim()) && !e.closest('.wmx-panel, .wmx-overlay'));
-      if (n) n.click();
-      await sleep(300);
+      const cont = findExact('continuer', 'button');
+      if (cont && !cont.disabled && outside(cont)) cont.click();
+      else {
+        const arrows = [...document.querySelectorAll('button')]
+          .filter((b) => outside(b) && !b.textContent.trim() && /w-12/.test(b.className) && /rounded-full/.test(b.className) && !b.disabled);
+        arrows.at(-1)?.click();
+      }
+      await sleep(350);
     }
     return false;
   }
@@ -45,8 +51,9 @@
       await sleep(250);
     }
     const cards = lastCards;
-    if (cards && !(await dismissResult())) { setStatus('Écran de résultat inattendu : rechargement'); location.reload(); }
+    const ok = !cards || (await dismissResult());
     document.documentElement.classList.remove('wmx-opening');
+    if (!ok) { setStatus('Écran de résultat inattendu : arrêt'); state.busy = false; state.auto = false; }
     return cards;
   }
 
