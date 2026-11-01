@@ -2,6 +2,7 @@
 (() => {
   const started = new Set();
   const run = () => {
+    document.documentElement.dataset.wmxRoute = location.pathname; // permet de masquer le panneau hors /pulls
     for (const f of WMX.features) {
       if (started.has(f.name)) continue;
       if (f.match && !f.match.test(location.pathname)) continue;

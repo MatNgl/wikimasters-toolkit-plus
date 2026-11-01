@@ -27,6 +27,11 @@ Légende : ✅ fait et vérifié · 🟡 écrit, à tester · ⬜ à faire
 - Historique par jour + export CSV ; menu flottant repliable avec animation.
 - À vérifier : durée de régénération déduite du compteur « Prochain dans » (10 min par défaut) ; compte Pro.
 
+### Prochaine étape : actions depuis la révélation
+- ⬜ Cartes cliquables dans l'écran de révélation : étiqueter et mettre aux enchères sans quitter l'écran.
+- ⬜ Découvrir les requêtes natives (étiquette, mise en vente) : l'enregistreur capte désormais la forme des corps envoyés (`apiShapes[...].request`).
+- Fiche native observée : fenêtre sur /collection (sans changement d'URL) avec « Ajouter une étiquette », « Mettre aux enchères », « Défausser ».
+
 ## 2. Collection (`/collection`)
 - ⬜ Filtre par valeur (min/max) : cartes identifiées par `data-wm-card-id` ; prix depuis le cache.
 - ⬜ Vérifier avec l'ancienne extension désactivée que `data-wm-card-id` vient bien du jeu.

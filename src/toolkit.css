@@ -66,6 +66,7 @@
 .wmx-modal footer div { display: flex; gap: 8px; }
 .wmx-badge[hidden] { display: none; }
 @media (max-width: 1250px) { .wmx-panel { display: none; } }
+html:not([data-wmx-route^="/pulls"]) .wmx-panel { display: none; }
 
 /* Statistiques (barres par rareté) */
 .wmx-sbox { display: flex; flex-direction: column; gap: 5px; padding: 8px 10px; border-radius: 12px; background: #0a0f0d; border: 1px solid #1e2b26; }
