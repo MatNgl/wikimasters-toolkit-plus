@@ -51,8 +51,9 @@
   // --- Ouverture d'un paquet via l'interface native ------------------------------------------
   /** Revient à l'écran « Ouvrir » : flèche ronde pour passer les cartes, puis « Continuer ». */
   async function dismissResult() {
-    const outside = (e) => !e.closest('.wmx-panel, .wmx-overlay');
-    const nativeOpen = () => [...document.querySelectorAll('button')].find((b) => b.textContent.trim().toLowerCase() === 'ouvrir');
+    // On ignore notre interface, dont l'image figée (qui contient une copie du bouton « Ouvrir »).
+    const outside = (e) => !e.closest('.wmx-panel, .wmx-overlay, .wmx-cover');
+    const nativeOpen = () => [...document.querySelectorAll('button')].find((b) => outside(b) && b.textContent.trim().toLowerCase() === 'ouvrir');
     for (let i = 0; i < 250; i++) {
       if (nativeOpen()) return true; // même désactivé : après le dernier paquet il reste grisé
       const cont = findExact('continuer', 'button');
@@ -94,7 +95,8 @@
   }
 
   async function openOne(session) {
-    const btn = findExact('ouvrir', 'button');
+    const btn = [...document.querySelectorAll('button')]
+      .find((b) => !b.disabled && !b.closest('.wmx-cover, .wmx-panel') && b.textContent.trim().toLowerCase() === 'ouvrir');
     if (!btn) return null;
     lastCards = null;
     const snap = makeSnapshot(btn, packsLeft());
