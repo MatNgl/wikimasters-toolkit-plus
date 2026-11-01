@@ -270,7 +270,20 @@
       WMX.store.set('panelCollapsed', c);
     }
 
-    document.body.append(panel, el('div', { class: 'wmx-cover' }));
+    const cover = el('div', { class: 'wmx-cover' });
+    document.body.append(panel, cover);
+
+    // La barre latérale du jeu s'élargit selon l'écran : le menu se cale à sa droite au lieu d'une position fixe.
+    const place = () => {
+      const edges = [...document.querySelectorAll('nav')].map((n) => n.getBoundingClientRect().right).filter((x) => x > 100 && x < 700);
+      const x = edges.length ? Math.max(...edges) : 256;
+      panel.style.left = `${Math.round(x + 16)}px`;
+      cover.style.left = `${Math.round(x)}px`;
+    };
+    place();
+    window.addEventListener('resize', place);
+    new ResizeObserver(place).observe(document.documentElement);
+    setTimeout(place, 600); setTimeout(place, 2500); // après le rendu du jeu (polices, mise en page)
     setBadge(); setAutoBtn();
     if (await WMX.store.get('panelCollapsed', false)) setCollapsed(true, false);
 
