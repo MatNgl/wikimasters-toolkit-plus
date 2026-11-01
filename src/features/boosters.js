@@ -25,7 +25,7 @@
     // Observé : flèche ronde sans texte pour passer les cartes ; « Encore N cartes » reste inactif
     // jusqu'à la dernière, puis le bouton devient « Continuer ».
     const outside = (e) => !e.closest('.wmx-panel, .wmx-overlay');
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < 250; i++) {
       if (findExact('ouvrir', 'button')) return true;
       const cont = findExact('continuer', 'button');
       if (cont && !cont.disabled && outside(cont)) cont.click();
@@ -34,12 +34,12 @@
           .filter((b) => outside(b) && !b.textContent.trim() && /w-12/.test(b.className) && /rounded-full/.test(b.className) && !b.disabled);
         arrows.at(-1)?.click();
       }
-      await sleep(350);
+      await sleep(120);
     }
     return false;
   }
 
-  async function openOne() {
+  async function openOne(session) {
     const btn = findExact('ouvrir', 'button');
     if (!btn) return null;
     lastCards = null;
@@ -47,9 +47,12 @@
     btn.click();
     const end = Date.now() + 180000; // laisse le temps à la vérification humaine, faite par l'utilisateur
     while (!lastCards && Date.now() < end) {
-      setStatus(humanCheck() ? 'Vérification du jeu : cliquez-la si besoin…' : 'Ouverture…');
-      await sleep(250);
+      const hc = humanCheck();
+      session?.yield(hc); // l'écran de révélation s'efface pour laisser la vérification du jeu cliquable
+      setStatus(hc ? 'Vérification du jeu : cliquez-la si besoin…' : 'Ouverture…');
+      await sleep(100);
     }
+    session?.yield(false);
     const cards = lastCards;
     const ok = !cards || (await dismissResult());
     document.documentElement.classList.remove('wmx-opening');
@@ -59,19 +62,22 @@
 
   async function openAll() {
     if (state.busy) return;
+    const total = packsLeft();
+    if (!total) { setStatus('Aucun paquet disponible'); return; }
     state.busy = true;
-    const delay = Number(ui.delay.value) * 1000 || 1000;
-    const got = [];
+    const delay = Number(ui.delay.value) * 1000 || 300;
+    const session = WMX.revealSession();
+    session.setRemaining(total, total);
     try {
-      for (let n = packsLeft(); n > 0 && state.busy; n--) {
-        const cards = await openOne();
+      for (let done = 0; done < total && state.busy; done++) {
+        const cards = await openOne(session);
         if (!cards) break;
-        got.push(...cards);
-        setStatus(`${got.length / 5} paquet(s) ouvert(s)`);
+        session.addPack(cards);
+        session.setRemaining(total - done - 1, total);
         await sleep(delay);
       }
     } finally { state.busy = false; setStatus(''); }
-    WMX.reveal(got);
+    await session.finish();
   }
 
   async function autoLoop() {
@@ -97,14 +103,14 @@
   }
 
   async function buildPanel() {
-    const p = await WMX.store.get('openPrefs', { min: 20, max: 60, delay: 1 });
+    const p = await WMX.store.get('openPrefs', { min: 20, max: 60, delay: 0.3 });
     const save = () => WMX.store.set('openPrefs', { min: ui.min.value, max: ui.max.value, delay: ui.delay.value });
     ui.badge = el('div', { class: 'wmx-badge', hidden: '' });
     ui.status = el('div', { class: 'wmx-status' });
     ui.stats = el('div', { class: 'wmx-pstats' });
     ui.min = el('input', { class: 'wmx-input', type: 'number', min: '5', value: p.min });
     ui.max = el('input', { class: 'wmx-input', type: 'number', min: '5', value: p.max });
-    ui.delay = el('input', { class: 'wmx-input', type: 'number', min: '0.5', step: '0.5', value: p.delay });
+    ui.delay = el('input', { class: 'wmx-input', type: 'number', min: '0', step: '0.1', value: p.delay });
     [ui.min, ui.max, ui.delay].forEach((i) => i.addEventListener('change', save));
     const autoBtn = el('button', { class: 'wmx-btn', onclick: () => {
       if (state.auto) { stopAuto(); autoBtn.textContent = 'Ouvrir automatiquement'; }
@@ -127,9 +133,14 @@
     document.body.append(panel, el('div', { class: 'wmx-cover' }));
     const render = async () => {
       const s = await WMX.stats.get();
-      ui.stats.replaceChildren(el('div', {}, `${s.packs} paquets · ${s.cards} cartes`),
-        ...WMX.RARITIES.map((r) => el('div', { class: 'wmx-row' }, el('b', {}, r),
-          `${s.rarity[r]}  (${s.cards ? ((s.rarity[r] / s.cards) * 100).toFixed(1) : 0} %)`)));
+      const pct = (r) => (s.cards ? (s.rarity[r] / s.cards) * 100 : 0);
+      ui.stats.replaceChildren(el('div', { class: 'wmx-sbox' },
+        el('div', { class: 'wmx-shead' }, el('span', {}, 'Vos statistiques'), el('span', {}, `${s.packs} paquets · ${s.cards} cartes`)),
+        ...WMX.RARITIES.map((r) => el('div', { class: 'wmx-srow', style: `--rgb:${WMX.RARITY_RGB[r]}` },
+          el('b', {}, r),
+          el('div', { class: 'wmx-bar' }, el('i', { style: `width:${pct(r).toFixed(1)}%` })),
+          el('span', {}, `${pct(r).toFixed(1).replace('.', ',')} %`),
+          el('span', {}, String(s.rarity[r]))))));
     };
     render();
     chrome.storage.onChanged.addListener((c) => { if (c.stats) render(); });
