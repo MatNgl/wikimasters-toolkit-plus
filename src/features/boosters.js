@@ -10,9 +10,24 @@
   WMX.settings = { ...WMX.DEFAULTS };
   const rank = (r) => WMX.RARITIES.length - 1 - WMX.RARITIES.indexOf(r); // C = 0 … L = 5
 
-  WMX.onApi(({ path, method, data }) => {
-    if (method === 'POST' && path === '/api/packs/open' && data?.cards) lastCards = data.cards;
+  let openError = null; // dernière réponse d'erreur (ex. 429) à l'ouverture d'un paquet
+  let dailyLimit = false;
+  WMX.onApi(({ path, method, status, data }) => {
+    if (method !== 'POST' || path !== '/api/packs/open') return;
+    if (data?.cards) lastCards = data.cards;
+    else if (status === 429 || data?.rate_limited) openError = { t: Date.now(), data };
   });
+
+  /** Délai (secondes) avant de réessayer, d'après `retry_after` (nombre, « 5 s », « 2 min » ou date). */
+  const retrySeconds = (v) => {
+    const s = String(v ?? '');
+    const n = Number(s.match(/\d+(\.\d+)?/)?.[0]);
+    let sec = 10;
+    if (/^\s*\d+(\.\d+)?\s*(s|sec|secondes?)?\s*$/i.test(s)) sec = n;
+    else if (/min/i.test(s) && n) sec = n * 60;
+    else if (!Number.isNaN(Date.parse(s))) sec = (Date.parse(s) - Date.now()) / 1000;
+    return Math.min(120, Math.max(2, Math.ceil(sec)));
+  };
 
   // --- Lecture de l'état du jeu --------------------------------------------------------------
   const packInfo = () => {
@@ -104,8 +119,26 @@
     document.documentElement.classList.add('wmx-opening');
     btn.click();
     let clickedAt = Date.now();
+    let tries = 0;
+    openError = null;
     const end = Date.now() + 180000; // laisse le temps à la vérification humaine, faite par l'utilisateur
     while (!lastCards && Date.now() < end) {
+      // Le jeu refuse l'ouverture (limite de débit) : on attend le délai indiqué puis on réessaie, ou on s'arrête.
+      if (openError && openError.t >= clickedAt) {
+        const d = openError.data || {};
+        openError = null;
+        if (d.rate_limit_daily) { dailyLimit = true; setStatus('Limite quotidienne d’ouvertures atteinte'); break; }
+        if (++tries > 4) { setStatus('Le jeu refuse l’ouverture : arrêt'); break; }
+        for (let s = retrySeconds(d.retry_after); s > 0 && !lastCards; s--) {
+          setStatus(`Limite du jeu : nouvel essai dans ${s} s`);
+          await sleep(1000);
+        }
+        const retry = [...document.querySelectorAll('button')]
+          .find((b) => !b.disabled && !b.closest('.wmx-cover, .wmx-panel') && b.textContent.trim().toLowerCase() === 'ouvrir');
+        if (retry) retry.click();
+        clickedAt = Date.now();
+        continue;
+      }
       const hc = humanCheck();
       session?.yield(hc); // l'écran de révélation s'efface pour laisser la vérification du jeu cliquable
       setStatus(hc ? 'Vérification du jeu : cliquez-la si besoin…' : 'Ouverture…');
@@ -157,7 +190,10 @@
       state.busy = true;
       const cards = await openOne();
       state.busy = false;
-      if (!cards) return;
+      if (!cards) {
+        if (dailyLimit) { stopAuto(); setStatus('Limite quotidienne d’ouvertures atteinte'); }
+        return;
+      }
       state.buffer.push(...cards);
       state.opened += 1;
       setBadge();

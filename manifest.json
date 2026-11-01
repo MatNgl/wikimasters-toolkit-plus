@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WikiMasters Toolkit+",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Ouverture groupée des paquets, statistiques, valeur des cartes, filtres et enchères rapides pour WikiMasters.",
   "permissions": [
     "storage"
@@ -48,5 +48,5 @@
       "run_at": "document_idle"
     }
   ],
-  "version_name": "0.1.1 · clic relancé"
+  "version_name": "0.1.2 · limite de débit"
 }
