@@ -67,10 +67,37 @@
     return false;
   }
 
+  /**
+   * Pendant l'ouverture, on masque l'écran de résultat natif (pour ne pas spoiler les cartes) avec une
+   * image figée de la page « Paquets » plutôt qu'un écran noir ; le compteur y est décrémenté dès que
+   * le paquet est consommé.
+   */
+  function makeSnapshot(btn, packs) {
+    const cover = document.querySelector('.wmx-cover');
+    let root = btn;
+    while (root && !/\bflex-1\b[^]*\bp-4\b/.test(String(root.className))) root = root.parentElement;
+    if (!root || !cover) return null;
+    const clone = root.cloneNode(true);
+    clone.setAttribute('inert', '');
+    clone.setAttribute('aria-hidden', 'true');
+    clone.querySelectorAll('[id]').forEach((e) => e.removeAttribute('id'));
+    clone.style.cssText = 'width:100%;pointer-events:none';
+    cover.replaceChildren(clone);
+    return { clone, packs };
+  }
+  function consumeInSnapshot(snap) {
+    if (!snap) return;
+    const n = String(snap.packs);
+    const leaf = [...snap.clone.querySelectorAll('*')].find((e) => e.children.length === 0 && e.textContent.trim() === n
+      && /\d+\s*\/\s*\d+/.test(e.parentElement?.textContent || '') && /paquets?/i.test(e.parentElement?.parentElement?.textContent || ''));
+    if (leaf) leaf.textContent = String(Math.max(0, snap.packs - 1));
+  }
+
   async function openOne(session) {
     const btn = findExact('ouvrir', 'button');
     if (!btn) return null;
     lastCards = null;
+    const snap = makeSnapshot(btn, packsLeft());
     document.documentElement.classList.add('wmx-opening');
     btn.click();
     const end = Date.now() + 180000; // laisse le temps à la vérification humaine, faite par l'utilisateur
@@ -82,8 +109,10 @@
     }
     session?.yield(false);
     const cards = lastCards;
+    if (cards) consumeInSnapshot(snap);
     const ok = !cards || (await dismissResult());
     document.documentElement.classList.remove('wmx-opening');
+    document.querySelector('.wmx-cover')?.replaceChildren();
     if (!ok) { setStatus('Écran de résultat inattendu : arrêt'); state.busy = false; state.auto = false; }
     return cards;
   }
@@ -129,6 +158,11 @@
     let nextAt = Date.now() + interval();
     while (state.auto) {
       await sleep(1000);
+      if (!WMX.alive()) { // extension rechargée : ce script orphelin s'arrête et retire son interface
+        state.auto = false;
+        document.querySelectorAll('.wmx-panel, .wmx-cover').forEach((e) => e.remove());
+        break;
+      }
       if (!state.auto) break;
       if (state.busy) continue;
       const { packs, max } = packInfo();
@@ -139,17 +173,19 @@
       const wait = (nextAt - Date.now()) / 1000;
       let toOpen = 0;
       let why = '';
-      if (packs >= max && cfg.fullStockOpen) { toOpen = packs - reserve; why = 'stock plein'; }
-      else if (packs > reserve) {
-        if (wait <= 0) toOpen = 1;
-        else if (cfg.anticipate && nextIn != null && nextIn + (max - packs - 1) * regen <= wait + 60) { toOpen = 1; why = 'avant blocage du stock'; }
+      // À chaque échéance : on ouvre TOUS les paquets disponibles au-dessus de la réserve, pour ne jamais atteindre le maximum.
+      const ready = Math.max(0, packs - reserve);
+      if (packs >= max && cfg.fullStockOpen) { toOpen = ready; why = 'stock plein'; }
+      else if (ready > 0) {
+        if (wait <= 0) toOpen = ready;
+        else if (cfg.anticipate && nextIn != null && nextIn + (max - packs - 1) * regen <= wait + 60) { toOpen = ready; why = 'avant blocage du stock'; }
       }
       if (toOpen > 0) {
         setStatus(why ? `Ouverture anticipée (${why})` : 'Ouverture…');
         await openBatch(toOpen);
         nextAt = Date.now() + interval();
       } else if (state.auto) {
-        setStatus(`Prochaine ouverture dans ${mmss(Math.max(0, wait))}${packs <= reserve ? ' (réserve atteinte)' : ''}`);
+        setStatus(`Prochaine ouverture dans ${mmss(Math.max(0, wait))} · ${packs} paquet${packs > 1 ? 's' : ''} en attente${ready === 0 && packs > 0 ? ' (réserve)' : ''}`);
       }
     }
   }
@@ -250,7 +286,7 @@
           el('span', {}, String(s.rarity[r]))))));
     };
     render();
-    chrome.storage.onChanged.addListener((c) => { if (c.stats) render(); });
+    WMX.onStorage((c) => { if (c.stats) render(); });
 
     // Reprise : cartes tirées avant un rechargement de la page et jamais révélées.
     const pending = await WMX.store.get('pendingCards', []);

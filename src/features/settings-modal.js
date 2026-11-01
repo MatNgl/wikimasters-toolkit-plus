@@ -23,7 +23,7 @@
     },
     {
       title: 'Ouverture automatique',
-      desc: 'Comportement de « Ouvrir automatiquement » sur la page des paquets.',
+      desc: 'À chaque fin d’intervalle, « Ouvrir automatiquement » ouvre tous les paquets disponibles (au-dessus de la réserve).',
       items: [
         { key: 'stopOn', type: 'select', label: 'S’arrêter sur une belle carte', desc: 'Arrête l’ouverture auto dès qu’une carte de cette rareté (ou mieux) est tirée.',
           options: [['off', 'Jamais'], ['SR', 'SR ou mieux'], ['UR', 'UR ou mieux'], ['L', 'Légendaire']] },

@@ -79,7 +79,7 @@
 .wmx-srow span:last-child { color: #7a8a83; }
 
 /* Voile pendant l'ouverture automatique (sous la vérification humaine du jeu, qui reste cliquable) */
-.wmx-cover { display: none; position: fixed; inset: 0 0 0 256px; z-index: 20; background: #0d0d0d; pointer-events: none; }
+.wmx-cover { display: none; position: fixed; inset: 0 0 0 256px; z-index: 20; overflow: hidden; background: #0d0d0d; pointer-events: none; }
 html.wmx-opening .wmx-cover { display: block; }
 
 /* Révélation, dans le style des cartes du jeu */

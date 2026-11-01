@@ -9,3 +9,12 @@ WMX.store = {
     try { await chrome.storage.local.set({ [key]: value }); } catch (_) {}
   },
 };
+
+/** Faux dès que l'extension a été rechargée/désactivée : le script resté dans l'onglet doit alors s'arrêter. */
+WMX.alive = () => {
+  try { return !!chrome.runtime?.id; } catch (_) { return false; }
+};
+
+WMX.onStorage = (cb) => {
+  try { chrome.storage.onChanged.addListener(cb); } catch (_) { /* contexte invalidé */ }
+};
