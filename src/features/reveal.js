@@ -15,6 +15,7 @@
   // Image + description courte depuis Wikipédia (comme le jeu), avec cache. Respecte hide_image / nsfw_image.
   const infoCache = new Map();
   function loadInfo(c) {
+    if (WMX.settings?.images === false) return Promise.resolve({});
     const key = `${c.lang || 'fr'}:${c.wikipedia_title}`;
     if (!infoCache.has(key)) {
       infoCache.set(key, (async () => {

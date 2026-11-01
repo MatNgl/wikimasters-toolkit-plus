@@ -7,10 +7,8 @@
   let lastCards = null;
   const ui = {};
 
-  const DEFAULTS = { speed: 'normal', order: 'rarity', stopOn: 'off', reserve: 0 };
-  WMX.settings = { ...DEFAULTS };
+  WMX.settings = { ...WMX.DEFAULTS };
   const rank = (r) => WMX.RARITIES.length - 1 - WMX.RARITIES.indexOf(r); // C = 0 … L = 5
-  const plural = (n, w) => `${n} ${w}${n > 1 ? 's' : ''}`;
 
   WMX.onApi(({ path, method, data }) => {
     if (method === 'POST' && path === '/api/packs/open' && data?.cards) lastCards = data.cards;
@@ -40,11 +38,9 @@
   };
 
   const setStatus = (t) => { if (ui.status) ui.status.textContent = t; };
+  /** Compteur rouge sur la bulle « W » : nombre de paquets ouverts pendant l'auto. */
   const setBadge = () => {
-    const on = state.auto;
-    ui.badge.hidden = !on;
-    ui.badge.textContent = `● AUTO · ${plural(state.opened, 'paquet')} ouvert${state.opened > 1 ? 's' : ''}`;
-    ui.fabCount.hidden = !on;
+    ui.fabCount.hidden = !state.auto;
     ui.fabCount.textContent = String(state.opened);
   };
   const setAutoBtn = () => {
@@ -138,14 +134,15 @@
       const { packs, max } = packInfo();
       const nextIn = nextPackIn();
       trackRegen(nextIn);
-      const reserve = Math.min(WMX.settings.reserve, max - 1);
+      const cfg = WMX.settings;
+      const reserve = Math.min(cfg.reserve, max - 1);
       const wait = (nextAt - Date.now()) / 1000;
       let toOpen = 0;
       let why = '';
-      if (packs >= max) { toOpen = packs - reserve; why = 'stock plein'; }
+      if (packs >= max && cfg.fullStockOpen) { toOpen = packs - reserve; why = 'stock plein'; }
       else if (packs > reserve) {
         if (wait <= 0) toOpen = 1;
-        else if (nextIn != null && nextIn + (max - packs - 1) * regen <= wait + 60) { toOpen = 1; why = 'avant blocage du stock'; }
+        else if (cfg.anticipate && nextIn != null && nextIn + (max - packs - 1) * regen <= wait + 60) { toOpen = 1; why = 'avant blocage du stock'; }
       }
       if (toOpen > 0) {
         setStatus(why ? `Ouverture anticipée (${why})` : 'Ouverture…');
@@ -175,21 +172,10 @@
   // --- Panneau --------------------------------------------------------------------------------
   const field = (label, control, title) => el('label', title ? { title } : {}, label, control);
 
-  function select(key, options) {
-    const s = el('select', { class: 'wmx-input wmx-select' }, ...options.map(([v, l]) => el('option', { value: String(v) }, l)));
-    s.value = String(WMX.settings[key]);
-    s.addEventListener('change', () => {
-      WMX.settings[key] = key === 'reserve' ? Number(s.value) : s.value;
-      WMX.store.set('wmxSettings', WMX.settings);
-    });
-    return s;
-  }
-
   async function buildPanel() {
     Object.assign(WMX.settings, await WMX.store.get('wmxSettings', {}));
     const ap = await WMX.store.get('autoPrefs', { min: 5, max: 10 });
 
-    ui.badge = el('div', { class: 'wmx-badge', hidden: '' });
     ui.status = el('div', { class: 'wmx-status' });
     ui.stats = el('div', { class: 'wmx-pstats' });
     ui.min = el('input', { class: 'wmx-input', type: 'number', min: '1', max: '60', step: '1', value: ap.min });
@@ -206,47 +192,44 @@
 
     ui.autoBtn = el('button', { class: 'wmx-btn wmx-btn--wide', onclick: () => (state.auto ? stopAuto() : startAuto()) });
     ui.fabCount = el('span', { class: 'wmx-fab-count', hidden: '' });
-    const fab = el('button', { class: 'wmx-fab', title: 'Réduire / agrandir le menu', onclick: () => setCollapsed(!panel.classList.contains('wmx-collapsed')) }, 'W', ui.fabCount);
-    const gear = el('button', { class: 'wmx-icon', title: 'Paramètres', onclick: () => { ui.settings.hidden = !ui.settings.hidden; } }, '⚙');
-
-    ui.settings = el('div', { class: 'wmx-settings', hidden: '' },
-      el('h4', {}, 'Révélation'),
-      field('Vitesse', select('speed', [['normal', 'Normale'], ['fast', 'Rapide'], ['instant', 'Instantanée']])),
-      field('Ordre', select('order', [['rarity', 'Par rareté'], ['draw', 'Du tirage']])),
-      el('h4', {}, 'Ouverture auto'),
-      field('S’arrêter sur', select('stopOn', [['off', 'Jamais'], ['SR', 'SR ou mieux'], ['UR', 'UR ou mieux'], ['L', 'Légendaire']]),
-        'Arrête l’ouverture auto dès qu’une carte de cette rareté (ou mieux) est tirée.'),
-      field('Réserve', select('reserve', [...Array(10).keys()].map((i) => [i, plural(i, 'paquet')])),
-        'Paquets gardés en stock : l’auto n’ouvre que s’il en reste plus. Si le stock est plein, il ouvre quand même pour ne pas bloquer la régénération.'),
-      el('h4', {}, 'Données'),
-      el('button', { class: 'wmx-btn wmx-btn--ghost wmx-btn--wide', onclick: () => WMX.stats.exportCsv() }, 'Exporter l’historique (CSV)'));
+    // Bulle « W » : simple logo quand le menu est ouvert ; en mode réduit c'est le bouton pour l'agrandir.
+    const fab = el('button', { class: 'wmx-fab', title: 'Agrandir le menu', onclick: () => { if (panel.classList.contains('wmx-collapsed')) setCollapsed(false); } },
+      'W', ui.fabCount, el('span', { class: 'wmx-fab-hint' }, '›'));
+    const gear = el('button', { class: 'wmx-icon', title: 'Paramètres', onclick: () => WMX.openSettings() }, '⚙');
+    const fold = el('button', { class: 'wmx-icon', title: 'Réduire le menu', onclick: () => setCollapsed(true) }, '«');
 
     const body = el('div', { class: 'wmx-body' },
-      ui.badge,
       el('button', { class: 'wmx-btn wmx-btn--wide', onclick: openAll }, 'Tout ouvrir'),
       ui.autoBtn,
       ui.status,
       el('h4', {}, 'Intervalle de l’ouverture auto'),
       field('Minimum (min)', ui.min, 'Entre 1 et 60 minutes. Un intervalle court = plus de requêtes envoyées au jeu.'),
       field('Maximum (min)', ui.max, 'Jusqu’à 60 minutes.'),
-      ui.settings,
       el('h4', {}, 'Statistiques'),
       ui.stats,
       el('button', { class: 'wmx-link', onclick: () => WMX.stats.reset() }, 'Réinitialiser les statistiques'));
 
-    const panel = el('aside', { class: 'wmx-panel' }, el('div', { class: 'wmx-head' }, fab, el('h3', {}, 'WikiMasters Toolkit+'), gear), body);
+    const panel = el('aside', { class: 'wmx-panel' },
+      el('div', { class: 'wmx-head' }, fab, el('h3', {}, 'WikiMasters Toolkit+'), gear, fold), body);
 
+    /** Réduit le menu à la seule bulle (avec son compteur) ou le rouvre, avec animation. */
     function setCollapsed(c, animate = true) {
+      if (!animate) panel.style.transition = 'none';
       if (c) {
         panel.style.maxHeight = `${panel.offsetHeight}px`;
-        if (animate) void panel.offsetWidth; // fixe la hauteur de départ avant l'animation
+        void panel.offsetWidth; // fixe la hauteur de départ avant l'animation
         panel.classList.add('wmx-collapsed');
-        panel.style.maxHeight = '46px';
+        panel.style.maxHeight = '44px';
+        if (animate) setTimeout(() => panel.classList.add('wmx-folded'), 380);
+        else panel.classList.add('wmx-folded');
       } else {
+        panel.classList.remove('wmx-folded');
         panel.classList.remove('wmx-collapsed');
         panel.style.maxHeight = `${panel.scrollHeight}px`;
         setTimeout(() => { panel.style.maxHeight = ''; }, 450);
       }
+      if (!animate) { void panel.offsetWidth; panel.style.transition = ''; }
+      fab.title = c ? 'Agrandir le menu' : 'WikiMasters Toolkit+';
       WMX.store.set('panelCollapsed', c);
     }
 
@@ -257,6 +240,7 @@
     const render = async () => {
       const s = await WMX.stats.get();
       const pct = (r) => (s.cards ? (s.rarity[r] / s.cards) * 100 : 0);
+      const plural = (n, w) => `${n} ${w}${n > 1 ? 's' : ''}`;
       ui.stats.replaceChildren(el('div', { class: 'wmx-sbox' },
         el('div', { class: 'wmx-shead' }, el('span', {}, 'Vos statistiques'), el('span', {}, `${plural(s.packs, 'paquet')} · ${plural(s.cards, 'carte')}`)),
         ...WMX.RARITIES.map((r) => el('div', { class: 'wmx-srow', style: `--rgb:${WMX.RARITY_RGB[r]}` },

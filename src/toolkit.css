@@ -30,8 +30,40 @@
 .wmx-icon:hover { color: #fff; }
 .wmx-panel { overflow: hidden; transition: width .3s ease, max-height .35s ease, padding .3s ease, border-radius .3s ease; }
 .wmx-body { display: flex; flex-direction: column; gap: 8px; transition: opacity .2s; }
-.wmx-panel.wmx-collapsed { width: 46px; padding: 4px; border-radius: 23px; }
+/* Menu réduit : uniquement la bulle « W » (avec son compteur), sans fond ni barre. */
+.wmx-panel.wmx-collapsed { width: 44px; padding: 0; background: transparent; border-color: transparent; box-shadow: none; overflow: visible; }
 .wmx-panel.wmx-collapsed .wmx-body, .wmx-panel.wmx-collapsed .wmx-head h3, .wmx-panel.wmx-collapsed .wmx-icon { opacity: 0; pointer-events: none; }
+.wmx-panel.wmx-folded .wmx-body, .wmx-panel.wmx-folded .wmx-head h3, .wmx-panel.wmx-folded .wmx-icon { display: none; }
+.wmx-panel.wmx-collapsed .wmx-head { justify-content: center; }
+.wmx-fab { cursor: default; }
+.wmx-panel.wmx-collapsed .wmx-fab { width: 44px; height: 44px; cursor: pointer; box-shadow: 0 6px 18px #0008; }
+.wmx-fab-hint { position: absolute; right: -4px; bottom: -4px; width: 16px; height: 16px; border-radius: 50%; background: #0f1412; color: #2dd4a0; font: 800 13px/15px system-ui; text-align: center; border: 1px solid #2dd4a0; opacity: 0; transition: opacity .2s; }
+.wmx-panel.wmx-collapsed .wmx-fab-hint { opacity: 1; }
+.wmx-fab-count { top: -6px; right: -6px; min-width: 20px; height: 20px; line-height: 20px; border: 2px solid #0f1412; box-sizing: content-box; animation: wmx-pulse 1.8s infinite; }
+
+/* Fenêtre de paramètres */
+.wmx-modal-backdrop { position: fixed; inset: 0; z-index: 10001; display: grid; place-items: center; padding: 20px; background: #000a; backdrop-filter: blur(3px); font-family: Outfit, system-ui, sans-serif; }
+.wmx-modal { width: min(720px, 100%); max-height: 88vh; display: flex; flex-direction: column; border-radius: 22px; background: #121816; border: 1px solid #26332e; box-shadow: 0 30px 80px #000c; color: #e6ece9; overflow: hidden; }
+.wmx-modal header { display: flex; justify-content: space-between; align-items: flex-start; padding: 20px 24px 16px; border-bottom: 1px solid #1f2a26; }
+.wmx-modal h2 { margin: 0; font-size: 22px; }
+.wmx-modal header p { margin: 4px 0 0; color: #8fa097; font-size: 13px; }
+.wmx-close { width: 38px; height: 38px; border-radius: 12px; border: 1px solid #2c3a34; background: #161e1b; color: #cfe; font-size: 22px; line-height: 1; cursor: pointer; }
+.wmx-close:hover { background: #1d2723; }
+.wmx-modal-body { overflow: auto; padding: 8px 24px 12px; display: flex; flex-direction: column; gap: 6px; }
+.wmx-sec h3 { margin: 16px 0 2px; font-size: 16px; color: #2dd4a0; }
+.wmx-sec p { margin: 0 0 8px; color: #8fa097; font-size: 12px; }
+.wmx-rows { border: 1px solid #22302a; border-radius: 14px; background: #0e1412; overflow: hidden; }
+.wmx-setrow { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 12px 16px; border-top: 1px solid #1b2622; }
+.wmx-setrow:first-child { border-top: 0; }
+.wmx-setrow strong { display: block; font-size: 13px; }
+.wmx-setrow small { display: block; margin-top: 2px; color: #8fa097; font-size: 11px; line-height: 1.35; max-width: 420px; }
+.wmx-switch { flex: none; position: relative; width: 42px; height: 24px; border-radius: 12px; border: 0; background: #2a3430; cursor: pointer; transition: background .2s; }
+.wmx-switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform .2s; }
+.wmx-switch[aria-checked=true] { background: #2dd4a0; }
+.wmx-switch[aria-checked=true]::after { transform: translateX(18px); }
+.wmx-modal footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 24px; border-top: 1px solid #1f2a26; background: #0f1512; }
+.wmx-modal footer span { color: #8fa097; font-size: 11px; }
+.wmx-modal footer div { display: flex; gap: 8px; }
 .wmx-badge[hidden] { display: none; }
 @media (max-width: 1250px) { .wmx-panel { display: none; } }
 

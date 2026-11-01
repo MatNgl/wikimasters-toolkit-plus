@@ -35,6 +35,7 @@
         "src/lib/sniffer.js",
         "src/features/stats.js",
         "src/features/reveal.js",
+        "src/features/settings-modal.js",
         "src/features/boosters.js",
         "src/features/prices.js",
         "src/features/collection-filter.js",
