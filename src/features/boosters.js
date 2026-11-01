@@ -44,8 +44,8 @@
     ui.fabCount.textContent = String(state.opened);
   };
   const setAutoBtn = () => {
-    const short = WMX.settings.theme === 'blue'; // boutons côte à côte : libellés courts
-    ui.autoBtn.textContent = state.auto ? (short ? 'Arrêter' : 'Arrêter l’ouverture auto') : (short ? 'Auto' : 'Ouvrir automatiquement');
+    // Boutons côte à côte : libellés courts.
+    ui.autoBtn.textContent = state.auto ? 'Arrêter' : 'Ouvrir auto';
     ui.autoBtn.classList.toggle('wmx-btn--danger', state.auto);
   };
 
@@ -234,15 +234,7 @@
     // Bulle « W » : simple logo quand le menu est ouvert ; en mode réduit c'est le bouton pour l'agrandir.
     const fab = el('button', { class: 'wmx-fab', title: 'Agrandir le menu', onclick: () => { if (panel.classList.contains('wmx-collapsed')) setCollapsed(false); } },
       'W', ui.fabCount, el('span', { class: 'wmx-fab-hint' }, '›'));
-    const gear = el('button', { class: 'wmx-icon', title: 'Paramètres', onclick: () => WMX.openSettings() }, '⚙');
-    const fold = el('button', { class: 'wmx-icon', title: 'Réduire le menu', onclick: () => setCollapsed(true) }, '«');
-
-    ui.swatches = [['green', 'Vert : classique'], ['blue', 'Bleu : verre et anneau'], ['red', 'Rouge : arcade']].map(([t, label]) =>
-      el('button', { class: 'wmx-swatch', 'data-t': t, title: label, 'aria-label': label, onclick: () => {
-        WMX.settings.theme = t;
-        WMX.store.set('wmxSettings', WMX.settings);
-        applyTheme();
-      } }));
+    const fold = el('button', { class: 'wmx-icon wmx-fold', title: 'Réduire le menu', 'aria-label': 'Réduire le menu', onclick: () => setCollapsed(true) }, '«');
 
     const body = el('div', { class: 'wmx-body' },
       el('div', { class: 'wmx-btnrow' }, el('button', { class: 'wmx-btn wmx-btn--wide', onclick: openAll }, 'Tout ouvrir'), ui.autoBtn),
@@ -252,11 +244,10 @@
       field('Maximum (min)', ui.max, 'Jusqu’à 60 minutes.'),
       el('h4', {}, 'Statistiques'),
       ui.stats,
-      el('button', { class: 'wmx-link', onclick: () => WMX.stats.reset() }, 'Réinitialiser les statistiques'),
-      el('div', { class: 'wmx-themes' }, el('span', {}, 'Style de l’interface'), ...ui.swatches));
+      el('button', { class: 'wmx-settings-btn', onclick: () => WMX.openSettings() }, el('span', {}, '⚙'), 'Paramètres'));
 
     const panel = el('aside', { class: 'wmx-panel' },
-      el('div', { class: 'wmx-head' }, fab, el('h3', {}, 'WikiMasters Toolkit+'), gear, fold), body);
+      el('div', { class: 'wmx-head' }, fab, el('h3', {}, 'WikiMasters Toolkit+'), fold), body);
 
     /** Réduit le menu à la seule bulle (avec son compteur) ou le rouvre, avec animation. */
     function setCollapsed(c, animate = true) {
@@ -283,45 +274,22 @@
     setBadge(); setAutoBtn();
     if (await WMX.store.get('panelCollapsed', false)) setCollapsed(true, false);
 
-    // Trois présentations des statistiques : barres (vert), anneau + légende (bleu), barre empilée + pastilles (rouge).
+    // Statistiques : anneau coloré par rareté + légende, avec le nombre de cartes uniquement.
     const render = async () => {
       const s = await WMX.stats.get();
       const RGB = WMX.RARITY_RGB;
       const pct = (r) => (s.cards ? (s.rarity[r] / s.cards) * 100 : 0);
-      const plural = (n, w) => `${n} ${w}${n > 1 ? 's' : ''}`;
-      const head = el('div', { class: 'wmx-shead' }, el('span', {}, 'Vos statistiques'), el('span', {}, `${plural(s.packs, 'paquet')} · ${plural(s.cards, 'carte')}`));
-      const theme = WMX.settings.theme || 'green';
-      let box;
-      if (theme === 'blue') {
-        let acc = 0;
-        const stops = WMX.RARITIES.map((r) => { const a = acc; acc += pct(r); return `rgb(${RGB[r]}) ${a}% ${acc}%`; }).join(',');
-        box = el('div', { class: 'wmx-sbox' }, head, el('div', { class: 'wmx-donutrow' },
-          el('div', { class: 'wmx-donut', style: `background:conic-gradient(${s.cards ? stops : '#1a2230 0 100%'})` },
+      let acc = 0;
+      const stops = WMX.RARITIES.map((r) => { const a = acc; acc += pct(r); return `rgb(${RGB[r]}) ${a}% ${acc}%`; }).join(',');
+      ui.stats.replaceChildren(el('div', { class: 'wmx-sbox' },
+        el('div', { class: 'wmx-shead' }, el('span', {}, 'Vos statistiques'), el('span', {}, `${s.cards} carte${s.cards > 1 ? 's' : ''}`)),
+        el('div', { class: 'wmx-donutrow' },
+          el('div', { class: 'wmx-donut', style: `background:conic-gradient(${s.cards ? stops : '#1a2a24 0 100%'})` },
             el('div', { class: 'wmx-donut-c' }, el('b', {}, String(s.cards)), el('small', {}, 'cartes'))),
-          el('div', { class: 'wmx-legend' }, ...WMX.RARITIES.map((r) => el('div', { style: `--rgb:${RGB[r]}` }, el('i'), el('b', {}, r), String(s.rarity[r]))))));
-      } else if (theme === 'red') {
-        box = el('div', { class: 'wmx-sbox' }, head,
-          el('div', { class: 'wmx-stack' }, ...WMX.RARITIES.map((r) => el('i', { style: `flex:${s.rarity[r] || 0.0001};background:rgb(${RGB[r]})` }))),
-          el('div', { class: 'wmx-chips' }, ...WMX.RARITIES.map((r) => el('span', { class: 'wmx-chip', style: `--rgb:${RGB[r]}` }, el('b', {}, r), String(s.rarity[r])))));
-      } else {
-        box = el('div', { class: 'wmx-sbox' }, head,
-          ...WMX.RARITIES.map((r) => el('div', { class: 'wmx-srow', style: `--rgb:${RGB[r]}` },
-            el('b', {}, r),
-            el('div', { class: 'wmx-bar' }, el('i', { style: `width:${pct(r).toFixed(1)}%` })),
-            el('span', {}, `${pct(r).toFixed(1).replace('.', ',')} %`),
-            el('span', {}, String(s.rarity[r])))));
-      }
-      ui.stats.replaceChildren(box);
+          el('div', { class: 'wmx-legend' }, ...WMX.RARITIES.map((r) => el('div', { style: `--rgb:${RGB[r]}` }, el('i'), el('b', {}, r), String(s.rarity[r])))))));
     };
-    function applyTheme() {
-      const t = WMX.settings.theme || 'green';
-      document.documentElement.dataset.wmxTheme = t;
-      ui.swatches.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.t === t)));
-      setAutoBtn();
-      render();
-    }
-    WMX.applySettings = applyTheme; // appelé par la fenêtre de paramètres après « Appliquer »
-    applyTheme();
+    WMX.applySettings = render;
+    render();
     WMX.onStorage((c) => { if (c.stats) render(); });
 
     // Reprise : cartes tirées avant un rechargement de la page et jamais révélées.

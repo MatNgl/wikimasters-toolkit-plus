@@ -65,49 +65,30 @@
 .wmx-modal footer span { color: #8fa097; font-size: 11px; }
 .wmx-modal footer div { display: flex; gap: 8px; }
 
-/* ===== Variantes d'interface : vert (classique), bleu (verre + anneau), rouge (arcade) ===== */
-html[data-wmx-theme=blue] { --acc: #60a5fa; --acc-ink: #06111f; }
-html[data-wmx-theme=red] { --acc: #ef4444; --acc-ink: #fff; }
-.wmx-btnrow { display: flex; flex-direction: column; gap: 8px; }
-.wmx-themes { display: flex; align-items: center; gap: 8px; margin-top: 2px; color: #7a8a83; font-size: 11px; }
-.wmx-themes span { flex: 1; }
-.wmx-swatch { width: 20px; height: 20px; padding: 0; border-radius: 50%; border: 2px solid transparent; background: var(--c); cursor: pointer; }
-.wmx-swatch[data-t=green] { --c: #2dd4a0; } .wmx-swatch[data-t=blue] { --c: #60a5fa; } .wmx-swatch[data-t=red] { --c: #ef4444; }
-.wmx-swatch[aria-pressed=true] { border-color: #fff; box-shadow: 0 0 0 2px #0009; }
-
-/* Bleu : verre dépoli, boutons pastille côte à côte, stats en anneau */
-html[data-wmx-theme=blue] .wmx-panel { background: #0b1424d9; border-color: #1d3557; border-radius: 22px; backdrop-filter: blur(8px); }
-html[data-wmx-theme=blue] .wmx-panel h4 { color: #6b84a8; }
-html[data-wmx-theme=blue] .wmx-btnrow { flex-direction: row; }
-html[data-wmx-theme=blue] .wmx-btnrow .wmx-btn { flex: 1; width: auto; border-radius: 999px; padding: 8px 4px; font-size: 12px; }
-html[data-wmx-theme=blue] .wmx-fab { border-radius: 14px; }
-html[data-wmx-theme=blue] .wmx-sbox { background: #08101c; border-color: #1b2d49; }
+/* ===== Interface « verre » : boutons pastille côte à côte, anneau de statistiques ===== */
+.wmx-panel { background: #0b1411d9; border-color: #1d3a30; border-radius: 22px; backdrop-filter: blur(8px); }
+.wmx-panel h4 { color: #6f9486; }
+.wmx-btnrow { display: flex; gap: 8px; }
+.wmx-btnrow .wmx-btn { flex: 1; width: auto; border-radius: 999px; padding: 9px 4px; font-size: 12px; }
+.wmx-fab { border-radius: 14px; }
+.wmx-sbox { background: #08120e; border-color: #1b3a2e; }
+.wmx-fold { width: 32px; height: 32px; border-radius: 10px; background: #ffffff10; font-size: 20px; line-height: 1; display: grid; place-items: center; color: #cfe; }
+.wmx-fold:hover { background: var(--acc); color: var(--acc-ink); }
+.wmx-settings-btn { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 2px; padding: 9px 12px; border-radius: 999px; border: 1px solid #27493b; background: #0e1b16; color: #cfe; font: 600 12px Outfit, system-ui, sans-serif; cursor: pointer; transition: background .2s, border-color .2s; }
+.wmx-settings-btn span { font-size: 15px; line-height: 1; }
+.wmx-settings-btn:hover { background: #12261d; border-color: var(--acc); }
 .wmx-donutrow { display: flex; align-items: center; gap: 12px; }
 .wmx-donut { flex: none; width: 84px; height: 84px; border-radius: 50%; display: grid; place-items: center; }
-.wmx-donut-c { width: 56px; height: 56px; border-radius: 50%; background: #08101c; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.1; }
-.wmx-donut-c b { font-size: 14px; color: #fff; } .wmx-donut-c small { font-size: 9px; color: #6b84a8; }
+.wmx-donut-c { width: 56px; height: 56px; border-radius: 50%; background: #08120e; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.1; }
+.wmx-donut-c b { font-size: 14px; color: #fff; }
+.wmx-donut-c small { font-size: 9px; color: #6f9486; }
 .wmx-legend { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 3px 8px; font-variant-numeric: tabular-nums; }
 .wmx-legend div { display: flex; align-items: center; gap: 5px; }
 .wmx-legend i { width: 7px; height: 7px; border-radius: 50%; background: rgb(var(--rgb)); }
 .wmx-legend b { color: rgb(var(--rgb)); width: 20px; }
 
-/* Rouge : arcade, angles vifs, gros boutons, barre empilée + pastilles */
-html[data-wmx-theme=red] .wmx-panel { background: linear-gradient(160deg, #1d0b0d, #0d0708); border: 2px solid #ef4444aa; border-radius: 6px; box-shadow: 0 0 24px #ef444433, 0 12px 28px #0008; }
-html[data-wmx-theme=red] .wmx-panel h3 { text-transform: uppercase; letter-spacing: .08em; font-size: 12px; }
-html[data-wmx-theme=red] .wmx-panel h4 { color: #b86a6a; }
-html[data-wmx-theme=red] .wmx-btn { border-radius: 4px; text-transform: uppercase; letter-spacing: .06em; padding: 11px 10px; font-size: 12px; }
-html[data-wmx-theme=red] .wmx-btn--danger { background: #450a0a; color: #fecaca; border: 1px solid #ef4444; }
-html[data-wmx-theme=red] .wmx-btn--ghost { color: #ddd; }
-html[data-wmx-theme=red] .wmx-fab { border-radius: 6px; }
-html[data-wmx-theme=red] .wmx-sbox { background: #120809; border-color: #3a1517; border-radius: 4px; }
-.wmx-stack { display: flex; height: 14px; border-radius: 3px; overflow: hidden; gap: 1px; }
-.wmx-stack i { display: block; min-width: 2px; }
-.wmx-chips { display: flex; flex-wrap: wrap; gap: 5px; }
-.wmx-chip { display: inline-flex; gap: 5px; padding: 2px 7px; border-radius: 3px; border: 1px solid rgb(var(--rgb) / .6); background: rgb(var(--rgb) / .1); font-variant-numeric: tabular-nums; }
-.wmx-chip b { color: rgb(var(--rgb)); }
-
 /* Menu réduit : toujours sans fond, quelle que soit la variante */
-html[data-wmx-theme] .wmx-panel.wmx-collapsed { background: transparent; border-color: transparent; box-shadow: none; backdrop-filter: none; }
+.wmx-panel.wmx-collapsed { background: transparent; border-color: transparent; box-shadow: none; backdrop-filter: none; }
 .wmx-badge[hidden] { display: none; }
 @media (max-width: 1250px) { .wmx-panel { display: none; } }
 html:not([data-wmx-route^="/pulls"]) .wmx-panel { display: none; }

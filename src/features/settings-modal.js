@@ -5,19 +5,11 @@
   const plural = (n, w) => `${n} ${w}${n > 1 ? 's' : ''}`;
 
   WMX.DEFAULTS = {
-    theme: 'green', speed: 'normal', order: 'rarity', images: true,
+    speed: 'normal', order: 'rarity', images: true,
     stopOn: 'off', reserve: 0, fullStockOpen: true, anticipate: true,
   };
 
   const SECTIONS = [
-    {
-      title: 'Apparence',
-      desc: 'Style du menu flottant et de la révélation.',
-      items: [
-        { key: 'theme', type: 'select', label: 'Style de l’interface', desc: 'Vert : classique. Bleu : verre et anneau de statistiques. Rouge : arcade.',
-          options: [['green', 'Vert (classique)'], ['blue', 'Bleu (verre)'], ['red', 'Rouge (arcade)']] },
-      ],
-    },
     {
       title: 'Révélation',
       desc: 'Animation et ordre d’affichage des cartes après l’ouverture.',
@@ -46,6 +38,7 @@
       desc: 'Historique de vos tirages, conservé sur cet ordinateur.',
       items: [
         { type: 'action', label: 'Historique par jour', desc: 'Paquets, cartes et raretés tirés chaque jour.', button: 'Exporter en CSV', run: () => WMX.stats.exportCsv() },
+        { type: 'action', confirm: true, label: 'Réinitialiser les statistiques', desc: 'Remet à zéro le compteur du menu. L\u2019historique par jour est conservé.', button: 'Réinitialiser', run: () => WMX.stats.reset() },
       ],
     },
   ];
@@ -67,7 +60,19 @@
         b.addEventListener('click', () => { draft[it.key] = !draft[it.key]; b.setAttribute('aria-checked', String(draft[it.key])); });
         return b;
       }
-      return el('button', { class: 'wmx-btn wmx-btn--ghost', onclick: it.run }, it.button);
+      const b = el('button', { class: 'wmx-btn wmx-btn--ghost' }, it.button);
+      b.addEventListener('click', () => {
+        if (it.confirm && !b.dataset.armed) { // deuxième clic requis pour confirmer
+          b.dataset.armed = '1';
+          b.textContent = 'Confirmer ?';
+          b.classList.add('wmx-btn--danger');
+          setTimeout(() => { delete b.dataset.armed; b.textContent = it.button; b.classList.remove('wmx-btn--danger'); }, 4000);
+          return;
+        }
+        it.run();
+        if (it.confirm) { delete b.dataset.armed; b.textContent = 'Fait'; b.classList.remove('wmx-btn--danger'); }
+      });
+      return b;
     };
 
     const render = () => {
