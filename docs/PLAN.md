@@ -32,10 +32,11 @@ Légende : ✅ fait et vérifié · 🟡 écrit, à tester · ⬜ à faire
 - ⬜ Découvrir les requêtes natives (étiquette, mise en vente) : l'enregistreur capte désormais la forme des corps envoyés (`apiShapes[...].request`).
 - Fiche native observée : fenêtre sur /collection (sans changement d'URL) avec « Ajouter une étiquette », « Mettre aux enchères », « Défausser ».
 
-## 2. Collection (`/collection`)
-- ⬜ Filtre par valeur (min/max) : cartes identifiées par `data-wm-card-id` ; prix depuis le cache.
-- ⬜ Vérifier avec l'ancienne extension désactivée que `data-wm-card-id` vient bien du jeu.
-- ⬜ Tri par valeur, filtres rareté / nom / favori / date d'ajout à compléter si manquants.
+## 2. Collection+ (`/collection`)
+**Phase 1 (0.2.0, à tester)** : inventaire complet en mémoire (GET /api/my-collection, tri alphabétique stable), grille pleine image, 10/25/50/100 par page, recherche, filtres (rareté, étiquette, sans étiquette, favoris, doublons, valeur min/max), tris (rareté, plus/moins chères, récentes, nom), prix par carte via /api/marketplace/cards/{id}/sales?scope=summary (sans compte Pro) avec progression et pause allongée sur 429, valeur totale, vraie fiche du jeu au clic, onglet tableau de bord (valeur par rareté, top 10, courbe à partir de 2 jours d'historique).
+**Phase 2** : enchère rapide (⚡ sur la carte, formulaire natif piloté, annulation si le jeu le permet ; réglages coefficient/durée/prudent déjà dans les paramètres).
+**Plus tard** : sélection multiple et étiquetage en lot ; analyse (cartes qui montent, stats par étiquette).
+- L'ancienne extension n'est plus conservée en parallèle : on ne s'appuie plus sur ses attributs (`data-wm-card-id`).
 
 ## 3. Marché (`/marketplace`)
 - ⬜ Capter les réponses de `/api/marketplace` et l'historique pour alimenter le cache de prix (moyenne sur N ventes, exclusion des extrêmes).

@@ -20,6 +20,11 @@ WMX.dom = {
     const t = text.toLowerCase();
     return [...document.querySelectorAll(selector)].find((e) => e.textContent.trim().toLowerCase() === t && !e.disabled);
   },
+  /** Bord droit de la barre latérale du jeu (elle s'élargit selon l'écran). */
+  sidebarRight() {
+    const edges = [...document.querySelectorAll('nav')].map((n) => n.getBoundingClientRect().right).filter((x) => x > 100 && x < 700);
+    return edges.length ? Math.max(...edges) : 256;
+  },
   async waitFor(fn, timeout = 5000, step = 100) {
     const end = Date.now() + timeout;
     while (Date.now() < end) { const v = fn(); if (v) return v; await WMX.dom.sleep(step); }

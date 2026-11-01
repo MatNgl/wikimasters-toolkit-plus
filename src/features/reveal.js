@@ -53,11 +53,14 @@
     return tile;
   }
 
+  WMX.loadCardInfo = (c) => loadInfo(c); // image + description Wikipédia (cache partagé avec Collection+)
   WMX.revealSession = function revealSession() {
     let skip = false;
     const all = [];
     const title = el('h2', {}, 'Ouverture en cours…');
     const remaining = el('div', { class: 'wmx-remaining' });
+    let remBase = '';
+    let remNote = '';
     const grid = el('div', { class: 'wmx-grid' });
     // Cartes tirées mais pas encore vues : conservées si la page du jeu se recharge en cours de route.
     const cont = el('button', { class: 'wmx-btn', disabled: '', onclick: () => { WMX.store.set('pendingCards', []); WMX.releaseCardSheets?.(); overlay.remove(); } }, 'Continuer');
@@ -75,7 +78,12 @@
         title.textContent = `${all.length} cartes tirées…`;
       },
       setRemaining(n, total) {
-        remaining.textContent = n > 0 ? `${n} paquet${n > 1 ? 's' : ''} restant${n > 1 ? 's' : ''} sur ${total}` : 'Tous les paquets sont ouverts';
+        remBase = n > 0 ? `${n} paquet${n > 1 ? 's' : ''} restant${n > 1 ? 's' : ''} sur ${total}` : 'Tous les paquets sont ouverts';
+        remaining.textContent = remBase + remNote;
+      },
+      setNote(t) {
+        remNote = t ? ` · ${t}` : '';
+        remaining.textContent = remBase + remNote;
       },
       /** Laisse passer les clics vers la vérification du jeu (jamais touchée par l'extension). */
       yield(b) { overlay.classList.toggle('wmx-yield', b); },

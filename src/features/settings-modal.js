@@ -7,6 +7,7 @@
   WMX.DEFAULTS = {
     speed: 'normal', order: 'rarity', images: true,
     stopOn: 'off', reserve: 0, fullStockOpen: true, anticipate: true,
+    quickCoef: 0.9, quickDuration: '1h', quickPrudent: false,
   };
 
   const SECTIONS = [
@@ -34,6 +35,16 @@
       ],
     },
     {
+      title: 'Enchère rapide',
+      desc: 'Réglages du bouton ⚡ de Collection+ : prix de départ = moyenne du marché × coefficient.',
+      items: [
+        { key: 'quickCoef', type: 'number', min: 0.1, max: 3, step: 0.05, label: 'Coefficient du prix de départ', desc: 'Appliqué à la moyenne du marché, arrondi à l\u2019entier (1 W minimum). 0,9 = 10 % sous la moyenne.' },
+        { key: 'quickDuration', type: 'select', label: 'Durée de l\u2019enchère', desc: 'Durée proposée par défaut (celles du jeu).',
+          options: [['10min', '10 min'], ['30min', '30 min'], ['1h', '1 h'], ['3h', '3 h'], ['6h', '6 h'], ['12h', '12 h']] },
+        { key: 'quickPrudent', type: 'toggle', label: 'Mode prudent', desc: 'Le prix de départ ne dépasse pas 1,2 fois la dernière vente.' },
+      ],
+    },
+    {
       title: 'Données',
       desc: 'Historique de vos tirages, conservé sur cet ordinateur.',
       items: [
@@ -54,6 +65,15 @@
         s.value = String(draft[it.key]);
         s.addEventListener('change', () => { draft[it.key] = it.number ? Number(s.value) : s.value; });
         return s;
+      }
+      if (it.type === 'number') {
+        const i = el('input', { class: 'wmx-input', type: 'number', min: String(it.min), max: String(it.max), step: String(it.step), value: String(draft[it.key]) });
+        i.addEventListener('change', () => {
+          const v = Number(i.value);
+          if (Number.isFinite(v)) draft[it.key] = Math.min(it.max, Math.max(it.min, v));
+          i.value = String(draft[it.key]);
+        });
+        return i;
       }
       if (it.type === 'toggle') {
         const b = el('button', { class: 'wmx-switch', role: 'switch', 'aria-checked': String(!!draft[it.key]) });

@@ -18,15 +18,17 @@
     else if (status === 429 || data?.rate_limited) openError = { t: Date.now(), data };
   });
 
-  /** Délai (secondes) avant de réessayer, d'après `retry_after` (nombre, « 5 s », « 2 min » ou date). */
-  const retrySeconds = (v) => {
+  const COOLDOWN_S = 3; // pause obligatoire entre deux paquets : le jeu refuse les ouvertures trop rapprochées
+  let blocks = 0;       // refus consécutifs : la pause s'allonge d'1 s à chaque refus, puis repart de COOLDOWN_S au premier succès
+
+  /** Indication `retry_after` du jeu en secondes (nombre, « 5 s », « 2 min » ou date), ou null si illisible. */
+  const retryHint = (v) => {
     const s = String(v ?? '');
     const n = Number(s.match(/\d+(\.\d+)?/)?.[0]);
-    let sec = 10;
-    if (/^\s*\d+(\.\d+)?\s*(s|sec|secondes?)?\s*$/i.test(s)) sec = n;
-    else if (/min/i.test(s) && n) sec = n * 60;
-    else if (!Number.isNaN(Date.parse(s))) sec = (Date.parse(s) - Date.now()) / 1000;
-    return Math.min(120, Math.max(2, Math.ceil(sec)));
+    if (/^\s*\d+(\.\d+)?\s*(s|sec|secondes?)?\s*$/i.test(s)) return n;
+    if (/min/i.test(s) && n) return n * 60;
+    const t = Date.parse(s);
+    return Number.isNaN(t) ? null : Math.max(1, (t - Date.now()) / 1000);
   };
 
   // --- Lecture de l'état du jeu --------------------------------------------------------------
@@ -119,7 +121,6 @@
     document.documentElement.classList.add('wmx-opening');
     btn.click();
     let clickedAt = Date.now();
-    let tries = 0;
     openError = null;
     const end = Date.now() + 180000; // laisse le temps à la vérification humaine, faite par l'utilisateur
     while (!lastCards && Date.now() < end) {
@@ -128,11 +129,16 @@
         const d = openError.data || {};
         openError = null;
         if (d.rate_limit_daily) { dailyLimit = true; setStatus('Limite quotidienne d’ouvertures atteinte'); break; }
-        if (++tries > 4) { setStatus('Le jeu refuse l’ouverture : arrêt'); break; }
-        for (let s = retrySeconds(d.retry_after); s > 0 && !lastCards; s--) {
-          setStatus(`Limite du jeu : nouvel essai dans ${s} s`);
+        blocks += 1;
+        if (blocks > 15) { setStatus('Le jeu refuse l’ouverture : arrêt'); break; }
+        // Attente = pause de base + 1 s par refus consécutif (4, 5, 6… s), au moins ce que demande le jeu.
+        const waitS = Math.min(120, Math.max(COOLDOWN_S + blocks, retryHint(d.retry_after) ?? 0));
+        for (let s = Math.ceil(waitS); s > 0 && !lastCards; s--) {
+          setStatus(`Ouverture trop rapide : nouvel essai dans ${s} s`);
+          session?.setNote(`attente ${s} s`);
           await sleep(1000);
         }
+        session?.setNote('');
         const retry = [...document.querySelectorAll('button')]
           .find((b) => !b.disabled && !b.closest('.wmx-cover, .wmx-panel') && b.textContent.trim().toLowerCase() === 'ouvrir');
         if (retry) retry.click();
@@ -154,7 +160,7 @@
     }
     session?.yield(false);
     const cards = lastCards;
-    if (cards) consumeInSnapshot(snap);
+    if (cards) { blocks = 0; consumeInSnapshot(snap); } // succès : la pause repart de sa valeur de base
     const ok = !cards || (await dismissResult());
     if (ok && cards) await sleep(300); // laisse l'écran « Ouvrir » du jeu se remettre en place avant le clic suivant
     document.documentElement.classList.remove('wmx-opening');
@@ -163,7 +169,17 @@
     return cards;
   }
 
-  // --- « Tout ouvrir » : aucun délai ajouté, on suit le rythme du jeu ------------------------
+  /** Pause obligatoire entre deux paquets, visible dans le panneau et sur l'écran de révélation. */
+  async function cooldown(session) {
+    for (let s = COOLDOWN_S; s > 0 && (state.busy || state.auto); s--) {
+      session?.setNote(`pause ${s} s`);
+      setStatus(`Pause de ${s} s avant le paquet suivant`);
+      await sleep(1000);
+    }
+    session?.setNote('');
+  }
+
+  // --- « Tout ouvrir » -----------------------------------------------------------------------
   async function openAll() {
     if (state.auto) { setStatus('Arrêtez d’abord l’ouverture auto'); return; }
     if (state.busy) return;
@@ -178,6 +194,7 @@
         if (!cards) break;
         session.addPack(cards);
         session.setRemaining(total - done - 1, total);
+        if (done < total - 1) await cooldown(session);
       }
     } finally { state.busy = false; setStatus(''); }
     await session.finish();
@@ -187,6 +204,8 @@
   /** Ouvre `n` paquets et les met de côté ; s'arrête si une carte atteint le seuil choisi. */
   async function openBatch(n) {
     for (let i = 0; i < n && state.auto; i++) {
+      if (i > 0) await cooldown();
+      if (!state.auto) return;
       state.busy = true;
       const cards = await openOne();
       state.busy = false;
