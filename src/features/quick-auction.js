@@ -81,9 +81,22 @@
   }
 
   /** Annule une enchère depuis sa page de détail (/marketplace/{id}), chargée dans un cadre invisible. */
-  async function cancelAuction(auction) {
+  // Pages d'annulation préchargées (une par enchère lancée) : le second clic sur ⚡ annule alors presque instantanément
+  // au lieu d'attendre le chargement de la page. Libérées après 15 min ou à l'annulation.
+  const warm = new Map(); // id de l'enchère -> cadre
+
+  function prewarm(auction) {
+    if (!auction || warm.has(auction.id)) return;
+    if (warm.size >= 3) { const [oldId, oldFrame] = warm.entries().next().value; oldFrame.remove(); warm.delete(oldId); }
     const f = el('iframe', { class: 'wmx-sheet-frame', src: `/marketplace/${auction.id}`, title: 'Annulation', tabindex: '-1' });
     document.body.append(f);
+    warm.set(auction.id, f);
+    setTimeout(() => { if (warm.get(auction.id) === f) { f.remove(); warm.delete(auction.id); } }, 15 * 60000);
+  }
+
+  async function cancelAuction(auction) {
+    const f = warm.get(auction.id) || el('iframe', { class: 'wmx-sheet-frame', src: `/marketplace/${auction.id}`, title: 'Annulation', tabindex: '-1' });
+    if (!f.isConnected) document.body.append(f);
     try {
       const find = (re) => { try { return [...f.contentDocument.querySelectorAll('button')].find((b) => re.test(b.textContent)); } catch (_) { return null; } };
       const btn = await waitFor(() => find(/Annuler et récupérer/i), 90000, 400);
@@ -107,6 +120,7 @@
     } finally {
       await sleep(600);
       f.remove();
+      warm.delete(auction.id);
     }
   }
 
@@ -125,6 +139,7 @@
       await refresh();
       const a = S.selling.get(item.card_id);
       if (!a) return WMX.toast('L’enchère n’a pas pu être confirmée : vérifiez sur le Marché.', 7000);
+      prewarm(a); // charge déjà la page d'annulation en arrière-plan
       const minutes = Math.round((new Date(a.end_at) - Date.now()) / 60000);
       const off = MINUTES[c.dur] && Math.abs(minutes - MINUTES[c.dur]) > 3 ? ` (durée réelle : ${minutes} min)` : '';
       WMX.toast(`Enchère lancée : ${item.title} à ${a.base_amount} W pour ${c.dur}${off}. Recliquez sur ⚡ pour l’annuler.`, 7000);
