@@ -20,6 +20,7 @@
     const shapes = await WMX.store.get('apiShapes', {});
     shapes[`${method} ${path}`] = { status, shape: shapeOf(data), seen: Date.now() };
     await WMX.store.set('apiShapes', shapes);
+    document.documentElement.dataset.wmxShapes = JSON.stringify(shapes); // debug : lisible depuis la page
     listeners.forEach((cb) => { try { cb({ url, path, method, status, data }); } catch (_) {} });
   });
 

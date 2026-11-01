@@ -2,3 +2,4 @@
 .wmx-bar--top { bottom: auto; top: 16px; }
 .wmx-btn { padding: 6px 12px; border-radius: 8px; border: 0; background: #2dd4a0; color: #04130d; font-weight: 600; cursor: pointer; }
 .wmx-input { width: 130px; padding: 6px; border-radius: 8px; border: 1px solid #444; background: #0d0d0d; color: #eee; }
+.wmx-chip { position: fixed; bottom: 16px; left: 16px; z-index: 9999; padding: 6px 10px; font: 12px system-ui; color: #cfe; background: #111a; border: 1px solid #333; border-radius: 8px; }

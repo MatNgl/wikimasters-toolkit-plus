@@ -27,6 +27,15 @@
   WMX.register({
     name: 'stats',
     init() {
+      const chip = WMX.dom.el('div', { class: 'wmx-chip', id: 'wmx-stats' });
+      document.body.append(chip);
+      const render = async () => {
+        const s = await WMX.stats.get();
+        chip.textContent = `WMX · ${s.packs} paquets · ${s.cards} cartes · ` +
+          WMX.RARITIES.map((r) => `${r}:${s.rarity[r]}`).join(' ');
+      };
+      render();
+      chrome.storage.onChanged.addListener((c) => { if (c.stats) render(); });
       // Une réponse POST dont le chemin évoque l'ouverture d'un paquet et contenant des cartes.
       WMX.onApi(({ path, method, data }) => {
         if (method !== 'POST' || !/pull|pack|open|booster/i.test(path)) return;
