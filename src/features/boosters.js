@@ -243,6 +243,7 @@
     if (state.busy) return;
     state.auto = true;
     setBadge(); setAutoBtn();
+    WMX.prepareCardSheets?.(); // fiche des cartes prête quand la révélation s'affichera
     autoLoop();
   }
 
