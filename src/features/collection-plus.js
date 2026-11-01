@@ -98,20 +98,22 @@
   }
 
   // --- Affichage -------------------------------------------------------------------------------
-  /** Bouton ⚡ : un clic lance l'enchère rapide, un second clic l'annule (voir quick-auction.js). */
+  /** Bouton ⚡ : un clic met la carte en file d'attente ; recliquer la retire de la file ou annule l'enchère (voir quick-auction.js). */
   function bolt(it) {
     const q = WMX.quick;
     if (!q) return '';
-    const sell = q.selling(it.card_id);
-    const b = el('button', { class: `wmx-bolt${sell ? ' live' : ''}`, title: q.hint(it), 'aria-label': 'Enchère rapide' }, '⚡');
-    if ((it.starred && !sell) || q.isBusy()) b.disabled = true;
+    const st = q.stateOf(it.card_id);
+    const glyph = { queued: '⏳', working: '…', cancelling: '…' }[st] || '⚡';
+    const b = el('button', { class: `wmx-bolt${st === 'live' ? ' live' : ''}${st === 'queued' ? ' queued' : ''}${st === 'working' || st === 'cancelling' ? ' busy' : ''}`, title: q.hint(it), 'aria-label': 'Enchère rapide' }, glyph);
+    if (it.starred && st === 'idle') b.disabled = true;
     b.addEventListener('click', (e) => { e.stopPropagation(); q.toggle(it); });
+    b.addEventListener('mouseenter', () => WMX.prepareCardSheets?.('work')); // le cadre d'automatisation charge dès qu'on vise ⚡
     return b;
   }
 
   function tile(it) {
     const p = price(it);
-    const t = el('div', { class: 'wmx-ct', 'data-r': it.rarity, style: `--rgb:${WMX.RARITY_RGB[it.rarity]}`, title: 'Cliquer pour ouvrir la fiche' },
+    const t = el('div', { class: 'wmx-ct', 'data-id': it.id, 'data-r': it.rarity, style: `--rgb:${WMX.RARITY_RGB[it.rarity]}`, title: 'Cliquer pour ouvrir la fiche' },
       el('div', { class: 'wmx-ct-shade' }),
       el('span', { class: 'wmx-rar' }, it.rarity),
       el('div', { class: 'wmx-ct-acts' }, bolt(it), it.starred ? el('i', {}, '★') : '', it.count > 1 ? el('i', { class: 'wmx-ct-n' }, `×${it.count}`) : ''),
@@ -142,8 +144,27 @@
 
   function go(n) { S.page = n; refresh(); ui.grid.scrollTo?.(0, 0); overlay.querySelector('.wmx-cp-scroll')?.scrollTo(0, 0); }
 
+  /**
+   * Met à jour les boutons ⚡ et les prix des cartes affichées SANS les réordonner : une carte sur laquelle on clique
+   * (ou dont le prix vient d'arriver) reste à sa place. Le tri ne se refait que sur une action de l'utilisateur.
+   */
+  function refreshTiles() {
+    if (!overlay || !ui.grid) return;
+    if (S.byIdSrc !== S.items) { S.byId = new Map(S.items.map((i) => [i.id, i])); S.byIdSrc = S.items; }
+    for (const t of ui.grid.querySelectorAll('.wmx-ct')) {
+      const it = S.byId.get(t.dataset.id);
+      if (!it) continue;
+      t.querySelector('.wmx-bolt')?.replaceWith(bolt(it));
+      const pr = t.querySelector('.wmx-ct-price');
+      const p = price(it);
+      if (pr) pr.textContent = p ? `Moy. ${fmt(p.avg)} W` : 'Moy. —';
+    }
+    renderStatus();
+  }
+
   function refresh() {
     if (!overlay) return;
+    if (ui.reorder) ui.reorder.hidden = true;
     const rows = view();
     const pages = Math.max(1, Math.ceil(rows.length / S.perPage));
     if (S.page > pages) S.page = pages;
@@ -280,6 +301,7 @@
     ui.count = el('span', {});
     ui.pager = el('div', { class: 'wmx-pager' });
     ui.dash = el('div', { class: 'wmx-dash', hidden: '' });
+    ui.reorder = el('button', { class: 'wmx-btn wmx-btn--ghost wmx-reorder', hidden: '', title: 'Les prix ont changé : remettre les cartes dans l’ordre du tri', onclick: () => refresh() }, '↻ Réordonner');
 
     const tabs = ['cards', 'dash'].map((k) => {
       const b = el('button', { class: `wmx-tab${k === S.tab ? ' on' : ''}` }, k === 'cards' ? 'Cartes' : 'Tableau de bord');
@@ -294,7 +316,7 @@
       el('div', { class: 'wmx-cp-tools' },
         ...R.map((r) => chip(r, WMX.RARITY_RGB[r], false, (on) => { on ? S.rar.add(r) : S.rar.delete(r); S.page = 1; refresh(); })),
         chip('★ Favoris', '', false, (on) => { S.fav = on; S.page = 1; refresh(); }),
-        chip('Doublons', '', false, (on) => { S.dup = on; S.page = 1; refresh(); })),
+        chip('Doublons', '', false, (on) => { S.dup = on; S.page = 1; refresh(); }), ui.reorder),
       el('div', { class: 'wmx-cp-prices' },
         el('div', { class: 'wmx-cp-pricehead' }, ui.priceInfo,
           el('span', { class: 'wmx-cp-pchips' }, 'Raretés :', ...R.map((r) => chip(r, WMX.RARITY_RGB[r], S.priceRar.has(r), (on) => { on ? S.priceRar.add(r) : S.priceRar.delete(r); }))),
@@ -315,13 +337,16 @@
       if (e.key === 'Escape' && overlay && !overlay.hidden && !document.querySelector('.wmx-sheet-frame.wmx-on, .wmx-overlay')) close();
     });
 
-    WMX.quick?.onChange(() => { clearTimeout(refreshTimer); refreshTimer = setTimeout(refresh, 300); }); // ⚡ à jour après chaque enchère
+    WMX.quick?.onChange(() => { clearTimeout(refreshTimer); refreshTimer = setTimeout(refreshTiles, 150); }); // ⚡ à jour, cartes à leur place
     setInterval(() => { if (overlay && !overlay.hidden && WMX.alive()) WMX.quick?.refresh(); }, 60000);
 
     WMX.prices.onProgress(() => {
       renderStatus();
       clearTimeout(refreshTimer);
-      refreshTimer = setTimeout(refresh, 1500); // met à jour les prix affichés sans redessiner à chaque requête
+      refreshTimer = setTimeout(() => { // met à jour les prix affichés, sans déplacer les cartes
+        refreshTiles();
+        if (ui.reorder && (S.sort === 'expensive' || S.sort === 'cheap' || S.min !== '' || S.max !== '')) ui.reorder.hidden = false;
+      }, 1500);
     });
   }
 
@@ -339,7 +364,6 @@
   function close() {
     if (!overlay) return;
     overlay.hidden = true;
-    WMX.releaseCardSheets?.();
     markNav();
   }
 
@@ -354,7 +378,7 @@
     overlay.hidden = false;
     place();
     setTab(tab);
-    WMX.prepareCardSheets?.(); // fiche du jeu prête au premier clic
+    WMX.prepareCardSheets?.('view'); // fiche du jeu prête au premier clic
     WMX.quick?.refresh();      // quelles cartes sont déjà en vente
     await WMX.prices.load();
     if (first || !S.items.length) {
@@ -398,6 +422,7 @@
       a.replaceChildren(...(iconWrap ? [iconWrap] : []), label, el('i', { class: 'wmx-nav-tag' }, 'ext'));
       const go = (e) => { e.preventDefault(); e.stopPropagation(); open(tab); };
       a.addEventListener('click', go);
+      a.addEventListener('mouseenter', () => WMX.prepareCardSheets?.('view')); // la fiche charge pendant qu'on vise l'entrée
       a.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') go(e); });
       return a;
     };

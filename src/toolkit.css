@@ -172,6 +172,13 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-bolt:hover:not(:disabled) { background: var(--acc,#2dd4a0); color: var(--acc-ink,#04130d); border-color: transparent; }
 .wmx-bolt.live { background: #facc15; color: #1a1300; border-color: transparent; box-shadow: 0 0 10px #facc1599; }
 .wmx-bolt:disabled { opacity: .35; cursor: default; }
+.wmx-bolt.queued { background: #60a5fa; color: #06111f; border-color: transparent; }
+.wmx-bolt.busy { background: #facc15; color: #1a1300; border-color: transparent; animation: wmx-pulse 1.2s infinite; }
+.wmx-reorder { padding: 5px 12px; font-size: 12px; }
+.wmx-qchip { position: fixed; right: 18px; bottom: 18px; z-index: 9500; display: flex; align-items: center; gap: 12px; max-width: min(520px, 90vw); padding: 9px 12px 9px 16px; border-radius: 999px; background: #0b1411f2; border: 1px solid #27493b; box-shadow: 0 10px 30px #000a; color: #e6efe9; font: 600 13px Outfit, system-ui, sans-serif; }
+.wmx-qtext { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wmx-qclear { flex: none; padding: 5px 12px; border-radius: 999px; border: 1px solid #555; background: transparent; color: #ddd; font-family: inherit; font-weight: 600; font-size: 12px; cursor: pointer; }
+.wmx-qclear:hover { border-color: #ef4444; color: #fecaca; }
 .wmx-ct-price { align-self: flex-start; font: 600 10px system-ui; padding: 2px 7px; border-radius: 7px; background: rgb(var(--rgb) / .2); color: rgb(var(--rgb)); border: 1px solid rgb(var(--rgb) / .4); }
 .wmx-cp-empty { grid-column: 1 / -1; color: #7f9a8d; padding: 24px 0; text-align: center; }
 .wmx-cp-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; color: #9db5a8; font-size: 12px; }

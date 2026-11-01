@@ -1,14 +1,18 @@
-// Enchère rapide (bouton ⚡ de Collection+) : un clic met la carte aux enchères avec le prix de départ calculé
-// (moyenne du marché × coefficient, mode prudent optionnel) et la durée choisie dans les paramètres ; un second
-// clic annule l'enchère si le jeu le permet. Tout passe par le formulaire et les boutons du jeu, pilotés comme
-// le ferait l'utilisateur dans le cadre invisible de la Collection : l'extension n'invente aucun appel.
+// Enchère rapide (bouton ⚡ de Collection+) : un clic met la carte en FILE D'ATTENTE ; la file se traite en arrière-plan,
+// une carte après l'autre, même si vous changez de page, ouvrez une fiche ou fermez Collection+. Chaque carte est mise aux
+// enchères avec le prix de départ calculé (moyenne du marché × coefficient, mode prudent optionnel) et la durée choisie
+// dans les paramètres. Recliquer sur ⚡ retire la carte de la file, ou annule l'enchère si elle est déjà en vente.
+// Tout passe par le formulaire et les boutons du jeu, pilotés comme le ferait l'utilisateur dans un cadre invisible :
+// l'extension n'invente aucun appel. La file est mémorisée : elle reprend si la page est rechargée.
 (() => {
   const { el, sleep, waitFor } = WMX.dom;
   const LABELS = { '10min': '10 min', '30min': '30 min', '1h': '1 h', '3h': '3 h', '6h': '6 h', '12h': '12 h' };
   const MINUTES = { '10 min': 10, '30 min': 30, '1 h': 60, '3 h': 180, '6 h': 360, '12 h': 720 };
-  const S = { selling: new Map(), max: 10, busy: false };
+  const S = { selling: new Map(), max: 10, queue: [], current: null, running: false, batch: { done: 0, total: 0, ok: 0, failed: [] } };
   const listeners = new Set();
   const notify = () => listeners.forEach((cb) => { try { cb(); } catch (_) { /* écouteur obsolète */ } });
+  const slim = (it) => ({ card_id: it.card_id, title: it.title, rarity: it.rarity, starred: !!it.starred });
+  const persist = () => WMX.store.set('quickQueue', S.queue.map((o) => ({ type: o.type, item: o.item })));
 
   const cfg = () => ({ coef: Number(WMX.settings?.quickCoef) || 0.9, dur: LABELS[WMX.settings?.quickDuration] || '1 h', prudent: !!WMX.settings?.quickPrudent });
 
@@ -48,144 +52,220 @@
   };
 
   const SHEET_ERRORS = {
-    frame: 'Impossible de charger la fiche pour le moment.',
-    notfound: 'Carte introuvable dans la recherche du jeu.',
-    nosheet: 'La fiche ne s’est pas ouverte.',
+    frame: 'impossible de charger la fiche',
+    notfound: 'carte introuvable dans la recherche du jeu',
+    nosheet: 'la fiche ne s’est pas ouverte',
   };
 
   /** Ouvre la fiche (cachée), le formulaire d'enchère, saisit le prix et la durée, puis lance. */
   async function driveForm(item, price, dur) {
-    const r = await WMX.sheet.openInFrame({ id: item.card_id, wikipedia_title: item.title, rarity: item.rarity });
+    const r = await WMX.sheet.openInFrame({ id: item.card_id, wikipedia_title: item.title, rarity: item.rarity }, 'work');
     if (r.error) return { error: SHEET_ERRORS[r.error] };
     const { d, w, root } = r;
     try {
       const open = [...root.querySelectorAll('button')].find((b) => /Mettre aux enchères/i.test(b.textContent));
-      if (!open || open.disabled) return { error: 'Le jeu ne permet pas de mettre cette carte aux enchères (déjà en vente, favorite ou en échange ?).' };
+      if (!open || open.disabled) return { error: 'le jeu ne permet pas de la vendre (déjà en vente, favorite ou en échange ?)', fatal: true };
       open.click();
-      const launch = await waitFor(() => [...d.querySelectorAll('button')].find((b) => /Lancer l.enchère/i.test(b.textContent)), 8000, 150);
-      if (!launch) return { error: 'Le formulaire d’enchère ne s’est pas ouvert.' };
+      const launch = await waitFor(() => [...d.querySelectorAll('button')].find((b) => /Lancer l.enchère/i.test(b.textContent)), 8000, 120);
+      if (!launch) return { error: 'le formulaire d’enchère ne s’est pas ouvert' };
       const form = fixedAncestor(w, launch) || d.body;
       const input = form.querySelector('input[aria-label="Mise de départ"], input[type=number]');
-      if (!input) return { error: 'Champ « Mise de départ » introuvable.' };
+      if (!input) return { error: 'champ « Mise de départ » introuvable' };
       setNumber(w, input, price);
-      const pill = [...form.querySelectorAll('button')].find((b) => b.textContent.trim() === dur);
-      pill?.click();
-      await sleep(350);
-      if (Number(input.value) !== price) return { error: 'Le prix saisi n’a pas été pris en compte : rien n’a été lancé.' };
+      [...form.querySelectorAll('button')].find((b) => b.textContent.trim() === dur)?.click();
+      await sleep(250);
+      if (Number(input.value) !== price) return { error: 'le prix saisi n’a pas été pris en compte' };
       launch.click();
-      const closed = await waitFor(() => !/Lancer l.enchère/i.test(d.body.innerText), 9000, 200);
-      return closed ? { ok: true } : { error: 'Le jeu n’a pas confirmé l’enchère.' };
+      const closed = await waitFor(() => !/Lancer l.enchère/i.test(d.body.innerText), 9000, 150);
+      return closed ? { ok: true } : { error: 'le jeu n’a pas confirmé l’enchère' };
     } finally {
-      WMX.sheet.closeSheet();
+      WMX.sheet.closeSheet('work');
     }
   }
 
-  /** Annule une enchère depuis sa page de détail (/marketplace/{id}), chargée dans un cadre invisible. */
-  // Pages d'annulation préchargées (une par enchère lancée) : le second clic sur ⚡ annule alors presque instantanément
-  // au lieu d'attendre le chargement de la page. Libérées après 15 min ou à l'annulation.
+  // Pages d'annulation préchargées : le clic d'annulation est alors presque instantané. Libérées après 15 min.
   const warm = new Map(); // id de l'enchère -> cadre
 
   function prewarm(auction) {
     if (!auction || warm.has(auction.id)) return;
-    if (warm.size >= 3) { const [oldId, oldFrame] = warm.entries().next().value; oldFrame.remove(); warm.delete(oldId); }
+    for (const [oldId, oldFrame] of warm) { oldFrame.remove(); warm.delete(oldId); } // une seule page préchargée : la dernière enchère
     const f = el('iframe', { class: 'wmx-sheet-frame', src: `/marketplace/${auction.id}#wmx-auto`, title: 'Annulation', tabindex: '-1' });
     document.body.append(f);
     warm.set(auction.id, f);
     setTimeout(() => { if (warm.get(auction.id) === f) { f.remove(); warm.delete(auction.id); } }, 15 * 60000);
   }
 
+  /** Annule une enchère depuis sa page de détail ; la confirmation du jeu est validée par frame-hook.js (adresse #wmx-auto). */
   async function cancelAuction(auction) {
     const f = warm.get(auction.id) || el('iframe', { class: 'wmx-sheet-frame', src: `/marketplace/${auction.id}#wmx-auto`, title: 'Annulation', tabindex: '-1' });
     if (!f.isConnected) document.body.append(f);
     try {
       const find = (re) => { try { return [...f.contentDocument.querySelectorAll('button')].find((b) => re.test(b.textContent)); } catch (_) { return null; } };
-      const btn = await waitFor(() => find(/Annuler et récupérer/i), 90000, 400);
-      if (!btn) return { error: 'Annulation impossible : bouton introuvable (enchère déjà misée ou terminée ?).' };
-      // L'utilisateur a déjà décidé en cliquant sur ⚡ : la confirmation du jeu (alerte du navigateur) répond « oui »
-      // d'elle-même, sans second clic. Réglé juste avant le clic, dans la page d'annulation uniquement.
-      // L'extension vit dans un monde JavaScript isolé : modifier `confirm` d'ici ne change pas celui de la page.
-      // On injecte donc un petit script DANS la page du cadre (monde principal) avant de cliquer.
-      try {
-        const d = f.contentDocument;
-        const s = d.createElement('script');
-        s.textContent = 'window.confirm=function(){return true};window.alert=function(){}';
-        d.head.append(s);
-        s.remove();
-      } catch (_) { /* page non accessible */ }
+      const btn = await waitFor(() => find(/Annuler et récupérer/i), 90000, 300);
+      if (!btn) return { error: 'bouton d’annulation introuvable (enchère déjà misée ou terminée ?)' };
       btn.click();
-      // Une confirmation peut s'afficher : on la valide comme le ferait l'utilisateur.
-      const confirm = await waitFor(() => find(/^(Confirmer|Oui|Valider|Annuler la vente|Annuler l.enchère)/i), 2500, 150);
+      const confirm = await waitFor(() => find(/^(Confirmer|Oui|Valider|Annuler la vente|Annuler l.enchère)/i), 2000, 120);
       confirm?.click();
       return { ok: true };
     } finally {
-      await sleep(600);
+      await sleep(500);
       f.remove();
       warm.delete(auction.id);
     }
   }
 
-  async function launch(item) {
+  // --- Traitement d'un élément de la file ------------------------------------------------------
+  async function doLaunch(item) {
     const c = cfg();
-    S.busy = true; notify();
+    await refresh();
+    if (S.selling.has(item.card_id)) return { skipped: true };
+    if (S.selling.size >= S.max) return { limit: true };
+    let p = WMX.prices.get(item.card_id, item.rarity);
+    if (!p) { await WMX.prices.fetchOne(item.card_id); p = WMX.prices.get(item.card_id, item.rarity); }
+    if (!p) return { error: 'prix introuvable' };
+    const price = startPrice(p);
+    let res = await driveForm(item, price, c.dur);
+    if (!res.ok && !res.fatal) { await sleep(3000); res = await driveForm(item, price, c.dur); } // un nouvel essai
+    if (!res.ok) return { error: res.error };
+    await sleep(600);
+    await refresh();
+    return S.selling.has(item.card_id) ? { ok: true, price } : { error: 'enchère non confirmée par le jeu' };
+  }
+
+  async function doCancel(item) {
+    await refresh();
+    const a = S.selling.get(item.card_id);
+    if (!a) return { skipped: true };
+    const res = await cancelAuction(a);
+    if (!res.ok) return { error: res.error };
+    await sleep(800);
+    await refresh();
+    return S.selling.has(item.card_id) ? { error: 'le jeu n’a pas annulé l’enchère (déjà misée ?)' } : { ok: true };
+  }
+
+  // --- Pastille de progression (visible sur toutes les pages) -----------------------------------
+  function updateChip() {
+    let c = document.querySelector('.wmx-qchip');
+    if (!S.queue.length && !S.running) { c?.remove(); return; }
+    if (!c) {
+      c = el('div', { class: 'wmx-qchip' }, el('span', { class: 'wmx-qtext' }), el('button', { class: 'wmx-qclear', onclick: clearQueue }, 'Vider la file'));
+      document.body.append(c);
+    }
+    const cur = S.current ? ` · ${S.current.type === 'launch' ? 'mise en vente' : 'annulation'} : ${S.current.item.title}` : '';
+    c.querySelector('.wmx-qtext').textContent = `⚡ Enchères ${S.batch.done}/${S.batch.total}${cur}`;
+  }
+
+  function clearQueue() {
+    S.queue = S.queue.filter((o) => o === S.current); // seul l'élément en cours de traitement ne peut pas être retiré
+    S.batch.total = S.batch.done + S.queue.length;
+    persist(); notify(); updateChip();
+  }
+
+  async function process() {
+    if (S.running) return;
+    S.running = true;
+    notify();
     try {
-      WMX.toast(`Préparation de l’enchère : ${item.title}…`, 90000);
-      let p = WMX.prices.get(item.card_id, item.rarity);
-      if (!p) { await WMX.prices.fetchOne(item.card_id); p = WMX.prices.get(item.card_id, item.rarity); }
-      if (!p) return WMX.toast('Prix introuvable pour cette carte : aucune enchère lancée.');
-      const price = startPrice(p);
-      const res = await WMX.sheet.exclusive(() => driveForm(item, price, c.dur));
-      if (!res.ok) return WMX.toast(res.error, 7000);
-      await sleep(1500);
-      await refresh();
-      const a = S.selling.get(item.card_id);
-      if (!a) return WMX.toast('L’enchère n’a pas pu être confirmée : vérifiez sur le Marché.', 7000);
-      prewarm(a); // charge déjà la page d'annulation en arrière-plan
-      const minutes = Math.round((new Date(a.end_at) - Date.now()) / 60000);
-      const off = MINUTES[c.dur] && Math.abs(minutes - MINUTES[c.dur]) > 3 ? ` (durée réelle : ${minutes} min)` : '';
-      WMX.toast(`Enchère lancée : ${item.title} à ${a.base_amount} W pour ${c.dur}${off}. Recliquez sur ⚡ pour l’annuler.`, 7000);
+      while (S.queue.length) {
+        const op = S.queue[0];
+        S.current = op;
+        updateChip(); notify();
+        let res;
+        try { res = op.type === 'launch' ? await doLaunch(op.item) : await doCancel(op.item); } catch (e) { res = { error: String(e?.message || e) }; }
+        S.queue = S.queue.filter((o) => o !== op);
+        S.current = null;
+        S.batch.done += 1;
+        if (res.ok) S.batch.ok += 1;
+        else if (res.limit) { // plus de place : on arrête les mises en vente restantes
+          const rest = S.queue.filter((o) => o.type === 'launch').length + 1;
+          S.queue = S.queue.filter((o) => o.type !== 'launch');
+          S.batch.failed.push(`${rest} carte${rest > 1 ? 's' : ''} non lancée${rest > 1 ? 's' : ''} (limite de ${S.max} enchères)`);
+          S.batch.total = S.batch.done + S.queue.length;
+        } else if (res.error) S.batch.failed.push(`${op.item.title} : ${res.error}`);
+        persist(); updateChip(); notify();
+      }
+      const b = S.batch;
+      if (b.total > 1 || b.failed.length) {
+        WMX.toast(`File terminée : ${b.ok} réussie${b.ok > 1 ? 's' : ''}${b.failed.length ? ` · ${b.failed.length} à vérifier (${b.failed.slice(0, 2).join(' ; ')})` : ''}.`, 9000);
+      } else if (b.ok) {
+        const last = [...S.selling.values()].at(-1);
+        WMX.toast(last ? 'Enchère lancée. Recliquez sur ⚡ pour l’annuler.' : 'Terminé.', 5000);
+      }
+      const lastLaunched = S.lastLaunched && S.selling.get(S.lastLaunched);
+      if (lastLaunched) prewarm(lastLaunched); // prépare l'annulation éventuelle de la dernière enchère lancée
     } finally {
-      S.busy = false; notify();
+      S.running = false;
+      S.current = null;
+      S.batch = { done: 0, total: 0, ok: 0, failed: [] };
+      updateChip(); notify();
     }
   }
 
-  async function cancel(item) {
-    const a = S.selling.get(item.card_id);
-    S.busy = true; notify();
-    try {
-      WMX.toast(`Annulation de l’enchère : ${item.title}…`, 120000);
-      const res = await cancelAuction(a);
-      if (!res.ok) return WMX.toast(res.error, 7000);
-      await sleep(1500);
-      await refresh();
-      WMX.toast(S.selling.has(item.card_id) ? 'Le jeu n’a pas annulé l’enchère (déjà misée ?).' : `Enchère annulée : ${item.title} est de retour dans votre collection.`, 7000);
-    } finally {
-      S.busy = false; notify();
-    }
+  function enqueue(op) {
+    if (!S.running && !S.queue.length) S.batch = { done: 0, total: 0, ok: 0, failed: [] };
+    S.queue.push(op);
+    S.batch.total += 1;
+    if (op.type === 'launch') S.lastLaunched = op.item.card_id;
+    persist(); updateChip(); notify();
+    process();
   }
+
+  const stateOf = (cardId) => {
+    if (S.current?.item.card_id === cardId) return S.current.type === 'launch' ? 'working' : 'cancelling';
+    const q = S.queue.find((o) => o.item.card_id === cardId);
+    if (q) return q.type === 'launch' ? 'queued' : 'cancelling';
+    return S.selling.has(cardId) ? 'live' : 'idle';
+  };
 
   WMX.quick = {
     refresh,
     onChange(cb) { listeners.add(cb); return () => listeners.delete(cb); },
-    isBusy: () => S.busy,
+    isRunning: () => S.running || S.queue.length > 0,
+    stateOf,
     selling: (cardId) => S.selling.get(cardId) || null,
     count: () => S.selling.size,
+    queued: () => S.queue.filter((o) => o.type === 'launch').length,
     max: () => S.max,
     /** Texte de l'infobulle du bouton ⚡ d'une carte. */
     hint(item) {
+      const st = stateOf(item.card_id);
+      if (st === 'queued') return 'En file d’attente : sera mise en vente automatiquement (recliquez pour la retirer de la file)';
+      if (st === 'working') return 'Mise en vente en cours…';
+      if (st === 'cancelling') return 'Annulation en cours…';
       const a = S.selling.get(item.card_id);
       if (a) return `En vente à ${a.base_amount} W${a.current_bid ? ` (mise actuelle ${a.current_bid} W)` : ''} : cliquez pour annuler`;
       if (item.starred) return 'Carte favorite : verrouillée, impossible de la vendre';
       const c = cfg();
       const p = WMX.prices.get(item.card_id, item.rarity);
-      return p ? `Enchère rapide : ${startPrice(p)} W pendant ${c.dur} (moyenne ${Math.round(p.avg)} W × ${c.coef})` : 'Enchère rapide (le prix sera chargé au clic)';
+      return p ? `Enchère rapide : ${startPrice(p)} W pendant ${c.dur} (moyenne ${Math.round(p.avg)} W × ${c.coef})` : 'Enchère rapide (le prix sera chargé automatiquement)';
     },
-    /** Un clic lance l'enchère ; un second clic l'annule. */
-    async toggle(item) {
-      if (S.busy) return WMX.toast('Une opération d’enchère est déjà en cours…');
-      if (S.selling.has(item.card_id)) return cancel(item);
+    /** Un clic met en file ; sur une carte en file il la retire ; sur une carte en vente il annule l'enchère. */
+    toggle(item) {
+      const id = item.card_id;
+      const st = stateOf(id);
+      if (st === 'working' || st === 'cancelling') return WMX.toast('Cette carte est en cours de traitement…');
+      if (st === 'queued') {
+        S.queue = S.queue.filter((o) => !(o.item.card_id === id && o.type === 'launch'));
+        S.batch.total = Math.max(S.batch.done, S.batch.total - 1);
+        persist(); updateChip(); notify();
+        return undefined;
+      }
+      if (st === 'live') return enqueue({ type: 'cancel', item: slim(item) });
       if (item.starred) return WMX.toast('Carte favorite : le jeu la verrouille, impossible de la vendre.');
-      if (S.selling.size >= S.max) return WMX.toast(`Limite de ${S.max} enchères actives atteinte.`);
-      return launch(item);
+      if (S.selling.size + WMX.quick.queued() >= S.max) return WMX.toast(`Limite de ${S.max} enchères actives : ${S.selling.size} en vente, ${WMX.quick.queued()} en file.`);
+      return enqueue({ type: 'launch', item: slim(item) });
     },
   };
+
+  // Reprise : une file mémorisée (page rechargée en cours de route) repart toute seule.
+  (async () => {
+    const q = await WMX.store.get('quickQueue', []);
+    if (!q.length) return;
+    S.queue = q.map((o) => ({ type: o.type, item: o.item }));
+    S.batch = { done: 0, total: q.length, ok: 0, failed: [] };
+    updateChip();
+    await sleep(4000); // laisse les réglages et les prix se charger
+    await WMX.prices.load();
+    process();
+  })();
 })();

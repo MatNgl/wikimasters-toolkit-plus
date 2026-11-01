@@ -63,7 +63,7 @@
     let remNote = '';
     const grid = el('div', { class: 'wmx-grid' });
     // Cartes tirées mais pas encore vues : conservées si la page du jeu se recharge en cours de route.
-    const cont = el('button', { class: 'wmx-btn', disabled: '', onclick: () => { WMX.store.set('pendingCards', []); WMX.releaseCardSheets?.(); overlay.remove(); } }, 'Continuer');
+    const cont = el('button', { class: 'wmx-btn', disabled: '', onclick: () => { WMX.store.set('pendingCards', []); overlay.remove(); } }, 'Continuer');
     const skipBtn = el('button', { class: 'wmx-btn wmx-btn--ghost', onclick: () => { skip = true; } }, 'Passer');
     const overlay = el('div', { class: 'wmx-overlay' }, title, remaining, grid, el('div', { class: 'wmx-actions' }, skipBtn, cont));
     document.body.append(overlay);

@@ -1,13 +1,18 @@
 // Fiche d'une carte SANS quitter l'écran : on charge la Collection du jeu dans un cadre invisible (même origine),
 // on y cherche la carte et on y ouvre la VRAIE fiche du jeu (étiquettes, mise aux enchères, défausse…), qu'on affiche
-// seule par-dessus l'écran en cours. Le même cadre sert à l'enchère rapide (voir quick-auction.js), sans l'afficher.
-// Rien n'est envoyé par l'extension elle-même : elle tape dans la recherche du jeu et clique, comme l'utilisateur.
+// seule par-dessus l'écran en cours. Rien n'est envoyé par l'extension : elle tape dans la recherche du jeu et clique.
+//
+// Deux cadres indépendants, pour que l'un ne retarde jamais l'autre :
+//   « view » : affichage des fiches (doit rester instantané) ;
+//   « work » : automatisation des enchères rapides (file d'attente, voir quick-auction.js).
+// Chargés une seule fois (≈ 20 s à froid), puis gardés prêts jusqu'à 15 min sans utilisation.
 (() => {
   const { el, sleep, waitFor } = WMX.dom;
-  let frame = null;
-  let ready = null;
+  const IDLE_MS = 15 * 60000;
+  const KINDS = ['view', 'work'];
+  const F = Object.fromEntries(KINDS.map((k) => [k, { frame: null, ready: null, chain: Promise.resolve() }]));
   let toastTimer = null;
-  let chain = Promise.resolve(); // une seule opération à la fois sur le cadre
+  let lastUse = Date.now();
 
   const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
 
@@ -23,22 +28,33 @@
 
   const searchBox = (d) => [...d.querySelectorAll('input')].find((i) => /recherch/i.test(i.placeholder || ''));
 
-  /** Charge (une seule fois) la Collection dans un cadre invisible. */
-  WMX.prepareCardSheets = function prepare() {
-    if (frame) return ready;
-    frame = el('iframe', { class: 'wmx-sheet-frame', src: '/collection', title: 'Fiche de carte', tabindex: '-1' });
-    document.body.append(frame);
-    ready = waitFor(() => {
-      try { const d = frame.contentDocument; return !!(d && searchBox(d)); } catch (_) { return false; }
-    }, 120000, 400).then((ok) => !!ok);
-    return ready;
+  /** Le cadre est vraiment prêt quand la LISTE de cartes du jeu est affichée (« Page 1 / N »), pas seulement la barre de recherche. */
+  const listReady = (frame) => {
+    try { const d = frame.contentDocument; return !!(d && searchBox(d) && /Page \d+\s*\/\s*\d+/.test(d.body.innerText)); } catch (_) { return false; }
   };
 
-  /** Libère le cadre (la Collection chargée est lourde). */
-  WMX.releaseCardSheets = function release() {
-    frame?.remove();
-    frame = null; ready = null;
+  /** Charge (une seule fois) la Collection dans un cadre invisible. */
+  WMX.prepareCardSheets = function prepare(kind = 'view') {
+    lastUse = Date.now();
+    const s = F[kind];
+    if (s.frame) return s.ready;
+    s.frame = el('iframe', { class: `wmx-sheet-frame wmx-${kind}`, src: '/collection', title: 'Fiche de carte', tabindex: '-1' });
+    document.body.append(s.frame);
+    const frame = s.frame;
+    s.ready = waitFor(() => listReady(frame), 180000, 400).then((ok) => !!ok);
+    return s.ready;
   };
+
+  /** Libère un cadre (ou tous) : la Collection chargée est lourde. */
+  WMX.releaseCardSheets = function release(kind) {
+    for (const k of kind ? [kind] : KINDS) { F[k].frame?.remove(); F[k].frame = null; F[k].ready = null; }
+  };
+
+  // Les cadres inutilisés depuis 15 min sont libérés.
+  setInterval(() => {
+    if (!WMX.alive()) return;
+    if (Date.now() - lastUse > IDLE_MS && !F.view.frame?.classList.contains('wmx-on') && !WMX.quick?.isRunning?.()) WMX.releaseCardSheets();
+  }, 60000);
 
   /** Saisie compatible React puis Entrée, comme un utilisateur. */
   function search(d, w, text) {
@@ -79,8 +95,9 @@
   }
 
   /** Ferme la fiche du jeu comme le ferait l'utilisateur : bouton « Fermer », sinon touche Échap dans le cadre. */
-  function closeSheet() {
+  function closeSheet(kind = 'view') {
     try {
+      const frame = F[kind].frame;
       const d = frame.contentDocument;
       const w = frame.contentWindow;
       const root = sheetRoot(d, w);
@@ -92,21 +109,25 @@
   }
   // Échap pressé dans la page (et non dans le cadre) ferme aussi la fiche affichée.
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && frame?.classList.contains('wmx-on')) { e.stopPropagation(); closeSheet(); }
+    if (e.key === 'Escape' && F.view.frame?.classList.contains('wmx-on')) { e.stopPropagation(); closeSheet('view'); }
   }, true);
 
   /** Cherche la carte dans le cadre et ouvre sa fiche (sans l'afficher). Renvoie { d, w, root } ou { error }. */
-  async function openInFrame(card) {
-    const ok = await WMX.prepareCardSheets();
+  async function openInFrame(card, kind = 'view') {
+    lastUse = Date.now();
+    const ok = await WMX.prepareCardSheets(kind);
     if (!ok) return { error: 'frame' };
+    const frame = F[kind].frame;
+    if (!frame) return { error: 'frame' };
     const d = frame.contentDocument;
     const w = frame.contentWindow;
     search(d, w, card.wikipedia_title);
-    const tile = await waitFor(() => findTile(d, card), 12000, 250);
+    // La recherche relance un chargement : on laisse la liste se mettre à jour, puis on repère la carte.
+    const tile = await waitFor(() => findTile(d, card), 15000, 150);
     if (!tile) return { error: 'notfound' };
-    await sleep(250);
+    await sleep(120);
     tile.click();
-    const root = await waitFor(() => sheetRoot(d, w), 6000, 100);
+    const root = await waitFor(() => sheetRoot(d, w), 6000, 80);
     if (!root) return { error: 'nosheet' };
     return { d, w, root };
   }
@@ -114,10 +135,11 @@
   WMX.sheet = {
     openInFrame,
     closeSheet,
-    /** Exécute `fn` quand le cadre est libre (affichage de fiche et enchère rapide ne se mélangent pas). */
-    exclusive(fn) {
-      const run = chain.then(fn, fn);
-      chain = run.catch(() => {});
+    /** Exécute `fn` quand le cadre `kind` est libre (les opérations d'un même cadre ne se mélangent pas). */
+    exclusive(fn, kind = 'view') {
+      const s = F[kind];
+      const run = s.chain.then(fn, fn);
+      s.chain = run.catch(() => {});
       return run;
     },
   };
@@ -131,10 +153,15 @@
   /** Affiche la fiche du jeu par-dessus l'écran en cours. */
   WMX.openCardDetail = function openCardDetail(card) {
     return WMX.sheet.exclusive(async () => {
-      toast('Chargement de la fiche…', 60000);
-      const r = await openInFrame(card);
+      // Premier chargement à froid : on l'explique au lieu de laisser croire à un blocage.
+      const cold = !F.view.frame;
+      const slow = setTimeout(() => toast(cold ? 'Préparation de la fiche… la première ouverture charge la collection du jeu (jusqu’à ~30 s).' : 'Chargement de la fiche…', 90000), cold ? 600 : 1500);
+      let r;
+      try { r = await openInFrame(card, 'view'); } finally { clearTimeout(slow); }
+      toast('');
       if (r.error) return toast(ERRORS[r.error] || 'Fiche indisponible.');
       const { d, w, root } = r;
+      const frame = F.view.frame;
 
       // Seule la fiche reste visible ; le reste du cadre devient invisible et transparent.
       if (!d.getElementById('wmx-sheet-style')) {
@@ -146,16 +173,15 @@
       root.classList.add('wmx-keep');
       frame.classList.add('wmx-on');
       w.focus();
-      toast('');
 
       // Fermeture de la fiche (croix, Échap, clic à côté) : on masque le cadre.
       await new Promise((resolve) => {
         const iv = setInterval(() => {
           let open = false;
-          try { open = !!(frame && sheetRoot(frame.contentDocument, frame.contentWindow)); } catch (_) { /* cadre libéré */ }
-          if (!open) { clearInterval(iv); frame?.classList.remove('wmx-on'); window.focus(); resolve(); }
-        }, 250);
+          try { open = !!(F.view.frame && sheetRoot(F.view.frame.contentDocument, F.view.frame.contentWindow)); } catch (_) { /* cadre libéré */ }
+          if (!open) { clearInterval(iv); F.view.frame?.classList.remove('wmx-on'); window.focus(); lastUse = Date.now(); resolve(); }
+        }, 200);
       });
-    });
+    }, 'view');
   };
 })();
