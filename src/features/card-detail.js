@@ -77,6 +77,23 @@
     return m || null;
   }
 
+  /** Ferme la fiche du jeu comme le ferait l'utilisateur : bouton ×, sinon touche Échap dans le cadre. */
+  function closeSheet() {
+    try {
+      const d = frame.contentDocument;
+      const w = frame.contentWindow;
+      const root = sheetRoot(d, w);
+      if (!root) return;
+      const x = [...root.querySelectorAll('button')].find((b) => /^[×✕x]$/i.test(b.textContent.trim()) || /fermer|close/i.test(b.getAttribute('aria-label') || ''));
+      if (x) x.click();
+      else for (const t of ['keydown', 'keyup']) d.dispatchEvent(new w.KeyboardEvent(t, { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true }));
+    } catch (_) { /* cadre libéré */ }
+  }
+  // Échap pressé dans la page (et non dans le cadre) ferme aussi la fiche.
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && frame?.classList.contains('wmx-on')) { e.stopPropagation(); closeSheet(); }
+  }, true);
+
   WMX.openCardDetail = async function openCardDetail(card) {
     if (busy) return;
     busy = true;

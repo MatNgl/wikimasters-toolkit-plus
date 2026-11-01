@@ -115,7 +115,7 @@ html.wmx-opening .wmx-cover { display: block; }
 /* Révélation, dans le style des cartes du jeu */
 .wmx-overlay { position: fixed; inset: 0; z-index: 10000; overflow: auto; padding: 20px 24px 28px; background: #050706f2; display: flex; flex-direction: column; align-items: center; gap: 12px; color: #eee; font-family: Outfit, system-ui, sans-serif; }
 .wmx-overlay.wmx-yield { visibility: hidden; pointer-events: none; }
-.wmx-sheet-frame { position: fixed; inset: 0; width: 100vw; height: 100vh; border: 0; z-index: 10001; background: transparent; opacity: 0; pointer-events: none; color-scheme: dark; }
+.wmx-sheet-frame { position: fixed; inset: 0; width: 100vw; height: 100vh; border: 0; z-index: 10001; background: transparent; opacity: 0; pointer-events: none; } /* surtout pas de color-scheme : un schéma différent de celui du jeu rendrait le fond du cadre opaque */
 .wmx-sheet-frame.wmx-on { opacity: 1; pointer-events: auto; }
 .wmx-toast { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 10002; padding: 9px 18px; border-radius: 999px; background: #0b1411f2; border: 1px solid #27493b; color: #e6efe9; font: 600 13px Outfit, system-ui, sans-serif; box-shadow: 0 10px 30px #000a; }
 .wmx-tile.flip { cursor: pointer; }
