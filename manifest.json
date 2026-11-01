@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WikiMasters Toolkit+",
-  "version": "0.2.4",
+  "version": "0.3.0",
   "description": "Ouverture groupée des paquets, statistiques, valeur des cartes, filtres et enchères rapides pour WikiMasters.",
   "permissions": [
     "storage"
@@ -39,6 +39,7 @@
         "src/features/settings-modal.js",
         "src/features/boosters.js",
         "src/features/prices.js",
+        "src/features/quick-auction.js",
         "src/features/collection-plus.js",
         "src/features/market.js",
         "src/content.js"
@@ -49,5 +50,5 @@
       "run_at": "document_idle"
     }
   ],
-  "version_name": "0.2.4 · fiche : fond et Échap"
+  "version_name": "0.3.0 · enchère rapide"
 }

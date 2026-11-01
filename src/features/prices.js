@@ -77,6 +77,18 @@
       const e = cache?.[cardId];
       return !!e && Date.now() - e.t < TTL;
     },
+    /** Charge le prix d'UNE carte tout de suite (enchère rapide), avec reprise si le jeu freine. */
+    async fetchOne(cardId) {
+      await this.load();
+      for (let i = 0; i < 5; i++) {
+        let r;
+        try { r = await fetchSummary(cardId); } catch (_) { r = { error: 0 }; }
+        if (r.limited) { await sleep((4 + i) * 1000); continue; }
+        if (r.summary) { cache[cardId] = { t: Date.now(), s: r.summary }; scheduleSave(); }
+        return r;
+      }
+      return { limited: true };
+    },
     /** Charge les prix de ces cartes (celles dont le prix est déjà à jour sont ignorées). */
     start(items) {
       const todo = items.filter((it) => !this.fresh(it.card_id));

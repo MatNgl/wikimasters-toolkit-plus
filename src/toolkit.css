@@ -170,6 +170,10 @@ html:not([data-wmx-route^="/collection"]) .wmx-launch, html:not([data-wmx-route^
 .wmx-ct-acts { position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; }
 .wmx-ct-acts i { font: 700 11px system-ui; font-style: normal; padding: 2px 6px; border-radius: 7px; background: #000a; color: #ffd45a; }
 .wmx-ct-acts i.wmx-ct-n { color: #fff; }
+.wmx-bolt { width: 24px; height: 24px; padding: 0; border-radius: 7px; border: 1px solid #ffffff30; background: #000a; color: #fff; font-size: 13px; line-height: 1; cursor: pointer; }
+.wmx-bolt:hover:not(:disabled) { background: var(--acc,#2dd4a0); color: var(--acc-ink,#04130d); border-color: transparent; }
+.wmx-bolt.live { background: #facc15; color: #1a1300; border-color: transparent; box-shadow: 0 0 10px #facc1599; }
+.wmx-bolt:disabled { opacity: .35; cursor: default; }
 .wmx-ct-price { align-self: flex-start; font: 600 10px system-ui; padding: 2px 7px; border-radius: 7px; background: rgb(var(--rgb) / .2); color: rgb(var(--rgb)); border: 1px solid rgb(var(--rgb) / .4); }
 .wmx-cp-empty { grid-column: 1 / -1; color: #7f9a8d; padding: 24px 0; text-align: center; }
 .wmx-cp-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; color: #9db5a8; font-size: 12px; }
