@@ -5,7 +5,7 @@
   const { el, sleep } = WMX.dom;
   const R = WMX.RARITIES;
   const RANK = { L: 5, UR: 4, SR: 3, R: 2, PC: 1, C: 0 };
-  const PER_PAGE = [10, 25, 50, 100];
+  const PER_PAGE = [10, 25, 50, 100, 250];
   const SORTS = [['rarity', 'Rareté'], ['expensive', 'Plus chères'], ['cheap', 'Moins chères'], ['recent', 'Ajoutées récemment'], ['name', 'Nom (A → Z)']];
   const INV_TTL = 10 * 60 * 1000; // inventaire en cache : actualisé en arrière-plan au-delà de 10 min
 
@@ -283,15 +283,10 @@
 
     const tabs = ['cards', 'dash'].map((k) => {
       const b = el('button', { class: `wmx-tab${k === S.tab ? ' on' : ''}` }, k === 'cards' ? 'Cartes' : 'Tableau de bord');
-      b.addEventListener('click', () => {
-        S.tab = k;
-        tabs.forEach((x, i) => x.classList.toggle('on', ['cards', 'dash'][i] === k));
-        ui.cardsView.hidden = k !== 'cards';
-        ui.dash.hidden = k !== 'dash';
-        if (k === 'dash') renderDash();
-      });
+      b.addEventListener('click', () => setTab(k));
       return b;
     });
+    ui.tabs = tabs;
 
     ui.cardsView = el('div', { class: 'wmx-cards-view' },
       el('div', { class: 'wmx-cp-tools' }, ui.q, ui.per, ui.sort, ui.tag,
@@ -330,15 +325,25 @@
     });
   }
 
+  function setTab(k) {
+    S.tab = k;
+    ui.tabs?.forEach((x, i) => x.classList.toggle('on', ['cards', 'dash'][i] === k));
+    if (ui.cardsView) ui.cardsView.hidden = k !== 'cards';
+    if (ui.dash) ui.dash.hidden = k !== 'dash';
+    if (k === 'dash') renderDash();
+    markNav();
+  }
+
   const place = () => { if (overlay) overlay.style.left = `${Math.round(WMX.dom.sidebarRight())}px`; };
 
   function close() {
     if (!overlay) return;
     overlay.hidden = true;
     WMX.releaseCardSheets?.();
+    markNav();
   }
 
-  async function open() {
+  async function open(tab = 'cards') {
     const first = !overlay;
     if (first) {
       const prefs = await WMX.store.get('cplusPrefs', {});
@@ -348,6 +353,7 @@
     }
     overlay.hidden = false;
     place();
+    setTab(tab);
     WMX.prepareCardSheets?.(); // fiche du jeu prête au premier clic
     WMX.quick?.refresh();      // quelles cartes sont déjà en vente
     await WMX.prices.load();
@@ -359,11 +365,55 @@
     } else refresh();
   }
 
+  // --- Entrées « Collection+ » et « Tableau de bord » dans la barre latérale du jeu ----------------
+  const ICONS = {
+    cards: '<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>',
+    dash: '<path d="M21 12c.552 0 1.005-.449.95-.998a10 10 0 0 0-8.953-8.951c-.55-.055-.998.398-.998.95v8a1 1 0 0 0 1 1z"/><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/>',
+  };
+
+  function markNav() {
+    document.querySelectorAll('[data-wmx-nav]').forEach((a) => {
+      const on = !!overlay && !overlay.hidden && a.dataset.wmxNav === S.tab;
+      a.classList.toggle('wmx-nav-active', on);
+    });
+  }
+
+  function mountNav() {
+    const nav = [...document.querySelectorAll('nav')].find((n) => n.getBoundingClientRect().width > 100);
+    const coll = nav?.querySelector('a[href="/collection"]');
+    if (!nav || !coll || nav.querySelector('[data-wmx-nav]')) return;
+    const tpl = nav.querySelector('a[href="/trades"]') || coll; // lien inactif : même gabarit, sans l'état « actif »
+    const make = (key, label, tab) => {
+      const a = tpl.cloneNode(true);
+      a.removeAttribute('href');
+      a.setAttribute('role', 'button');
+      a.setAttribute('tabindex', '0');
+      a.className = a.className.replace(/bg-\[var\(--color-accent\)\]\/10|text-\[var\(--color-accent\)\]/g, '');
+      a.classList.add('wmx-nav-item');
+      a.dataset.wmxNav = key;
+      const svg = a.querySelector('svg');
+      if (svg) svg.innerHTML = ICONS[key];
+      // On garde l'icône du gabarit, on remplace son libellé (nœud de texte) et on ajoute l'étiquette « ext ».
+      const iconWrap = a.querySelector('span');
+      a.replaceChildren(...(iconWrap ? [iconWrap] : []), label, el('i', { class: 'wmx-nav-tag' }, 'ext'));
+      const go = (e) => { e.preventDefault(); e.stopPropagation(); open(tab); };
+      a.addEventListener('click', go);
+      a.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') go(e); });
+      return a;
+    };
+    coll.after(make('cards', 'Collection+', 'cards'), make('dash', 'Tableau de bord', 'dash'));
+    markNav();
+  }
+
   WMX.register({
     name: 'collection-plus',
-    match: /^\/collection/,
     init() {
-      document.body.append(el('button', { class: 'wmx-launch', onclick: open }, el('span', {}, '▦'), 'Collection+'));
+      mountNav();
+      // Le jeu redessine sa barre latérale : on remet nos entrées si elles disparaissent.
+      let timer = null;
+      new MutationObserver(() => { clearTimeout(timer); timer = setTimeout(mountNav, 250); }).observe(document.body, { childList: true, subtree: true });
+      // Changer de page du jeu referme Collection+.
+      new MutationObserver(() => close()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-wmx-route'] });
     },
   });
 })();
