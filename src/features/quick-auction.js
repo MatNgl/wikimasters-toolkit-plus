@@ -88,6 +88,9 @@
       const find = (re) => { try { return [...f.contentDocument.querySelectorAll('button')].find((b) => re.test(b.textContent)); } catch (_) { return null; } };
       const btn = await waitFor(() => find(/Annuler et récupérer/i), 90000, 400);
       if (!btn) return { error: 'Annulation impossible : bouton introuvable (enchère déjà misée ou terminée ?).' };
+      // L'utilisateur a déjà décidé en cliquant sur ⚡ : la confirmation du jeu (alerte du navigateur) répond « oui »
+      // d'elle-même, sans second clic. Réglé juste avant le clic, dans la page d'annulation uniquement.
+      try { f.contentWindow.confirm = () => true; f.contentWindow.alert = () => {}; } catch (_) { /* page non accessible */ }
       btn.click();
       // Une confirmation peut s'afficher : on la valide comme le ferait l'utilisateur.
       const confirm = await waitFor(() => find(/^(Confirmer|Oui|Valider|Annuler la vente|Annuler l.enchère)/i), 2500, 150);
