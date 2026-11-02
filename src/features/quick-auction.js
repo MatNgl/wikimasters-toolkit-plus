@@ -258,15 +258,42 @@
   }
 
   // --- Pastille de progression (visible sur toutes les pages) -----------------------------------
+  const OP_LABEL = { launch: 'Mise en vente', cancel: 'Annulation', favorite: 'Favori', tag: 'Étiquette', discard: 'Défausse' };
+  const opLabel = (op) => (op.type === 'tag' ? `Étiquette « ${op.item.tag} » ${op.item.add ? '+' : '−'}` : op.type === 'favorite' && op.item.want ? (op.item.want === 'on' ? 'Mise en favori' : 'Retrait du favori') : OP_LABEL[op.type]);
+
+  /** Retire UNE opération en attente de la file (celle en cours de traitement ne peut pas être interrompue). */
+  function removeOp(op) {
+    if (op === S.current) return;
+    S.queue = S.queue.filter((o) => o !== op);
+    S.batch.total = Math.max(S.batch.done, S.batch.total - 1);
+    persist(); notify(); updateChip();
+  }
+
+  /**
+   * Pastille de la file : discrète dans le coin tant qu'on ne la survole pas ; au survol elle s'ouvre sur la liste des opérations
+   * (en cours / en attente) avec de quoi retirer chacune, ou vider la file. Elle se referme quand la souris en sort.
+   */
   function updateChip() {
     let c = document.querySelector('.wmx-qchip');
     if (!S.queue.length && !S.running) { c?.remove(); return; }
     if (!c) {
-      c = el('div', { class: 'wmx-qchip' }, el('span', { class: 'wmx-qtext' }), el('button', { class: 'wmx-qclear', onclick: clearQueue }, 'Vider la file'));
+      c = el('div', { class: 'wmx-qchip' },
+        el('div', { class: 'wmx-qbar' }, el('span', { class: 'wmx-qtext' }), el('button', { class: 'wmx-qclear', onclick: clearQueue }, 'Vider la file')),
+        el('div', { class: 'wmx-qlist' }, el('div', { class: 'wmx-qrows' })));
       document.body.append(c);
     }
-    const cur = S.current ? ` · ${{ launch: 'mise en vente', cancel: 'annulation', favorite: 'favori', tag: 'étiquette', discard: 'défausse' }[S.current.type]} : ${S.current.item.title}` : '';
+    const cur = S.current ? ` · ${(OP_LABEL[S.current.type] || '').toLowerCase()} : ${S.current.item.title}` : '';
     c.querySelector('.wmx-qtext').textContent = `⚡ File ${S.batch.done}/${S.batch.total}${cur}`;
+    c.querySelector('.wmx-qrows').replaceChildren(...S.queue.map((op) => {
+      const running = op === S.current;
+      const r = op.item.rarity;
+      return el('div', { class: `wmx-qrow${running ? ' cur' : ''}` },
+        el('b', { style: `color:rgb(${WMX.RARITY_RGB?.[r] || '200 200 200'})` }, r || ''),
+        el('span', { class: 'wmx-qt', title: op.item.title }, op.item.title),
+        el('small', {}, `${opLabel(op)}${running ? ' · en cours' : ''}`),
+        running ? el('i', { class: 'wmx-qspin', title: 'En cours de traitement' })
+          : el('button', { class: 'wmx-qx', title: 'Retirer de la file', 'aria-label': 'Retirer de la file', onclick: () => removeOp(op) }, '×'));
+    }));
   }
 
   function clearQueue() {

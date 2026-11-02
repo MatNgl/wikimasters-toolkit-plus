@@ -336,3 +336,20 @@ test('enchères terminées : visibles 15 s puis retirées du tableau et du déco
   assert.match(w.document.querySelector('.wmx-dial').textContent, /1 mise/);
   env.close();
 });
+
+test('file d\'attente : liste des opérations au survol, retrait d\'une opération en attente', async () => {
+  const env = createEnv({ fetchImpl: async () => json({ selling: [], bidding: [], won: [{ winner_id: ME }], history: [] }) });
+  const { w, WMX } = env;
+  const items = ['A', 'B', 'C'].map((n, i) => ({ card_id: 'k' + i, title: 'Carte ' + n, rarity: 'R' }));
+  WMX.quick.bulk('favorite', items, { want: 'on' });
+  await sleep(400);
+  const rows = () => [...w.document.querySelectorAll('.wmx-qrow')];
+  assert.equal(rows().length, 3);
+  assert.ok(rows()[0].classList.contains('cur'), 'la première est en cours');
+  assert.equal(rows()[0].querySelector('.wmx-qx'), null, 'on ne retire pas l\'opération en cours');
+  rows()[1].querySelector('.wmx-qx').click();
+  await sleep(50);
+  assert.deepEqual(rows().map((r) => r.querySelector('.wmx-qt').textContent), ['Carte A', 'Carte C']);
+  assert.match(w.document.querySelector('.wmx-qtext').textContent, /File 0\/2/);
+  env.close();
+});

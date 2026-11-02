@@ -505,3 +505,22 @@ html:not([data-wmx-route^="/pulls"]) .wmx-panel, html:not([data-wmx-route^="/pul
 .wmx-hide-desc .wmx-sty h3 { -webkit-line-clamp: 3 !important; }
 .wmx-hide-stats .wmx-sty div[class*="border-t"] { display: none !important; }
 .wmx-hide-stats .wmx-sty > div[class*="top-[45%]"] { padding-bottom: 12px !important; }
+
+/* ===== File d'attente : discrète, s'ouvre au survol sur la liste des cartes (0.14.2) ===== */
+.wmx-qchip { flex-direction: column; align-items: stretch; gap: 0; padding: 0; max-width: min(460px, 90vw); transition: border-radius .25s ease, box-shadow .25s ease; }
+.wmx-qbar { display: flex; align-items: center; gap: 12px; padding: 9px 14px 9px 16px; min-width: 0; }
+.wmx-qchip .wmx-qclear { display: none; }
+.wmx-qchip:hover { border-radius: 18px; box-shadow: 0 16px 44px #000c, 0 0 0 1px #2dd4a044; }
+.wmx-qchip:hover .wmx-qclear { display: inline-block; }
+.wmx-qlist { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .28s ease; }
+.wmx-qchip:hover .wmx-qlist { grid-template-rows: 1fr; }
+.wmx-qrows { min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 2px; padding: 0 8px; }
+.wmx-qchip:hover .wmx-qrows { overflow-y: auto; max-height: min(46vh, 340px); padding: 4px 8px 10px; border-top: 1px solid #ffffff12; }
+.wmx-qrow { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto 26px; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 10px; font-size: 12px; }
+.wmx-qrow:hover { background: #ffffff0a; }
+.wmx-qrow.cur { background: rgb(45 212 160 / .1); }
+.wmx-qt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wmx-qrow small { color: #9db5a8; font-size: 11px; white-space: nowrap; }
+.wmx-qx { width: 24px; height: 24px; padding: 0; border-radius: 8px; border: 1px solid #ffffff20; background: transparent; color: #cbd5d0; font-size: 15px; line-height: 1; cursor: pointer; transition: all .15s ease; }
+.wmx-qx:hover { background: #ef4444; border-color: #ef4444; color: #fff; }
+.wmx-qspin { width: 14px; height: 14px; margin: 0 auto; border-radius: 50%; border: 2px solid #ffffff22; border-top-color: var(--acc,#2dd4a0); animation: wmx-spin .8s linear infinite; }
