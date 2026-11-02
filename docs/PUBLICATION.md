@@ -27,8 +27,8 @@ Essai avant envoi : `chrome://extensions` → mode développeur → « Charger l
 
 ## 4. Fiche du store (à copier)
 **Nom** : WikiMasters Toolkit+
-**Résumé (132 car. max)** : Prix du marché, valeur de la collection, enchères et outils pour WikiMasters. Extension non officielle.
-**Description** :
+**Résumé (132 car. max, repris du manifest)** : Prix du marché, ouverture de paquets en un clic, enchères automatiques et style de cartes. Extension non officielle.
+**Description** : texte final dans [STORE-DESCRIPTION.txt](STORE-DESCRIPTION.txt) (celui ci-dessous est l'ancien brouillon).
 > ⚠ Extension non officielle, non affiliée à WikiMasters ni à Wikipédia. Certaines fonctions (ouverture automatique des paquets, mises automatiques, enchères rapides ⚡, assistant de vente) ne sont pas approuvées par WikiMasters, dont les règles interdisent les outils qui jouent à votre place. Elles sont désactivées par défaut ou ne se déclenchent que sur votre demande : vous les utilisez sous votre propre responsabilité, avec modération.
 >
 > Enrichit le jeu WikiMasters sans le remplacer :

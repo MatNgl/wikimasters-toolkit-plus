@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "WikiMasters Toolkit+",
   "version": "0.19.1",
-  "description": "Prix du marché, valeur de la collection, enchères et outils pour WikiMasters. Extension non officielle.",
+  "description": "Prix du marché, ouverture de paquets en un clic, enchères automatiques et style de cartes. Extension non officielle.",
   "permissions": [
     "storage",
     "alarms"

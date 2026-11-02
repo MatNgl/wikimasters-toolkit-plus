@@ -1,0 +1,37 @@
+Ouvrez tous vos paquets d'un clic, voyez le VRAI PRIX de chaque carte et laissez l'extension enchérir à votre place.
+WikiMasters Toolkit+ ajoute au jeu tout ce qui manque : prix du marché, ouverture rapide, enchères automatiques et un nouveau style de carte. Extension non officielle (voir « À SAVOIR » en bas).
+
+PAQUETS
+• OUVERTURE DE PLUSIEURS PAQUETS À LA FOIS : « Tout ouvrir » en un clic
+• OUVERTURE AUTOMATIQUE : intervalle réglable, réserve de paquets, arrêt sur une belle carte, ouverture anticipée pour ne jamais bloquer la régénération du stock
+• ANIMATION D'OUVERTURE : les cartes se retournent, triées de la plus commune à la plus rare, avec une couronne sur les plus chères
+• VALEUR ESTIMÉE DU LOT affichée à la fin de l'ouverture
+• STATISTIQUES : répartition des raretés, valeur moyenne d'un paquet, export CSV
+
+PRIX ET COLLECTION
+• MOYENNE DES PRIX du marché sur chaque carte (collection, ouverture, marché, échanges)
+• VALEUR ESTIMÉE de toute votre collection, avec chargement des prix par rareté ou par étiquette
+• TABLEAU DE BORD : valeur par rareté, top 10 des cartes les plus chères, courbe dans le temps
+• NOUVEAU STYLE DE CARTE plein cadre (couleur de la rareté, vagues, reflet), appliqué partout dans le jeu et désactivable
+
+ENCHÈRES
+• VERDICT sous chaque enchère : bonne affaire, prix correct ou trop cher
+• « MISER LE MINIMUM » en un clic, avec file d'attente
+• SURENCHÈRE AUTOMATIQUE : dès qu'on vous dépasse ou quelques secondes avant la fin, avec un plafond fixe ou calculé sur la moyenne du marché
+• MISE EN ENCHÈRE EN UN CLIC (éclair) : prix de départ calculé à partir de la moyenne, durée au choix, file d'attente et annulation
+• ASSISTANT DE VENTE : garde des enchères actives avec les cartes portant l'étiquette de votre choix et remet en vente les invendues (désactivé par défaut)
+• BULLE DES ENCHÈRES : vos mises et vos ventes en direct, alertes quand on vous surenchérit ou que la fin approche
+• BÉNÉFICE OU PERTE affiché sur vos ventes
+
+ÉCHANGES
+• VALEUR de chaque offre : cartes, wikibidous et écart entre les deux côtés
+
+CONFIANCE
+• Vos données restent dans votre navigateur : rien n'est envoyé ailleurs
+• Aucun mot de passe ni identifiant n'est lu
+• Tout se règle dans les Paramètres, avec un journal d'activité pour voir ce que l'extension a fait
+
+À SAVOIR
+Cette extension est NON OFFICIELLE : elle est indépendante de WikiMasters et de Wikipédia. Certaines fonctions (ouverture automatique des paquets, mises et surenchères automatiques, mise en enchère en un clic, assistant de vente) ne sont PAS approuvées par WikiMasters, dont les règles interdisent les outils qui jouent à votre place. Elles sont désactivées par défaut ou ne se lancent que sur votre demande. Vous les utilisez sous votre propre responsabilité, avec modération.
+
+Politique de confidentialité : https://github.com/MatNgl/wikimasters-toolkit-plus/blob/main/docs/PRIVACY.md
