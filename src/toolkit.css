@@ -507,3 +507,8 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-sty-c::before { content: ''; position: absolute; left: 0; top: 22%; bottom: 22%; width: 4px; z-index: 44; border-radius: 0 4px 4px 0; background: linear-gradient(to bottom, transparent, rgb(var(--wmx-rgb)), transparent); box-shadow: 0 0 12px rgb(var(--wmx-rgb)); }
 .wmx-sty-c .wmx-sty-waves { opacity: .16; }
 .wmx-sty-c:hover .wmx-sty-sheen { animation-duration: 1.8s; mix-blend-mode: overlay; }
+
+/* ===== Bannière « extension mise à jour » (0.13.3) ===== */
+.wmx-stale { position: fixed; left: 50%; top: 14px; transform: translateX(-50%); z-index: 2147483200; display: flex; align-items: center; gap: 12px; padding: 10px 14px 10px 16px;
+  border-radius: 999px; background: #1b1405f2; border: 1px solid #f59e0b88; color: #fde68a; font: 600 13px Outfit, system-ui, sans-serif; box-shadow: 0 14px 40px #000b; animation: wmx-pre-pop .3s ease; }
+.wmx-stale .wmx-btn { padding: 7px 14px; border-radius: 999px; }

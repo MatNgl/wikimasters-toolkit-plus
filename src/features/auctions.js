@@ -69,16 +69,16 @@
   const RING = 2 * Math.PI * 30;
   function updatePill() {
     if (!S.pill) return;
-    const all = [...D.bidding, ...D.selling];
+    const all = [...liveBids(), ...liveSales()];
     const lefts = all.map(msLeft).filter((x) => x > 0);
     const nearest = lefts.length ? Math.min(...lefts) : null;
     const frac = nearest == null ? 0 : WMX.logic.ringFraction(nearest);
     S.dialRing.style.strokeDashoffset = String(RING * (1 - frac));
     S.dialRing.style.stroke = nearest == null ? '#3a4a43' : WMX.logic.ringColor(frac);
     const urgent = all.filter((x) => timeState(msLeft(x)) === 'urgent').length;
-    const outbid = D.bidding.filter((x) => !leading(x)).length;
-    S.dialBids.textContent = `${D.bidding.length} mise${D.bidding.length > 1 ? 's' : ''}`;
-    S.dialSales.textContent = `${D.selling.length} vente${D.selling.length > 1 ? 's' : ''}`;
+    const outbid = liveBids().filter((x) => !leading(x)).length;
+    S.dialBids.textContent = `${liveBids().length} mise${liveBids().length > 1 ? 's' : ''}`;
+    S.dialSales.textContent = `${liveSales().length} vente${liveSales().length > 1 ? 's' : ''}`;
     S.dialOut.hidden = !outbid; S.dialOut.textContent = String(outbid);
     S.dialOut.title = `${outbid} enchère${outbid > 1 ? 's' : ''} où vous êtes surenchéri`;
     S.dialWarn.hidden = !urgent; S.dialWarn.textContent = '⚠';
@@ -149,7 +149,8 @@
   function schedulePoll() {
     clearTimeout(S.timer);
     const fast = WMX.logic.autoPollMs(Object.entries(S.auto).map(([id, rule]) => ({ rule, msLeft: msLeftById(id) })));
-    const ms = fast || (S.bubbleOpen ? 8000 : 60000);
+    const nearEnd = [...D.bidding, ...D.selling].some((x) => msLeft(x) < 12000 && msLeft(x) > -GRACE_MS);
+    const ms = fast || (nearEnd ? 3000 : (S.bubbleOpen ? 8000 : 60000));
     S.timer = setTimeout(async () => {
       if (!WMX.alive()) return;
       if (!document.hidden || Object.keys(S.auto).length) await refresh(); // une mise automatique doit voir l'enchère même onglet masqué
@@ -466,9 +467,16 @@
   const column = (label, rows, empty) => el('div', { class: 'wmx-auc-col' }, el('h3', {}, `${label} (${rows.length})`),
     rows.length ? el('div', { class: 'wmx-auc-list' }, ...rows) : el('p', { class: 'wmx-cp-empty' }, empty));
 
+  /** Une enchère terminée reste 15 s à l'écran (« Terminée »), puis disparaît du tableau, sans attendre le règlement par le serveur. */
+  const GRACE_MS = 15000;
+  const shown = (a) => msLeft(a) > -GRACE_MS;
+  const liveBids = () => D.bidding.filter((x) => msLeft(x) > 0);
+  const liveSales = () => D.selling.filter((x) => msLeft(x) > 0);
+  const listSig = () => [...D.bidding, ...D.selling].filter(shown).map((x) => x.id).join();
+
   function content() {
-    const bids = [...D.bidding].sort((a, b) => msLeft(a) - msLeft(b)).map((a) => row(a, 'bid'));
-    const sells = [...D.selling].sort((a, b) => msLeft(a) - msLeft(b)).map((a) => row(a, 'sell'));
+    const bids = D.bidding.filter(shown).sort((a, b) => msLeft(a) - msLeft(b)).map((a) => row(a, 'bid'));
+    const sells = D.selling.filter(shown).sort((a, b) => msLeft(a) - msLeft(b)).map((a) => row(a, 'sell'));
     return [column('Mes mises', bids, 'Aucune mise en cours.'), column('Mes ventes', sells, 'Aucune vente en cours.')];
   }
 
@@ -496,7 +504,12 @@
       b.textContent = S.betting === a.id ? 'Mise en cours…' : leading(a) ? 'Vous menez' : (m ? `Surenchérir · ${fmt(m)} W` : 'Surenchérir');
       b.disabled = !!S.betting || leading(a) || msLeft(a) <= 0;
     }
-    if (D.loaded) { checkUrgent(); runAuto(); }
+    if (D.loaded) {
+      const sig = listSig();
+      if (S.listSig !== undefined && sig !== S.listSig) renderAll(); // une enchère vient de sortir du tableau
+      S.listSig = sig;
+      checkUrgent(); runAuto();
+    }
     updatePill();
     if (S.bubble) S.bubble.hidden = WMX.settings?.auctionBubble === false || !D.loaded;
   }

@@ -42,7 +42,7 @@ test('bulle des enchères : lignes, urgence, mise automatique et alerte', async 
   const urgent = auction('a1', { seller_id: 'other', current_bid: 5, current_bidder_id: ME, end_at: new Date(Date.now() + 90_000).toISOString() });
   const outbid = auction('a2', { seller_id: 'other', current_bid: 8, current_bidder_id: 'rival', end_at: inMin(30) });
   const sale = auction('s1', { current_bid: 12, current_bidder_id: 'x' });
-  const ended = auction('s2', { end_at: new Date(Date.now() - 60_000).toISOString() });
+  const ended = auction('s2', { end_at: new Date(Date.now() - 4_000).toISOString() });
   const payload = { selling: [sale, ended], bidding: [urgent, outbid], won: [{ winner_id: ME }], history: [] };
   const env = createEnv({ fetchImpl: async () => json(payload) });
   const { w, WMX } = env;
@@ -52,7 +52,7 @@ test('bulle des enchères : lignes, urgence, mise automatique et alerte', async 
   assert.equal(w.document.querySelector('.wmx-bubble').hidden, false);
   const pill = w.document.querySelector('.wmx-dial');
   assert.match(pill.textContent, /2 mises/);
-  assert.match(pill.textContent, /2 ventes/);
+  assert.match(pill.textContent, /1 vente/);
   assert.equal(pill.querySelector('.wmx-auc-warn').hidden, false, 'pastille ⚠ pour l\'enchère sous 2 min');
   assert.ok(pill.classList.contains('alert'));
   assert.notEqual(pill.querySelector('.wmx-dial-ring').style.stroke, '', 'anneau coloré selon le temps restant');
@@ -320,5 +320,19 @@ test('collection du jeu : prix et bouton ⚡ ajoutés sur les cartes, barre des 
   assert.equal(bolts.length, 2);
   assert.equal(bolts[0].disabled, false);
   assert.equal(bolts[1].disabled, true, 'carte favorite : enchère rapide verrouillée');
+  env.close();
+});
+
+test('enchères terminées : visibles 15 s puis retirées du tableau et du décompte', async () => {
+  const old = auction('o1', { seller_id: 'other', current_bid: 5, current_bidder_id: ME, end_at: new Date(Date.now() - 40_000).toISOString() });
+  const live = auction('o2', { seller_id: 'other', current_bid: 5, current_bidder_id: ME, end_at: inMin(30) });
+  const env = createEnv({ fetchImpl: async () => json({ selling: [], bidding: [old, live], won: [{ winner_id: ME }], history: [] }) });
+  const { w, WMX } = env;
+  for (const f of WMX.features) await f.init?.();
+  await sleep(3400);
+  w.document.querySelector('.wmx-dial').click();
+  await sleep(100);
+  assert.equal(w.document.querySelectorAll('.wmx-auc-row').length, 1, 'l\'enchère terminée depuis 40 s a disparu');
+  assert.match(w.document.querySelector('.wmx-dial').textContent, /1 mise/);
   env.close();
 });
