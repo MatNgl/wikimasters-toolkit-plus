@@ -144,12 +144,13 @@
       if (!flipped.length) { lot.textContent = ''; return; }
       let v = 0;
       let n = 0;
+      let none = 0; // prix chargé, mais aucune vente sur le marché pour cette rareté
       for (const t of flipped) {
         const p = WMX.prices.get(t._card.id, WMX.normRarity(t._card.rarity) || 'C');
-        if (p) { v += p.avg; n += 1; }
+        if (p) { v += p.avg; n += 1; } else if (WMX.prices.fresh(t._card.id)) none += 1;
       }
       const done = flipped.length === all.length;
-      lot.textContent = `${done ? 'Valeur estimée du lot' : 'Valeur des cartes révélées'} : ${Math.round(v).toLocaleString('fr-FR')} W · prix connus : ${n}/${flipped.length}`;
+      lot.textContent = `${done ? 'Valeur estimée du lot' : 'Valeur des cartes révélées'} : ${Math.round(v).toLocaleString('fr-FR')} W · prix connus : ${n}/${flipped.length}${none ? ` (+ ${none} sans vente sur le marché)` : ''}`;
     };
     let finished = false;
     let recorded = false;
