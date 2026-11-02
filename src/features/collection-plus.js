@@ -213,12 +213,12 @@
       h.status.textContent = statusText;
     }
     const st = WMX.prices.state();
-    const fresh = S.items.filter((it) => WMX.prices.fresh(it.card_id)).length;
-    const noSale = S.items.filter((it) => WMX.prices.fresh(it.card_id) && !price(it)).length; // prix récupéré, mais aucune vente pour cette rareté
+    const noSale = S.items.filter((it) => WMX.prices.fresh(it.card_id) && !price(it)).length; // prix demandé, mais aucune vente pour cette rareté
+    const loaded = t.priced + noSale; // cartes dont le prix est connu (moyenne existante ou « sans vente »)
     const info = st.running
       ? `Prix : ${fmt(st.done)} / ${fmt(st.total)}${st.wait ? ` · pause ${st.wait} s (limite du jeu)` : ''}${st.failed ? ` · ${st.failed} à réessayer` : ''}${st.paused ? ' · en pause' : ''}`
-      : `Prix récupérés : ${fmt(fresh)} / ${fmt(t.total)} (dont ${fmt(noSale)} sans vente) · valables 2 jours${st.failed ? ` · ${st.failed} à réessayer` : ''}`;
-    const pct = `${st.running && st.total ? (st.done / st.total) * 100 : (t.total ? (fresh / t.total) * 100 : 0)}%`;
+      : `Prix récupérés : ${fmt(loaded)} / ${fmt(t.total)} (dont ${fmt(noSale)} sans vente)${st.failed ? ` · ${st.failed} à réessayer` : ''}`;
+    const pct = `${st.running && st.total ? (st.done / st.total) * 100 : (t.total ? (loaded / t.total) * 100 : 0)}%`;
     for (const p of ui.priceBars) {
       p.info.textContent = info;
       p.bar.firstChild.style.width = pct;
@@ -293,10 +293,13 @@
   function priceAction() {
     const st = WMX.prices.state();
     if (st.running) { if (st.paused) WMX.prices.resume(); else WMX.prices.pause(); return; }
-    const todo = S.items.filter((it) => S.priceRar.has(it.rarity) && !WMX.prices.fresh(it.card_id))
+    // On ne recharge QUE les prix manquants : une moyenne déjà connue n'est jamais modifiée, et compte d'emblée dans la jauge.
+    const selected = S.items.filter((it) => S.priceRar.has(it.rarity));
+    const known = (it) => !!price(it) || WMX.prices.fresh(it.card_id);
+    const todo = selected.filter((it) => !known(it))
       .sort((a, b) => RANK[b.rarity] - RANK[a.rarity] || a.title.localeCompare(b.title, 'fr'));
-    if (!todo.length) { ui.priceBars.forEach((p) => { p.info.textContent = 'Les prix de ces raretés sont déjà à jour'; }); return; }
-    WMX.prices.start(todo);
+    if (!todo.length) { ui.priceBars.forEach((p) => { p.info.textContent = 'Les prix de ces raretés sont déjà tous connus'; }); return; }
+    WMX.prices.start(todo, { base: selected.length - todo.length, total: selected.length });
   }
 
   /** Bandeau propre à une page : titre, état, valeur, paramètres. Pas d'onglets ni de croix : on change de page par la barre latérale. */

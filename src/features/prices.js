@@ -7,7 +7,7 @@
 // rapide) servie avant la file « basse » (chargement par lots de Collection+).
 (() => {
   const { sleep } = WMX.dom;
-  const TTL = 48 * 3600 * 1000; // un prix est considéré à jour pendant 2 jours (évite de recharger pour rien)
+  const TTL = 48 * 3600 * 1000; // une réponse « sans vente » reste valable 2 jours ; une moyenne connue n'est jamais rechargée par lots
   const GAP_MS = 450;           // pause entre deux requêtes
   let cache = null;             // card_id -> { t, s: { RARETÉ: { average, count, latest } } }
   let saveTimer = null;
@@ -90,8 +90,9 @@
     return p;
   }
 
-  async function run(items, token) {
-    Object.assign(job, { running: true, paused: false, done: 0, total: items.length, failed: 0 });
+  async function run(items, token, opts = {}) {
+    // La jauge compte aussi les cartes dont le prix est déjà connu (opts.base) : elle part de là, sans les recharger.
+    Object.assign(job, { running: true, paused: false, done: opts.base || 0, total: opts.total || items.length, failed: 0 });
     emit();
     for (const it of items) {
       if (token !== job.token || !WMX.alive()) break;
@@ -137,11 +138,11 @@
       }
     },
     /** Charge les prix de ces cartes par lots (celles dont le prix est déjà à jour sont ignorées). */
-    start(items) {
-      const todo = items.filter((it) => !this.fresh(it.card_id));
+    /** Charge UNIQUEMENT les prix des cartes données (à l'appelant de n'y mettre que les prix manquants). */
+    start(items, opts = {}) {
       job.token += 1;
-      run(todo, job.token);
-      return todo.length;
+      run(items, job.token, opts);
+      return items.length;
     },
     pause() { job.paused = true; emit(); },
     resume() { job.paused = false; emit(); },
