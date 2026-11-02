@@ -194,6 +194,32 @@
   };
 
   /** Affiche la fiche du jeu par-dessus l'écran en cours. */
+  /**
+   * Aperçu immédiat pendant que la vraie fiche du jeu se charge (le jeu peut mettre 20 s et plus à répondre) : titre, rareté,
+   * illustration, et un état de chargement. Il n'apparaît qu'après 250 ms (rien à l'écran quand la fiche s'ouvre tout de suite)
+   * et se ferme par × / Échap / clic à côté : la fiche ne s'ouvre alors pas.
+   */
+  function showPreview(card, onCancel) {
+    let node = null;
+    const timer = setTimeout(() => {
+      const rar = WMX.normRarity(card.rarity) || 'C';
+      const art = el('div', { class: 'wmx-pre-art' });
+      const close = () => { onCancel(); remove(); };
+      node = el('div', { class: 'wmx-pre-back', onmousedown: (e) => { if (e.target === node) close(); } },
+        el('div', { class: 'wmx-pre', style: `--rgb:${WMX.RARITY_RGB?.[rar] || '160 175 168'}` },
+          el('button', { class: 'wmx-close', title: 'Annuler', onclick: close }, '×'),
+          art,
+          el('div', { class: 'wmx-pre-title' }, el('b', {}, rar), el('strong', {}, card.wikipedia_title || '?')),
+          el('div', { class: 'wmx-pre-load' }, el('i'), el('span', {}, 'Chargement de la fiche du jeu…'))));
+      document.body.append(node);
+      WMX.loadCardInfo?.(card).then((i) => { if (i?.img && node?.isConnected) WMX.dom.artLayers(i.img, art); });
+    }, 250);
+    const remove = () => { clearTimeout(timer); node?.remove(); node = null; };
+    return { remove, isOpen: () => !!node };
+  }
+  let preview = null;
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && preview?.isOpen()) { e.stopPropagation(); preview.cancel(); } }, true);
+
   const asked = new Set(); // cartes dont la fiche est demandée, en cours d'ouverture ou affichée
   let lastAsked = null;    // dernière carte cliquée : si on clique ailleurs pendant un chargement, c'est elle qui s'ouvre
   WMX.openCardDetail = function openCardDetail(card) {
@@ -205,11 +231,15 @@
       if (lastAsked !== key) return undefined; // une autre carte a été cliquée depuis : celle-ci est abandonnée
       // Premier chargement à froid : on l'explique au lieu de laisser croire à un blocage.
       const gen = routeGen;
+      let cancelled = false;
+      const pv = showPreview(card, () => { cancelled = true; });
+      preview = { isOpen: pv.isOpen, cancel: () => { cancelled = true; pv.remove(); } };
       const cold = !F.view.frame;
       const slow = setTimeout(() => toast(cold ? 'Préparation de la fiche… la première ouverture charge la collection du jeu (jusqu’à ~30 s).' : 'Chargement de la fiche…', 90000), cold ? 600 : 500);
       let r;
-      try { r = await openInFrame(card, 'view'); } finally { clearTimeout(slow); }
+      try { r = await openInFrame(card, 'view'); } finally { clearTimeout(slow); pv.remove(); preview = null; }
       toast('');
+      if (cancelled) { if (!r.error) closeSheet('view'); return undefined; } // aperçu fermé par l'utilisateur
       if (gen !== routeGen) { if (!r.error) closeSheet('view'); return undefined; } // l'utilisateur a changé de page entre-temps
       if (r.error) return toast(ERRORS[r.error] || 'Fiche indisponible.');
       const { d, w, root } = r;
