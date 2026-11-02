@@ -80,6 +80,7 @@
     document.documentElement.classList.add('wmx-page-open');
     markNav();
     WMX.inventory.ensure();
+    WMX.inventory.renderStatus();
     render();
   }
 

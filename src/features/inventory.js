@@ -113,7 +113,7 @@
     S.gone.set(e.detail.card_id, (S.gone.get(e.detail.card_id) || 0) + 1);
     for (const it of S.items) if (it.card_id === e.detail.card_id) it.count -= 1;
     setItems(S.items.filter((i) => i.count > 0));
-    WMX.store.set('invCache', { t: Date.now(), items: S.items }); // le cache ne réaffiche plus les cartes défaussées
+    if (!S.loading) WMX.store.set('invCache', { t: Date.now(), items: S.items }); // le cache ne réaffiche plus les cartes défaussées (jamais une liste partielle)
   });
 
   function totals() {
