@@ -11,7 +11,7 @@
 
   const S = {
     items: [], page: 1, perPage: 50, sort: 'rarity', q: '', rar: new Set(), tag: '', fav: false, dup: false,
-    min: '', max: '', tab: 'cards', priceRar: new Set(['L', 'UR', 'SR', 'R']), loading: false, loadedCount: 0,
+    min: '', max: '', tab: 'cards', priceRar: new Set(['L', 'UR', 'SR', 'R']), priceMode: 'rar', priceTags: new Set(), tagsTouched: false, loading: false, loadedCount: 0,
   };
   let overlay = null;  // page « Collection+ »
   let pageDash = null; // page « Tableau de bord »
@@ -228,6 +228,7 @@
   }
 
   function fillTags() {
+    fillPriceTags();
     if (!ui.tag) return;
     const counts = new Map();
     for (const it of S.items) for (const t of it.tags) counts.set(t.id, { ...t, n: (counts.get(t.id)?.n || 0) + 1 });
@@ -288,17 +289,27 @@
     s.addEventListener('change', () => onChange(s.value));
     return s;
   };
-  const savePrefs = () => WMX.store.set('cplusPrefs', { perPage: S.perPage, sort: S.sort });
+  const savePrefs = () => WMX.store.set('cplusPrefs', {
+    perPage: S.perPage, sort: S.sort, priceMode: S.priceMode, priceRar: [...S.priceRar], priceTags: [...S.priceTags], tagsTouched: S.tagsTouched,
+  });
 
   function priceAction() {
     const st = WMX.prices.state();
     if (st.running) { if (st.paused) WMX.prices.resume(); else WMX.prices.pause(); return; }
     // On ne recharge QUE les prix manquants : une moyenne déjà connue n'est jamais modifiée, et compte d'emblée dans la jauge.
-    const selected = S.items.filter((it) => S.priceRar.has(it.rarity));
+    const byTag = S.priceMode === 'tag';
+    const selected = byTag
+      ? S.items.filter((it) => it.tags.some((t) => S.priceTags.has(t.id)))
+      : S.items.filter((it) => S.priceRar.has(it.rarity));
     const known = (it) => !!price(it) || WMX.prices.fresh(it.card_id);
     const todo = selected.filter((it) => !known(it))
       .sort((a, b) => RANK[b.rarity] - RANK[a.rarity] || a.title.localeCompare(b.title, 'fr'));
-    if (!todo.length) { ui.priceBars.forEach((p) => { p.info.textContent = 'Les prix de ces raretés sont déjà tous connus'; }); return; }
+    if (!todo.length) {
+      const msg = !selected.length ? (byTag ? 'Choisissez au moins une étiquette' : 'Choisissez au moins une rareté')
+        : `Les prix de ces ${byTag ? 'étiquettes' : 'raretés'} sont déjà tous connus`;
+      ui.priceBars.forEach((p) => { p.info.textContent = msg; });
+      return;
+    }
     WMX.prices.start(todo, { base: selected.length - todo.length, total: selected.length });
   }
 
@@ -313,7 +324,37 @@
 
   const syncPriceChips = () => {
     document.querySelectorAll('.wmx-cp-pchips .wmx-chip2').forEach((b) => b.setAttribute('aria-pressed', String(S.priceRar.has(b.textContent))));
+    document.querySelectorAll('.wmx-cp-ptags .wmx-chip2').forEach((b) => b.setAttribute('aria-pressed', String(S.priceTags.has(b.dataset.tag))));
+    document.querySelectorAll('.wmx-cp-pmode .wmx-chip2').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === S.priceMode)));
+    for (const p of ui.priceBars || []) {
+      p.rarBox.hidden = S.priceMode !== 'rar';
+      p.tagBox.hidden = S.priceMode !== 'tag';
+    }
   };
+
+  /** Puces d'étiquettes (une par étiquette de la collection) : les plus fournies d'abord ; « vente » est cochée d'office la première fois. */
+  function fillPriceTags() {
+    if (!ui.priceBars) return;
+    const counts = new Map();
+    for (const it of S.items) for (const t of it.tags) counts.set(t.id, { ...t, n: (counts.get(t.id)?.n || 0) + 1 });
+    const tags = [...counts.values()].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+    if (!S.tagsTouched && !S.priceTags.size) {
+      const sale = tags.find((t) => /vente/i.test(t.name));
+      if (sale) S.priceTags.add(sale.id);
+    }
+    for (const p of ui.priceBars) {
+      p.tagBox.replaceChildren(...(tags.length ? tags.map((t) => {
+        const b = chip(`${t.name} (${t.n})`, t.color ? '' : '', S.priceTags.has(t.id), (on) => {
+          S.tagsTouched = true;
+          on ? S.priceTags.add(t.id) : S.priceTags.delete(t.id);
+          syncPriceChips(); savePrefs();
+        });
+        b.dataset.tag = t.id;
+        return b;
+      }) : [el('span', { class: 'wmx-cp-empty' }, 'Aucune étiquette dans la collection')]));
+    }
+    syncPriceChips();
+  }
 
   /** Barre de chargement des prix (présente sur les deux pages, car la valeur en dépend). */
   function makePriceBar() {
@@ -321,11 +362,20 @@
     const bar = el('div', { class: 'wmx-cp-bar' }, el('i'));
     const btn = el('button', { class: 'wmx-btn', onclick: priceAction }, 'Charger les prix');
     const stop = el('button', { class: 'wmx-btn wmx-btn--ghost', hidden: '', onclick: () => WMX.prices.stop() }, 'Arrêter');
-    ui.priceBars.push({ info, bar, btn, stop });
+    const modeChip = (mode, label) => {
+      const b = el('button', { class: 'wmx-chip2', 'aria-pressed': String(S.priceMode === mode), 'data-mode': mode }, label);
+      b.addEventListener('click', () => { S.priceMode = mode; syncPriceChips(); savePrefs(); });
+      return b;
+    };
+    const rarBox = el('span', { class: 'wmx-cp-pchips', ...(S.priceMode !== 'rar' ? { hidden: '' } : {}) },
+      ...R.map((r) => chip(r, WMX.RARITY_RGB[r], S.priceRar.has(r), (on) => { on ? S.priceRar.add(r) : S.priceRar.delete(r); syncPriceChips(); savePrefs(); })));
+    const tagBox = el('div', { class: 'wmx-cp-ptags', ...(S.priceMode !== 'tag' ? { hidden: '' } : {}) });
+    ui.priceBars.push({ info, bar, btn, stop, rarBox, tagBox });
     return el('div', { class: 'wmx-cp-prices' },
       el('div', { class: 'wmx-cp-pricehead' }, info,
-        el('span', { class: 'wmx-cp-pchips' }, 'Raretés :', ...R.map((r) => chip(r, WMX.RARITY_RGB[r], S.priceRar.has(r), (on) => { on ? S.priceRar.add(r) : S.priceRar.delete(r); syncPriceChips(); }))),
+        el('span', { class: 'wmx-cp-pmode' }, 'Charger par', modeChip('rar', 'Raretés'), modeChip('tag', 'Étiquettes')),
         btn, stop),
+      el('div', { class: 'wmx-cp-pickrow' }, rarBox, tagBox),
       bar);
   }
 
@@ -415,6 +465,10 @@
       const prefs = await WMX.store.get('cplusPrefs', {});
       if (PER_PAGE.includes(prefs.perPage)) S.perPage = prefs.perPage;
       if (SORTS.some(([k]) => k === prefs.sort)) S.sort = prefs.sort;
+      if (prefs.priceMode === 'tag') S.priceMode = 'tag';
+      if (Array.isArray(prefs.priceRar)) S.priceRar = new Set(prefs.priceRar.filter((r) => R.includes(r)));
+      if (Array.isArray(prefs.priceTags)) S.priceTags = new Set(prefs.priceTags);
+      S.tagsTouched = !!prefs.tagsTouched;
       build();
     }
     place();

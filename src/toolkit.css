@@ -314,3 +314,11 @@ html.wmx-opening .wmx-cover { display: block; }
   background: linear-gradient(currentColor, currentColor) 0 100% / 0 1px no-repeat; transition: background-size .2s ease, color .2s ease; }
 .wmx-auc-title:hover { color: var(--acc,#2dd4a0); background-size: 100% 1px; }
 @media (prefers-reduced-motion: reduce) { .wmx-bubble-panel, .wmx-bubble-pill, .wmx-auc-row { transition: none; } }
+
+/* ===== Chargement des prix par rareté ou par étiquette (0.6.3) ===== */
+.wmx-cp-pmode { display: inline-flex; gap: 6px; align-items: center; margin-left: auto; }
+.wmx-cp-pickrow { margin: 8px 0 2px; }
+.wmx-cp-pickrow .wmx-cp-pchips { margin-left: 0; display: flex; flex-wrap: wrap; }
+.wmx-cp-ptags { display: flex; flex-wrap: wrap; gap: 6px; max-height: 92px; overflow: auto; padding-right: 4px; }
+.wmx-cp-ptags .wmx-chip2 { padding: 4px 10px; }
+.wmx-cp-pickrow [hidden] { display: none; }
