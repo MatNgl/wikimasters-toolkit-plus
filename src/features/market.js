@@ -1,5 +1,6 @@
 // Marché : sous chaque enchère de la liste, la moyenne du marché de la carte (même source que Collection+) et un verdict
-// « bonne affaire / prix correct / trop cher » comparant la mise (ou le prix de départ) à cette moyenne.
+// « bonne affaire / prix correct / trop cher » comparant la mise (ou le prix de départ) à cette moyenne. Sur MES ventes : pas de
+// bouton de mise, et le verdict devient « bénéfice / prix du marché / à perte ».
 //
 // Les enchères affichées sont reconnues par leur identifiant (lien /marketplace/{id}) grâce aux réponses de /api/marketplace
 // déjà demandées par le jeu ; à défaut, une requête identique est faite une fois. La moyenne n'est demandée que pour les
@@ -11,12 +12,25 @@
   let timer = null;
   let fetched = false;
 
-  const learn = (list) => {
+  const learn = (list, kind) => {
     for (const a of Array.isArray(list) ? list : []) {
-      if (a?.id && a.card_id) byAuction.set(a.id, { title: a.card?.wikipedia_title || '', card_id: a.card_id, rarity: WMX.normRarity(a.snapshot_rarity || a.card?.rarity) || 'C', price: a.current_bid || a.base_amount });
+      if (a?.id && a.card_id) {
+        byAuction.set(a.id, { kind, seller: a.seller_id, endAt: a.end_at ? new Date(a.end_at).getTime() : null, status: a.status,
+          title: a.card?.wikipedia_title || '', card_id: a.card_id, rarity: WMX.normRarity(a.snapshot_rarity || a.card?.rarity) || 'C', price: a.current_bid || a.base_amount });
+      }
     }
   };
-  const learnAll = (data) => { for (const k of ['auctions', 'selling', 'bidding', 'won', 'history']) learn(data?.[k]); };
+  // Du moins prioritaire au plus prioritaire : une enchère présente dans plusieurs listes garde le rôle le plus précis.
+  const KINDS = [['auctions', 'browse'], ['history', 'history'], ['won', 'won'], ['bidding', 'bidding'], ['selling', 'selling']];
+  const learnAll = (data) => { for (const [k, kind] of KINDS) learn(data?.[k], kind); };
+
+  /** « sale » : une de MES ventes (ni mise ni verdict d'achat) ; « ended » : terminée ; « buy » : enchère sur laquelle je peux miser. */
+  function roleOf(id, info) {
+    const st = WMX.auctions?.state?.();
+    if (st?.selling?.some((x) => x.id === id) || info.kind === 'selling' || (st?.me && info.seller === st.me)) return 'sale';
+    if (info.kind === 'history' || info.kind === 'won' || (info.status && info.status !== 'active') || (info.endAt && info.endAt < Date.now())) return 'ended';
+    return 'buy';
+  }
 
   const anchors = () => [...document.querySelectorAll('a.card-frame[href^="/marketplace/"]')];
   const idOf = (a) => a.getAttribute('href').split('/').pop().split(/[?#]/)[0];
@@ -51,17 +65,18 @@
   function paint(a) {
     const info = byAuction.get(idOf(a));
     if (!info) return;
-    ensureBid(a, info);
+    const role = roleOf(idOf(a), info);
+    if (role === 'buy') ensureBid(a, info); else a.querySelector(':scope > .wmx-mk-bid')?.remove(); // pas de mise sur mes ventes ni sur une enchère terminée
     let b = a.querySelector(':scope > .wmx-mk');
     if (!b) { b = el('div', { class: 'wmx-mk' }); a.append(b); }
     const p = WMX.prices.get(info.card_id, info.rarity);
     if (!p && !WMX.prices.fresh(info.card_id)) { b.className = 'wmx-mk wait'; b.textContent = 'Moy. …'; return; }
-    const v = WMX.logic.dealVerdict(info.price, p?.avg, p?.count);
+    const v = role === 'sale' ? WMX.logic.saleVerdict(info.price, p?.avg, p?.count) : WMX.logic.dealVerdict(info.price, p?.avg, p?.count);
     b.className = `wmx-mk ${v.kind}`;
     b.replaceChildren(
       el('span', {}, p ? `Moy. ${Math.round(p.avg).toLocaleString('fr-FR')} W` : 'Sans vente'),
       el('b', {}, v.kind === 'unknown' ? v.label : `${v.pct > 0 ? '+' : ''}${v.pct} % · ${v.label}`));
-    b.title = p ? `Moyenne de ${p.count} vente${p.count > 1 ? 's' : ''} de cette rareté · dernière vente ${Math.round(p.last).toLocaleString('fr-FR')} W${v.low ? ' · peu de ventes : estimation fragile' : ''}` : 'Aucune vente de cette rareté sur le marché';
+    b.title = (role === 'sale' ? 'Votre vente comparée à la moyenne du marché (bénéfice ou vente sous la moyenne). ' : '') + (p ? `Moyenne de ${p.count} vente${p.count > 1 ? 's' : ''} de cette rareté · dernière vente ${Math.round(p.last).toLocaleString('fr-FR')} W${v.low ? ' · peu de ventes : estimation fragile' : ''}` : 'Aucune vente de cette rareté sur le marché');
   }
 
   /** Une carte devient visible : on récupère sa moyenne si elle manque, puis on affiche le verdict. */

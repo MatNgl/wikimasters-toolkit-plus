@@ -397,3 +397,7 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-tv-total { display: flex; justify-content: space-between; margin-top: 4px; padding-top: 4px; border-top: 1px solid #ffffff14; font-weight: 700; }
 .wmx-tv-total b { color: #fff; }
 .wmx-tv-diff { text-align: center; font-weight: 700; color: var(--acc,#2dd4a0); }
+
+.wmx-mk.profit { background: rgb(45 212 160 / .14); border-color: rgb(45 212 160 / .5); } .wmx-mk.profit b { color: #2dd4a0; }
+.wmx-mk.even { background: rgb(100 191 255 / .12); border-color: rgb(100 191 255 / .4); } .wmx-mk.even b { color: #7cc6ff; }
+.wmx-mk.loss { background: rgb(239 68 68 / .12); border-color: rgb(239 68 68 / .45); } .wmx-mk.loss b { color: #fca5a5; }

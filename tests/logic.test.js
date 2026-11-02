@@ -134,3 +134,13 @@ test('dealVerdict : bonne affaire / correct / trop cher / inconnu', () => {
   assert.equal(L.dealVerdict(10, 0, 5).kind, 'unknown');
   assert.equal(L.dealVerdict(0, 100, 5).kind, 'deal');
 });
+
+test('saleVerdict : bénéfice / prix du marché / à perte', () => {
+  assert.deepEqual(L.saleVerdict(120, 100, 10), { kind: 'profit', label: 'Bénéfice', pct: 20, low: false });
+  assert.equal(L.saleVerdict(105, 100, 10).kind, 'profit');
+  assert.equal(L.saleVerdict(104, 100, 10).kind, 'even');
+  assert.equal(L.saleVerdict(95, 100, 10).kind, 'even');
+  assert.equal(L.saleVerdict(94, 100, 10).kind, 'loss');
+  assert.equal(L.saleVerdict(60, 100, 1).low, true);
+  assert.equal(L.saleVerdict(60, null, 0).kind, 'unknown');
+});

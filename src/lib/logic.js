@@ -99,6 +99,21 @@
       if (ratio <= 1.15) return { kind: 'fair', label: 'Prix correct', pct, low };
       return { kind: 'high', label: 'Trop cher', pct, low };
     },
+    /**
+     * Verdict d'une de MES ventes : le prix (mise reçue ou, à défaut, prix de départ) comparé à la moyenne du marché.
+     * ≥ 105 % : bénéfice ; entre 95 % et 105 % : prix du marché ; en dessous : vendu sous la moyenne (à perte).
+     */
+    saleVerdict(price, avg, count) {
+      const p = Number(price);
+      const a = Number(avg);
+      if (!(a > 0) || !(p >= 0)) return { kind: 'unknown', label: 'Prix inconnu', pct: 0, low: false };
+      const ratio = p / a;
+      const pct = Math.round((ratio - 1) * 100);
+      const low = Number(count) < 3;
+      if (ratio >= 1.05) return { kind: 'profit', label: 'Bénéfice', pct, low };
+      if (ratio >= 0.95) return { kind: 'even', label: 'Prix du marché', pct, low };
+      return { kind: 'loss', label: 'À perte', pct, low };
+    },
     /** Message clair pour un échec réseau ou un code HTTP. */
     friendlyError(status) {
       if (status === 0 || status == null) return 'Connexion impossible : vérifiez votre réseau.';

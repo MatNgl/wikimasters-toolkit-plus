@@ -253,3 +253,23 @@ test('marché : plusieurs « Miser le minimum » de suite se mettent en file et 
   assert.deepEqual(clicks, ['11', '11', '11']);
   env.close();
 });
+
+test('marché : mes ventes n\'ont pas de bouton de mise et affichent bénéfice / perte', async () => {
+  const mine = (id, cid, price) => ({ id, card_id: cid, seller_id: 'me-1', status: 'active', snapshot_rarity: 'UR', base_amount: price, current_bid: null, end_at: inMin(30), card: { wikipedia_title: id, rarity: 'UR' } });
+  const sell = [mine('v1', 'k1', 130), mine('v2', 'k2', 60)];
+  const buy = { id: 'b1', card_id: 'k3', seller_id: 'other', status: 'active', snapshot_rarity: 'UR', base_amount: 50, current_bid: null, end_at: inMin(30), card: { wikipedia_title: 'b1', rarity: 'UR' } };
+  const env = createEnv({ fetchImpl: async (u) => (String(u).includes('/sales') ? json({ summary: { UR: { average: 100, count: 9, latest: 90 } } }) : json({ auctions: [buy, ...sell], selling: sell, bidding: [], won: [{ winner_id: 'me-1' }], history: [] })) });
+  const { w, WMX } = env;
+  w.history.pushState({}, '', '/marketplace');
+  w.document.body.innerHTML = ['v1', 'v2', 'b1'].map((id) => `<a class="card-frame" href="/marketplace/${id}"><div>${id}</div></a>`).join('');
+  for (const f of WMX.features) if (f.name === 'market' || f.name === 'auctions') await f.init();
+  for (let i = 0; i < 80 && w.document.querySelectorAll('.wmx-mk:not(.wait)').length < 3; i++) await sleep(150);
+  const q = (id) => w.document.querySelector(`a[href$="/${id}"]`);
+  assert.match(q('v1').querySelector('.wmx-mk').textContent, /\+30 %.*Bénéfice/);
+  assert.match(q('v2').querySelector('.wmx-mk').textContent, /-40 %.*À perte/);
+  assert.equal(q('v1').querySelector('.wmx-mk-bid'), null, 'pas de bouton de mise sur ma vente');
+  assert.equal(q('v2').querySelector('.wmx-mk-bid'), null);
+  assert.ok(q('b1').querySelector('.wmx-mk-bid'), 'bouton présent sur une enchère des autres');
+  assert.match(q('b1').querySelector('.wmx-mk').textContent, /Bonne affaire/);
+  env.close();
+});
