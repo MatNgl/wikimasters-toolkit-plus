@@ -486,8 +486,8 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-sty-a .wmx-sty-waves { opacity: .12; }
 
 /* B · vitrine : cadre ouvragé, illustration encadrée, panneau d'informations à motif de vagues */
-.wmx-sty-b { background: #0b0f0d; box-shadow: inset 0 0 0 3px rgb(var(--wmx-rgb)), inset 0 0 0 6px #0b0b0b, inset 0 0 0 7.5px rgb(var(--wmx-rgb) / .65), 0 0 28px rgb(var(--wmx-rgb) / .45) !important; }
-.wmx-sty-b > img:first-child { opacity: .35; filter: blur(8px); }
+.wmx-sty-b { background: linear-gradient(165deg, rgb(var(--wmx-rgb) / .38), #0b0f0d 62%); box-shadow: inset 0 0 0 3px rgb(var(--wmx-rgb)), inset 0 0 0 6px #0b0b0b, inset 0 0 0 7.5px rgb(var(--wmx-rgb) / .65), 0 0 28px rgb(var(--wmx-rgb) / .45) !important; }
+.wmx-sty-b > img:first-child { opacity: .22; filter: blur(10px) saturate(1.4); }
 .wmx-sty-b > div[class*="h-[45%]"] { top: 10px !important; left: 10px !important; right: 10px !important; width: auto !important; height: 50% !important; border-radius: 10px; overflow: hidden; }
 .wmx-sty-b > div[class*="top-[45%]"] { top: calc(50% + 14px) !important; padding: 6px 14px 12px !important; align-items: center; text-align: center; }
 .wmx-sty-b h3 { color: #fff !important; font-size: 13px !important; text-align: center; text-shadow: 0 1px 4px #000; }
