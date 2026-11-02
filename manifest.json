@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WikiMasters Toolkit+",
-  "version": "0.14.5",
+  "version": "0.14.6",
   "description": "Ouverture groupée des paquets, statistiques, prix du marché, enchères et mises automatiques pour WikiMasters.",
   "permissions": [
     "storage",
@@ -74,7 +74,7 @@
       "world": "MAIN"
     }
   ],
-  "version_name": "0.14.5 · annulation : on guette la confirmation du serveur lent",
+  "version_name": "0.14.6 · annulation : le cadre reste ouvert jusqu'à confirmation",
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",

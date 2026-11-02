@@ -114,7 +114,7 @@
   }
 
   /** Annule une enchère depuis sa page de détail ; la confirmation du jeu est validée par frame-hook.js (adresse #wmx-auto). */
-  async function cancelAuction(auction, waitMs = 90000) {
+  async function cancelAuction(auction, waitMs = 90000, settled = null) {
     const f = warm.get(auction.id) || el('iframe', { class: 'wmx-sheet-frame', src: `/marketplace/${auction.id}#wmx-auto`, title: 'Annulation', tabindex: '-1' });
     if (!f.isConnected) document.body.append(f);
     try {
@@ -124,6 +124,14 @@
       btn.click();
       const confirm = await waitFor(() => find(/^(Confirmer|Oui|Valider|Annuler la vente|Annuler l.enchère)/i), 2000, 120);
       confirm?.click();
+      // Le cadre doit rester ouvert tant que le jeu n'a pas enregistré l'annulation : le fermer trop tôt coupe la requête en cours
+      // (serveur lent : plusieurs secondes). On guette la disparition du bouton ou, toutes les 4 s, l'état réel de l'enchère.
+      const t0 = Date.now();
+      for (let n = 0; Date.now() - t0 < 40000; n++) {
+        await sleep(600);
+        if (!find(/Annuler et récupérer/i)) break;
+        if (settled && n % 6 === 5 && (await settled()) === true) break;
+      }
       return { ok: true };
     } finally {
       await sleep(500);
@@ -171,7 +179,7 @@
       } catch (_) { return null; }
     };
     for (let t = 0; t < 3; t++) {
-      const res = await cancelAuction(a, t ? 20000 : 90000);
+      const res = await cancelAuction(a, t ? 20000 : 90000, async () => (await stillActive()) === false);
       if (!res.ok) { if ((await stillActive()) === false) { await refresh(); return { ok: true }; } return { error: res.error }; }
       await sleep(800 + t * 4000);
       await refresh();
