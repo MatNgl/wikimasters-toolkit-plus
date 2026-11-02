@@ -1,4 +1,4 @@
-# Bilan — WikiMasters Toolkit+ (v0.18.0)
+# Bilan — WikiMasters Toolkit+ (v0.19.0)
 
 ## Fait
 **Paquets** — « Tout ouvrir » et ouverture automatique (intervalle min/max, arrêt sur belle carte), écran de révélation façon gacha trié par rareté (prix, ★, ⚡, couronnes sur les cartes les plus chères, « Paquet n/N », valeur estimée du lot), statistiques (répartition, valeur moyenne d'un paquet), menu centré qui sort d'un cadran, visible partout tant que l'auto tourne. Les prix des cartes tirées passent devant tous les autres ; la carte sur laquelle on clique ⚡ passe en tête.
@@ -25,10 +25,11 @@
 - L'ouverture automatique des paquets ne s'exécute que sur la page Paquets (en pause ailleurs).
 - L'indicateur « carte toujours possédée » du jeu ne couvre que les 50 dernières enchères de l'historique.
 - Dépendance à la structure de la page du jeu : un changement de design peut casser l'ajout des prix, du ⚡ et du style (détecté et signalé dans le journal).
-- Mise à jour automatique : réservée au développement, à retirer de la version publiée.
+- Les règles de WikiMasters interdisent les outils qui jouent à votre place : risque assumé et signalé aux utilisateurs.
+- Mise à jour automatique : réservée à la version de développement (absente du ZIP publiable).
 
 ## Décisions
 Acceptés : défausse par la sélection native, assistant de vente, journal et détection de page cassée, style de carte global. Refusés : veille du marché, bilan gains/dépenses, complétion de collection, tendance des prix. Ouverture de paquets en arrière-plan : possible, optionnel.
 
-## Publication (Chrome Web Store) — liste de contrôle
-Voir [PUBLICATION.md](PUBLICATION.md) : texte de la fiche, justification des permissions, politique de confidentialité, captures, points à vérifier avant de soumettre.
+## Publication (Chrome Web Store)
+Décision : toutes les fonctions sont publiées, avec la mention « extension non officielle, certaines fonctions non approuvées par WikiMasters » (fiche du store, README, Paramètres → À savoir, rappel au premier lancement, fenêtre de l'icône). `npm run build` produit le ZIP publiable (sans rechargement automatique). Détails, textes de la fiche et politique de confidentialité : [PUBLICATION.md](PUBLICATION.md), [PRIVACY.md](PRIVACY.md). Reste à l'éditeur : compte développeur, URL publique de la politique, captures, envoi.

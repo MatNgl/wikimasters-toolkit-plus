@@ -351,7 +351,7 @@
       el('h4', {}, 'Statistiques'),
       ui.stats,
       el('button', { class: 'wmx-settings-btn', onclick: () => WMX.openSettings() }, el('span', {}, '⚙'), 'Paramètres'),
-      el('div', { class: 'wmx-ver' }, (() => { try { return `v${chrome.runtime.getManifest().version_name}`; } catch (_) { return ''; } })()));
+      el('div', { class: 'wmx-ver' }, (() => { try { return `v${chrome.runtime.getManifest().version_name || chrome.runtime.getManifest().version}`; } catch (_) { return ''; } })()));
 
     const panel = el('aside', { class: 'wmx-panel', hidden: '' },
       el('div', { class: 'wmx-head' }, fab, el('h3', {}, 'WikiMasters Toolkit+'), fold), body);

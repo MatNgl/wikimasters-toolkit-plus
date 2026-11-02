@@ -2,6 +2,8 @@
 
 Extension Chrome (Manifest V3) pour [WikiMasters](https://www.wiki-masters.com) : jeu de cartes à collectionner basé sur Wikipédia (boosters, collection, échanges, marché aux enchères). Elle enrichit les pages du jeu sans les remplacer.
 
+> **⚠ Extension non officielle**, développée indépendamment de WikiMasters et non affiliée à WikiMasters ni à Wikipédia. Certaines fonctions (ouverture automatique des paquets, mises automatiques, enchères rapides ⚡, assistant de vente) ne sont **pas approuvées par WikiMasters**, dont les règles de la communauté interdisent les outils qui jouent ou interagissent à votre place. Elles sont désactivées par défaut ou ne se déclenchent que sur votre demande ; vous les utilisez sous votre propre responsabilité, avec modération. Les fonctions de lecture (prix, verdicts, tableau de bord, style des cartes) n'agissent pas à votre place.
+
 ## Installer en développement
 1. `chrome://extensions` → activer le **mode développeur**
 2. **Charger l'extension non empaquetée** → sélectionner ce dossier
@@ -37,6 +39,9 @@ Un prix est valable 4 jours. Rien n'est rechargé automatiquement : au chargemen
 - `src/features/` : une fonction par fichier (`inventory.js`, `collection-native.js`, `dashboard.js`, `market.js`, `trades.js`, `auctions.js`, `quick-auction.js`, `prices.js`, `boosters.js`, `reveal.js`, …)
 - `src/lib/journal.js` : journal d'activité ; `src/features/auto-sell.js` : assistant de vente ; `src/features/card-style.js` : style de carte global
 - `src/background.js` : mise à jour automatique (développement)
+
+## Version publiable
+`npm run build` crée `dist/wikimasters-toolkit-plus-<version>.zip` (sans le rechargement automatique ni la permission `alarms`). Dossier du Chrome Web Store : [docs/PUBLICATION.md](docs/PUBLICATION.md) ; politique de confidentialité : [docs/PRIVACY.md](docs/PRIVACY.md).
 
 ## Tests
 `npm install` puis `npm test` : tests unitaires des fonctions pures et essais de fumée (jsdom) qui exécutent la bulle, les mises automatiques, les prix, les couronnes, le marché, les échanges et la collection.

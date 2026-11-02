@@ -176,6 +176,10 @@
     name: 'auto-sell',
     match: /./,
     async init() {
+      // Premier lancement : rappel unique que l'extension n'est pas officielle (texte complet : Paramètres → À savoir).
+      if (!(await WMX.store.get('wmxNoticeSeen', false))) {
+        setTimeout(() => { try { WMX.toast?.('WikiMasters Toolkit+ est une extension non officielle. Certaines fonctions automatiques ne sont pas approuvées par WikiMasters : voir Paramètres de l’extension → « À savoir ».', 20000); WMX.store.set('wmxNoticeSeen', true); } catch (_) { /* page fermée */ } }, 6000);
+      }
       S.skip = await WMX.store.get('autoSellSkip', {});
       S.log = await WMX.store.get('autoSellLog', {});
       S.shared = await WMX.store.get('autoSellStatus', null);

@@ -1,52 +1,54 @@
-# Publication sur le Chrome Web Store — dossier
+# Publication sur le Chrome Web Store — dossier (version 1.0.0)
 
-## 0. Point bloquant : les règles de WikiMasters (lues le 2 novembre 2026)
-La page [/rules](https://www.wiki-masters.com/rules), section 3 « Pas d'automatisation ni de triche », interdit les « bots, scripts, macros » et « tout outil visant à jouer, ouvrir des paquets, échanger ou interagir à votre place ». La section 8 interdit d'« intercepter le trafic du Service » et de « contourner les limites techniques ». Les [conditions d'utilisation](https://www.wiki-masters.com/terms) (section 6) prévoient avertissement, suspension ou suppression du compte « à leur seule discrétion et sans préavis » pour « utilisation d'automatisation ».
+## 1. Décision et mention obligatoire
+Toutes les fonctions sont publiées. Les règles de WikiMasters ([/rules](https://www.wiki-masters.com/rules), section 3 ; [/terms](https://www.wiki-masters.com/terms), section 6, lues le 2 novembre 2026) interdisent les « bots, scripts, macros » et « tout outil visant à jouer, ouvrir des paquets, échanger ou interagir à votre place », avec sanctions possibles. L'extension le dit donc clairement, aux quatre endroits où l'utilisateur la rencontre :
+- **fiche du store** (début de la description, voir §4) ;
+- **README** ;
+- **Paramètres de l'extension → « À savoir »** (première section) ;
+- **rappel unique** au premier lancement (bandeau 20 s) et ligne dans la fenêtre de l'icône.
 
-Ce qui, dans l'extension, tombe sous cette lecture : ouverture automatique des paquets, mises automatiques sur les enchères, file d'enchères rapides (⚡), assistant de vente (clics simulés dans des cadres invisibles). Ce qui n'en relève pas clairement (lecture seule) : prix et moyennes affichés, verdicts du marché, tableau de bord, style des cartes, valeurs d'échange, alertes.
+Texte : « Extension non officielle, développée indépendamment de WikiMasters et non affiliée à WikiMasters ni à Wikipédia. Certaines fonctions (ouverture automatique des paquets, mises automatiques, enchères rapides ⚡, assistant de vente) ne sont pas approuvées par WikiMasters, dont les règles de la communauté interdisent les outils qui jouent ou interagissent à votre place. Elles sont désactivées par défaut ou ne se déclenchent que sur votre demande ; si vous les utilisez, c'est sous votre propre responsabilité et avec modération. »
 
-Conséquence : publier telle quelle une extension grand public exposerait ses utilisateurs à des sanctions sur leur compte, et le Web Store peut retirer une extension qui enfreint les règles d'un service tiers. À trancher avant toute soumission (voir §1).
+Garde-fous de conception déjà en place : assistant de vente désactivé par défaut, ouverture automatique désactivée par défaut, jamais de défausse par l'extension, plafonds de prix, 4 mises automatiques par carte et par jour, jamais de surenchère sur soi-même, aucun contournement de la vérification humaine. Risque résiduel : l'éditeur peut modifier ses règles ou sanctionner ; le Web Store peut retirer l'extension sur signalement. Écrire à support@wiki-masters.com reste le moyen de lever ce doute.
 
-## 1. Options
-| Option | Contenu | Risque |
-|---|---|---|
-| A. Autorisation écrite | Écrire à support@wiki-masters.com, décrire les fonctions, demander un accord. Publier toutes les fonctions seulement après réponse positive. | Aucun si accord ; délai |
-| B. Version « lecture seule » | Publier sans ouverture auto, mises auto, file ⚡, assistant de vente (code retiré ou désactivé à la compilation). Prix, verdicts, tableau de bord, style de carte, valeurs d'échange, alertes. | Faible ; toujours à signaler à l'éditeur |
-| C. Non répertoriée / usage privé | Lien direct pour quelques amis, ou installation en mode développeur. | Reste soumis aux règles du jeu pour chaque utilisateur |
+## 2. Construire la version publiable
+```
+npm run build            # ou : node scripts/build.js 1.0.1
+```
+Crée `dist/wikimasters-toolkit-plus-<version>.zip` (≈ 120 Ko) : copie de `src/` et `icons/` **sans** `background.js` (rechargement automatique), sans la permission `alarms`, sans `version_name`. Seule permission restante : `storage` + accès à `https://www.wiki-masters.com/*`. Le script vérifie que chaque fichier cité dans le manifest est dans le paquet. La section « Extension / Mise à jour automatique » des Paramètres disparaît d'elle-même de cette version.
+Essai avant envoi : `chrome://extensions` → mode développeur → « Charger l'extension non empaquetée » → dossier `dist/package`.
 
-## 2. Modifications techniques de la version publiée
-- Retirer `src/background.js` et les permissions `alarms` (rechargement automatique réservé au développement) ; retirer le réglage « Mise à jour automatique » et la bannière associée.
-- Garder uniquement `storage` et l'accès à `https://www.wiki-masters.com/*`.
-- Retirer `version_name` de développement ; numéro de version propre (1.0.0).
-- Pas de code distant, pas de `eval`, pas de script externe : déjà le cas (aucune URL externe dans le code, hormis l'API de Wikipédia).
-- Générer le ZIP sans `node_modules`, `tests`, `docs`.
-- Selon l'option B : retirer `quick-auction.js`, `auto-sell.js`, la partie « mises automatiques » de `auctions.js`, l'ouverture automatique de `boosters.js`.
+## 3. Justification des permissions (formulaire du store)
+- **storage** : enregistre en local les réglages, le cache des prix (4 jours), la copie de la collection, les statistiques et le journal d'activité.
+- **Accès à www.wiki-masters.com** : l'extension n'a de sens que sur ce site ; elle y lit les réponses du jeu (prix, collection, enchères) et y ajoute ses éléments.
+- **Wikipédia** : API publique, titre de la carte envoyé pour afficher résumé et image (désactivable).
+- Aucune permission « tabs », « cookies », « history », « notifications ». Aucun code distant.
+- **Pratiques de données** : aucune donnée collectée ni transmise ; cocher « n'est pas vendu à des tiers », « non utilisé hors de la finalité », « non utilisé pour la solvabilité ».
 
-## 3. Justification des permissions (formulaire du Web Store)
-- **storage** : enregistre en local les réglages, le cache des prix (4 jours), l'inventaire en cache et le journal d'activité.
-- **Accès à www.wiki-masters.com** : l'extension n'a de sens que sur ce site ; elle y lit les réponses du jeu pour calculer les prix et valeurs, et ajoute ses éléments aux pages.
-- **Wikipédia** : récupération d'un résumé et d'une image (API publique, lecture seule) pour l'écran de révélation des paquets.
-- Pas de permission « notifications », « tabs », « cookies », « history ».
-
-## 4. Politique de confidentialité (à héberger sur une page publique, ex. GitHub Pages)
-> **WikiMasters Toolkit+ — politique de confidentialité**
-> Dernière mise à jour : [date de publication].
-> **Éditeur** : [nom], contact : [adresse e-mail].
-> **Données** : l'extension ne collecte aucune donnée personnelle et n'envoie rien à un serveur de l'éditeur ni à un tiers. Les réglages, prix, inventaire en cache, statistiques et journal d'activité sont enregistrés uniquement dans le navigateur (`chrome.storage.local`) et supprimés à la désinstallation.
-> **Requêtes** : l'extension lit les réponses de www.wiki-masters.com au nom de l'utilisateur connecté et interroge l'API publique de Wikipédia (titre de carte) pour afficher résumé et image. Aucun identifiant, mot de passe ni jeton n'est lu, stocké ou transmis.
-> **Cookies, publicité, revente de données** : aucun.
-> **Droits** : aucune donnée n'étant détenue par l'éditeur, il n'y a rien à exporter ni à supprimer ; pour toute question : [adresse e-mail].
-> L'extension n'est pas affiliée à WikiMasters ni à Wikipédia.
-
-## 5. Fiche du store (brouillon)
+## 4. Fiche du store (à copier)
 **Nom** : WikiMasters Toolkit+
-**Résumé (132 car. max)** : Prix du marché, valeur de la collection et aides aux enchères pour WikiMasters. Extension non officielle.
-**Description** : Enrichit le jeu WikiMasters sans le remplacer : moyenne du marché et verdict (bonne affaire / correct / trop cher) sous chaque enchère, valeur estimée de la collection, tableau de bord, valeurs des offres d'échange, style de carte plein cadre, bulle des enchères avec alertes. Les données restent dans votre navigateur. Extension non officielle, non affiliée à WikiMasters. [Selon l'option choisie : ajouter ou non les fonctions automatiques, en précisant qu'elles doivent respecter les règles du jeu.]
-**Catégorie** : Jeux / Outils. **Langue** : français.
+**Résumé (132 car. max)** : Prix du marché, valeur de la collection, enchères et outils pour WikiMasters. Extension non officielle.
+**Description** :
+> ⚠ Extension non officielle, non affiliée à WikiMasters ni à Wikipédia. Certaines fonctions (ouverture automatique des paquets, mises automatiques, enchères rapides ⚡, assistant de vente) ne sont pas approuvées par WikiMasters, dont les règles interdisent les outils qui jouent à votre place. Elles sont désactivées par défaut ou ne se déclenchent que sur votre demande : vous les utilisez sous votre propre responsabilité, avec modération.
+>
+> Enrichit le jeu WikiMasters sans le remplacer :
+> • Marché : moyenne du marché et verdict (bonne affaire / prix correct / trop cher) sous chaque enchère, bénéfice ou perte sur vos ventes.
+> • Collection : valeur estimée, moyenne du marché sur chaque carte, chargement des prix par rareté ou par étiquette.
+> • Tableau de bord : valeur par rareté, top 10, courbe dans le temps.
+> • Échanges : valeur des cartes, des wikibidous et écart de chaque offre.
+> • Style de carte plein cadre (anneau de rareté, vagues, reflet) sur toutes les cartes, désactivable.
+> • Bulle des enchères : vos mises et ventes, alertes (surenchéri, fin proche), annulation.
+> • Fonctions automatiques, à vos risques : ouverture groupée ou automatique des paquets, mises automatiques, mise en vente en un clic (⚡), assistant de vente (désactivé par défaut).
+>
+> Vos données restent dans votre navigateur : aucune collecte, aucun serveur tiers.
+**Catégorie** : Jeux (ou Outils). **Langue** : français.
 
-## 6. À fournir
-- Compte développeur Chrome Web Store (frais uniques de 5 $).
-- Captures 1280×800 (3 à 5) : collection avec prix, bulle des enchères, marché avec verdicts, tableau de bord, style de carte.
+## 5. Politique de confidentialité
+Texte prêt dans [PRIVACY.md](PRIVACY.md). Le store exige une **URL publique** : le dépôt GitHub étant privé, il faut soit le rendre public (puis URL `…/blob/main/docs/PRIVACY.md`), soit publier ce texte sur une page publique (GitHub Pages, Gist public). Remplacer `[nom]`, `[adresse e-mail]`, `[date]` avant envoi.
+
+## 6. À fournir par l'éditeur
+- Compte développeur Chrome Web Store (frais uniques de 5 $) et l'envoi du ZIP.
+- Captures 1280×800 (3 à 5) : collection avec prix, bulle des enchères, marché avec verdicts, tableau de bord, style de carte. Attention : elles montrent un compte réel (pseudo, collection) ; à choisir ou flouter.
 - Icône 128×128 : déjà dans `icons/`.
-- URL de la politique de confidentialité, adresse de contact, justification des permissions (§3).
-- Déclaration « pratiques de données » : aucune donnée collectée.
+- URL de la politique, adresse de contact.
+- Option prudente : « Visibilité : non répertoriée » pour un premier lancement auprès d'un petit cercle, puis publique.

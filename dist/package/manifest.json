@@ -1,0 +1,85 @@
+{
+  "manifest_version": 3,
+  "name": "WikiMasters Toolkit+",
+  "version": "1.0.0",
+  "description": "Ouverture groupée des paquets, statistiques, prix du marché, enchères et mises automatiques pour WikiMasters.",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://www.wiki-masters.com/*"
+  ],
+  "action": {
+    "default_title": "WikiMasters Toolkit+",
+    "default_popup": "src/popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.wiki-masters.com/*"
+      ],
+      "js": [
+        "src/page-hook.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://www.wiki-masters.com/*"
+      ],
+      "js": [
+        "src/lib/namespace.js",
+        "src/lib/logic.js",
+        "src/lib/storage.js",
+        "src/lib/journal.js",
+        "src/lib/dom.js",
+        "src/lib/sniffer.js",
+        "src/features/stats.js",
+        "src/features/card-detail.js",
+        "src/features/reveal.js",
+        "src/features/settings-modal.js",
+        "src/features/boosters.js",
+        "src/features/prices.js",
+        "src/features/quick-auction.js",
+        "src/features/auto-sell.js",
+        "src/features/auctions.js",
+        "src/features/inventory.js",
+        "src/features/card-style.js",
+        "src/features/collection-native.js",
+        "src/features/dashboard.js",
+        "src/features/market.js",
+        "src/features/trades.js",
+        "src/features/update-banner.js",
+        "src/content.js"
+      ],
+      "css": [
+        "src/toolkit.css"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.wiki-masters.com/*"
+      ],
+      "js": [
+        "src/frame-hook.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": true,
+      "world": "MAIN"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  }
+}
