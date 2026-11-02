@@ -353,3 +353,20 @@ test('file d\'attente : liste des opérations au survol, retrait d\'une opérati
   assert.match(w.document.querySelector('.wmx-qtext').textContent, /File 0\/2/);
   env.close();
 });
+
+test('tableau des enchères : une enchère qui sort de la liste ne provoque pas de boucle', async () => {
+  // Terminée depuis 14,2 s : encore affichée au chargement, retirée 0,8 s plus tard (tick → renderAll → tick…).
+  const edge = auction('e1', { seller_id: 'other', current_bid: 5, current_bidder_id: ME, end_at: new Date(Date.now() - 14_200).toISOString() });
+  const live = auction('e2', { seller_id: 'other', current_bid: 5, current_bidder_id: ME, end_at: inMin(30) });
+  const env = createEnv({ fetchImpl: async () => json({ selling: [], bidding: [edge, live], won: [{ winner_id: ME }], history: [] }) });
+  const { w, WMX } = env;
+  const errors = [];
+  w.addEventListener('error', (e) => errors.push(e.message));
+  for (const f of WMX.features) await f.init?.();
+  await sleep(5500); // charge, puis franchit la limite des 15 s
+  w.document.querySelector('.wmx-dial').click();
+  await sleep(200);
+  assert.deepEqual(errors, []);
+  assert.equal(w.document.querySelectorAll('.wmx-auc-row').length, 1);
+  env.close();
+});

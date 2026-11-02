@@ -506,8 +506,9 @@
     }
     if (D.loaded) {
       const sig = listSig();
-      if (S.listSig !== undefined && sig !== S.listSig) renderAll(); // une enchère vient de sortir du tableau
-      S.listSig = sig;
+      const changed = S.listSig !== undefined && sig !== S.listSig;
+      S.listSig = sig; // mémorisé AVANT de redessiner : renderAll() rappelle tick(), sans quoi la boucle ne s'arrête jamais
+      if (changed) renderAll(); // une enchère vient de sortir du tableau
       checkUrgent(); runAuto();
     }
     updatePill();
