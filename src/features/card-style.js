@@ -64,7 +64,7 @@
     for (const c of cards()) apply(c);
     if (!isOn()) document.querySelectorAll('.wmx-sty').forEach((c) => { if (!c.closest('.wmx-face')) apply(c); }); // style retiré : on nettoie aussi les cartes déjà décorées
   }
-  const schedule = () => { clearTimeout(timer); timer = setTimeout(scan, 150); };
+  const schedule = () => { clearTimeout(timer); timer = setTimeout(() => { try { scan(); } catch (_) { /* page fermée */ } }, 150); };
 
   WMX.cardStyle = { apply, scan, cards };
   WMX.register({
@@ -75,7 +75,9 @@
       new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
       window.addEventListener('wmx:settings', scan);
       // Le jeu peut réécrire la classe d'une carte (rendu React) et effacer notre style : un contrôle léger toutes les 3 s le rétablit.
-      setInterval(() => { if (document.visibilityState === 'visible' && WMX.alive()) scan(); }, 3000);
+      const tick = setInterval(() => {
+        try { if (document.visibilityState === 'visible' && WMX.alive()) scan(); } catch (_) { clearInterval(tick); } // page fermée ou extension rechargée : on s'arrête
+      }, 3000);
     },
   });
 })();

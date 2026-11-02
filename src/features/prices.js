@@ -15,10 +15,13 @@
   let saveTimer = null;
   const listeners = new Set();
   const job = { running: false, paused: false, done: 0, total: 0, failed: 0, token: 0 };
-  const sched = { hi: [], lo: [], slots: [false, false], blocks: 0, penaltyUntil: 0, pending: new Map() };
+  const sched = { hi: [], lo: [], slots: [false, false, false, false], blocks: 0, penaltyUntil: 0, pending: new Map() };
+  const EXTRA_AT = [0, 1500, 4000, 8000]; // un ouvrier de plus à chaque palier de lenteur du jeu (latence moyenne en ms)
+  const TIMEOUT = 30000;        // une requête sans réponse au bout de 30 s est coupée puis réessayée
   let lat = 0;                  // latence moyenne des réponses (ms) : quand le jeu est lent, un second ouvrier travaille en parallèle
   let ticker = null;
 
+  const slow = () => lat; // latence moyenne observée (ms), exposée pour l'affichage
   const waitLeft = () => Math.max(0, Math.ceil((sched.penaltyUntil - Date.now()) / 1000));
   const snapshot = () => ({ running: job.running, paused: job.paused, done: job.done, total: job.total, wait: waitLeft(), failed: job.failed });
   const emit = () => listeners.forEach((cb) => { try { cb(snapshot()); } catch (_) { /* écouteur obsolète */ } });
@@ -43,20 +46,24 @@
   async function fetchSummary(cardId) {
     const u = new URL(`/api/marketplace/cards/${cardId}/sales`, location.origin);
     u.searchParams.set('scope', 'summary');
-    const res = await fetch(u);
-    // Le jeu freine par rafales : 429, mais aussi 403 sur ce point d'accès. On attend puis on réessaie.
-    if (res.status === 429 || res.status === 403) return { limited: true, status: res.status, retryAfter: Number(res.headers.get('retry-after')) || 0 };
-    if (!res.ok) return { error: res.status };
-    const j = await res.json();
-    return { summary: j.summary || {} };
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), TIMEOUT); // sans cela, une requête restée suspendue bloquerait un ouvrier indéfiniment
+    try {
+      const res = await fetch(u, { signal: ctl.signal });
+      // Le jeu freine par rafales : 429, mais aussi 403 sur ce point d'accès. On attend puis on réessaie.
+      if (res.status === 429 || res.status === 403) return { limited: true, status: res.status, retryAfter: Number(res.headers.get('retry-after')) || 0 };
+      if (!res.ok) return { error: res.status };
+      const j = await res.json();
+      return { summary: j.summary || {} };
+    } finally { clearTimeout(timer); }
   }
 
   const queued = () => sched.hi.length || sched.lo.length;
-  /** Un ouvrier traite la file ; le second (idx 1) n'intervient que si le jeu est lent (> 1,5 s) et qu'aucun refus n'est en cours. */
+  /** Un ouvrier traite la file ; les suivants (idx 1 à 3) n'interviennent que si le jeu est lent (paliers EXTRA_AT) et qu'aucun refus n'est en cours. */
   async function worker(idx) {
     await load();
     while (queued() && WMX.alive()) {
-      if (idx > 0 && (lat < 1500 || sched.blocks > 0 || waitLeft() > 0)) { await sleep(500); continue; }
+      if (idx > 0 && (lat < EXTRA_AT[idx] || sched.blocks > 0 || waitLeft() > 0)) { await sleep(500); continue; }
       const item = sched.hi.shift() || sched.lo.shift();
       if (!item) continue;
       const left = sched.penaltyUntil - Date.now();
@@ -67,6 +74,7 @@
       lat = lat ? Math.round(lat * 0.7 + (Date.now() - t0) * 0.3) : Date.now() - t0;
       if (r.limited) {
         sched.blocks += 1;
+        if (sched.blocks === 1) WMX.journal?.add('Prix', `le jeu limite les requêtes (erreur ${r.status || 429}) : pause avant de reprendre`, 'warn');
         item.tries += 1;
         gap = L.nextGap(gap, true, BASE_GAP);
         lastStatus = r.status || 429;
@@ -76,6 +84,14 @@
         ensureTicker();
         emit();
         continue;
+      }
+      // Erreur du serveur (5xx), délai dépassé ou réseau : le jeu est surchargé, pas de refus. On remet la carte au bout de la file et on réessaie
+      // (5 essais) au lieu de l'abandonner : sinon le prix manquait pour toujours.
+      if (r.error != null && (r.error === 0 || r.error === 408 || r.error >= 500)) {
+        item.soft = (item.soft || 0) + 1;
+        lastStatus = r.error;
+        if (item.soft < 5) { (item.high ? sched.hi : sched.lo).push(item); await sleep(Math.max(gap, 1500 * item.soft)); continue; }
+        WMX.journal?.add('Prix', `prix abandonné après ${item.soft} essais (${r.error ? 'erreur ' + r.error : 'pas de réponse'}) : le jeu est surchargé`, 'warn');
       }
       sched.blocks = 0; // un succès : la pause repart de sa valeur de base
       gap = L.nextGap(gap, false, BASE_GAP);
@@ -163,5 +179,6 @@
     resume() { job.paused = false; emit(); },
     stop() { job.token += 1; job.running = false; job.paused = false; emit(); },
     state: snapshot,
+    latency: slow,
   };
 })();

@@ -385,6 +385,7 @@ test('annuler une vente : le bouton indique tout de suite « Annulation… » et
   assert.match(btn.textContent, /Annulation/);
   assert.equal(btn.disabled, true, 'bloqué : pas de clics répétés');
   assert.ok(btn.querySelector('.wmx-dots'));
+  await sleep(300); // laisse l'annulation entrer dans la file avant de fermer la fenêtre de test
   env.close();
 });
 
@@ -470,5 +471,18 @@ test('révélation des paquets : la face des cartes reprend cadre, vagues et ref
   await s2.finish();
   assert.equal(w.document.querySelectorAll('.wmx-face.wmx-sty-rv').length, 0, 'style désactivé : faces simples');
   s2.close();
+  env.close();
+});
+
+test('prix : une erreur 503 du jeu surchargé est réessayée au lieu d\'abandonner le prix', async () => {
+  let n = 0;
+  const env = createEnv({ files: ['src/lib/namespace.js', 'src/lib/storage.js', 'src/lib/logic.js', 'src/lib/dom.js', 'src/features/stats.js', 'src/features/prices.js'],
+    fetchImpl: async () => (++n <= 2 ? json({}, 503) : json({ summary: { R: { average: 12, count: 5, latest: 11 } } })) });
+  const { WMX } = env;
+  await WMX.prices.load();
+  const r = await WMX.prices.fetchOne('lent');
+  assert.ok(r.summary, 'le prix finit par arriver');
+  assert.equal(n, 3, 'deux erreurs puis un succès');
+  assert.equal(WMX.prices.get('lent', 'R').avg, 12);
   env.close();
 });

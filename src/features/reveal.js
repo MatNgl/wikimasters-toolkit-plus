@@ -14,6 +14,22 @@
 
   // Image + description courte depuis Wikipédia (comme le jeu), avec cache. Respecte hide_image / nsfw_image.
   const infoCache = new Map();
+  // Wikipédia refuse les rafales (429) : 4 requêtes à la fois au plus, et jusqu'à 4 essais espacés avant d'abandonner une image.
+  let wikiBusy = 0;
+  const wikiQueue = [];
+  const wikiSlot = () => new Promise((go) => { const run = () => { wikiBusy += 1; go(); }; if (wikiBusy < 4) run(); else wikiQueue.push(run); });
+  const wikiFree = () => { wikiBusy -= 1; wikiQueue.shift()?.(); };
+  async function fetchWiki(url) {
+    for (let t = 0; t < 4; t++) {
+      await wikiSlot();
+      let res = null;
+      try { res = await fetch(url); } catch (_) { /* réseau */ } finally { wikiFree(); }
+      if (res?.ok) return res.json();
+      if (res && res.status !== 429 && res.status < 500) return null; // 404 : pas d'article, inutile de réessayer
+      await sleep(1500 * (t + 1));
+    }
+    return null;
+  }
   function loadInfo(c) {
     if (WMX.settings?.images === false) return Promise.resolve({});
     const key = `${c.lang || 'fr'}:${c.wikipedia_title}`;
@@ -21,11 +37,10 @@
       infoCache.set(key, (async () => {
         try {
           const url = `https://${c.lang || 'fr'}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(String(c.wikipedia_title).replace(/ /g, '_'))}`;
-          const res = await fetch(url);
-          if (!res.ok) return {};
-          const j = await res.json();
+          const j = await fetchWiki(url);
+          if (!j) { infoCache.delete(key); return {}; } // échec : rien n'est mémorisé, la prochaine demande réessaiera
           return { img: c.hide_image || c.nsfw_image ? null : j.thumbnail?.source, desc: j.description };
-        } catch (_) { return {}; }
+        } catch (_) { infoCache.delete(key); return {}; }
       })());
     }
     return infoCache.get(key);
@@ -157,7 +172,13 @@
     const repaintBtns = () => grid.querySelectorAll('.wmx-tile').forEach((t) => t._paintBtns?.());
     const offQuick = WMX.quick?.onChange(repaintBtns);
     window.addEventListener('wmx:fav', repaintBtns);
-    unsub = () => { offPrices(); offQuick?.(); window.removeEventListener('wmx:fav', repaintBtns); };
+    // Prix manquants (jeu surchargé, requêtes perdues) : on les redemande toutes les 20 s tant que l'écran est ouvert.
+    const heal = setInterval(() => {
+      if (!overlay.isConnected) { clearInterval(heal); return; }
+      const missing = all.filter((c) => !WMX.prices.fresh(c.id));
+      if (missing.length) WMX.prices.prefetch?.(missing);
+    }, 20000);
+    unsub = () => { clearInterval(heal); offPrices(); offQuick?.(); window.removeEventListener('wmx:fav', repaintBtns); };
     WMX.prepareCardSheets?.(); // précharge la fiche du jeu pendant que les cartes se tirent
 
     return {
