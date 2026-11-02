@@ -36,7 +36,7 @@
     },
     {
       title: 'Enchère rapide',
-      desc: 'Réglages du bouton ⚡ de Collection+ : prix de départ = moyenne du marché × coefficient.',
+      desc: 'Réglages du bouton ⚡ de la collection : prix de départ = moyenne du marché × coefficient.',
       items: [
         { key: 'quickCoef', type: 'number', min: 0.1, max: 3, step: 0.05, label: 'Coefficient du prix de départ', desc: 'Appliqué à la moyenne du marché, arrondi à l\u2019entier (1 W minimum). 0,9 = 10 % sous la moyenne.' },
         { key: 'quickDuration', type: 'select', label: 'Durée de l\u2019enchère', desc: 'Durée proposée par défaut (celles du jeu).',

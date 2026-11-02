@@ -4,7 +4,7 @@
 //
 // Toutes les requêtes passent par UN ordonnanceur : une seule à la fois, espacées, avec une pause qui s'allonge à chaque
 // refus du jeu (429 ou 403 par rafales) puis repart de zéro. Deux files : « haute » (cartes qu'on vient de tirer, enchère
-// rapide) servie avant la file « basse » (chargement par lots de Collection+).
+// rapide) servie avant la file « basse » (chargement par lots demandé depuis la collection).
 (() => {
   const { sleep } = WMX.dom;
   const L = WMX.logic;          // validité 48 h (96 h si la carte a beaucoup de ventes), pauses et écarts : voir lib/logic.js

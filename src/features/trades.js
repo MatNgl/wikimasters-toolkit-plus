@@ -1,6 +1,6 @@
 // Échanges : bouton « Valeurs » sur chaque offre d'échange (reçues, envoyées, historique) : les cartes de chaque côté avec leur
 // moyenne du marché, les wikibidous ajoutés, le total par côté et l'écart. Les offres viennent de GET /api/trades (déjà demandé
-// par le jeu) ; les moyennes de la même source que Collection+. Principe repris de l'ancienne extension (cartes repérées par
+// par le jeu) ; les moyennes de la même source que la collection. Principe repris de l'ancienne extension (cartes repérées par
 // leurs titres dans l'offre affichée).
 (() => {
   const { el } = WMX.dom;

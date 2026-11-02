@@ -1,5 +1,5 @@
-// Enchère rapide (bouton ⚡ de Collection+) : un clic met la carte en FILE D'ATTENTE ; la file se traite en arrière-plan,
-// une carte après l'autre, même si vous changez de page, ouvrez une fiche ou fermez Collection+. Chaque carte est mise aux
+// Enchère rapide (bouton ⚡ de la collection du jeu) : un clic met la carte en FILE D'ATTENTE ; la file se traite en arrière-plan,
+// une carte après l'autre, même si vous changez de page, ouvrez une fiche ou changiez d'écran. Chaque carte est mise aux
 // enchères avec le prix de départ calculé (moyenne du marché × coefficient, mode prudent optionnel) et la durée choisie
 // dans les paramètres. Recliquer sur ⚡ retire la carte de la file, ou annule l'enchère si elle est déjà en vente.
 // Tout passe par le formulaire et les boutons du jeu, pilotés comme le ferait l'utilisateur dans un cadre invisible :
@@ -334,7 +334,7 @@
     favState,
     isStarred,
     /**
-     * Opérations en lot sur des cartes (mode sélection de Collection+) : 'favorite' (want 'on' | 'off'), 'tag' (tag, add), 'discard'.
+     * Opérations en lot sur des cartes (actions en lot) : 'favorite' (want 'on' | 'off'), 'tag' (tag, add), 'discard'.
      * Chaque carte est mise dans la même file que les enchères, traitée en arrière-plan, et reprend après un rechargement.
      */
     bulk(type, items, extra = {}) {

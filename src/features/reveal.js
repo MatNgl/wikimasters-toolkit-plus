@@ -38,7 +38,7 @@
     const art = el('div', { class: 'wmx-art' });
     const desc = el('small', { class: 'wmx-desc' });
     const priceChip = el('span', { class: 'wmx-ct-price' });
-    // Deux boutons à droite de la carte : favori, et enchère rapide (mêmes réglages que dans Collection+).
+    // Deux boutons à droite de la carte : favori, et enchère rapide (mêmes réglages que dans la collection).
     const item = { card_id: c.id, title: c.wikipedia_title, rarity: r, starred: false };
     const acts = el('div', { class: 'wmx-ct-acts' });
     const paintBtns = () => {
@@ -101,7 +101,7 @@
     WMX.stats.addValue(prices.reduce((s, p) => s + (p?.avg || 0), 0), cards.length / 5); // « sans vente » compte pour 0
   }
 
-  WMX.loadCardInfo = (c) => loadInfo(c); // image + description Wikipédia (cache partagé avec Collection+)
+  WMX.loadCardInfo = (c) => loadInfo(c); // image + description Wikipédia (cache partagé avec la collection)
   WMX.revealSession = function revealSession() {
     let skip = false;
     const all = [];

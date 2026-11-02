@@ -11,8 +11,6 @@
 .wmx-panel h4 { margin: 8px 0 0; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: #7a8a83; }
 .wmx-panel label { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .wmx-status { min-height: 14px; color: #fbbf24; }
-.wmx-link { background: none; border: 0; color: #7a8a83; text-align: left; cursor: pointer; padding: 0; font-family: inherit; }
-.wmx-badge { align-self: stretch; text-align: center; padding: 5px 10px; border-radius: 999px; background: #ef4444; color: #fff; font-weight: 800; letter-spacing: .03em; box-shadow: 0 0 0 0 #ef444488; animation: wmx-pulse 1.8s infinite; }
 @keyframes wmx-pulse { 70% { box-shadow: 0 0 0 9px #ef444400; } 100% { box-shadow: 0 0 0 0 #ef444400; } }
 .wmx-select { width: 128px; }
 .wmx-settings { display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 12px; background: #0a0f0d; border: 1px solid #1e2b26; }
@@ -92,7 +90,6 @@
 
 /* Menu réduit : toujours sans fond, quelle que soit la variante */
 .wmx-panel.wmx-collapsed { background: transparent; border-color: transparent; box-shadow: none; backdrop-filter: none; }
-.wmx-badge[hidden] { display: none; }
 @media (max-width: 1450px) { .wmx-panel { width: 250px; } }
 @media (min-width: 1800px) { .wmx-panel { width: 340px; } }
 @media (min-width: 2300px) { .wmx-panel { width: 380px; } }
@@ -101,14 +98,6 @@ html:not([data-wmx-route^="/pulls"]) .wmx-panel { display: none; }
 
 /* Statistiques (barres par rareté) */
 .wmx-sbox { display: flex; flex-direction: column; gap: 5px; padding: 8px 10px; border-radius: 12px; background: #0a0f0d; border: 1px solid #1e2b26; }
-.wmx-shead { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 8px; font-weight: 700; color: #cfe; }
-.wmx-shead span:last-child { color: #7a8a83; font-weight: 500; }
-.wmx-srow { display: grid; grid-template-columns: 22px 1fr 44px 34px; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
-.wmx-srow b { color: rgb(var(--rgb)); font-weight: 800; }
-.wmx-bar { height: 5px; border-radius: 3px; background: #1a1f1d; overflow: hidden; }
-.wmx-bar i { display: block; height: 100%; min-width: 2px; border-radius: 3px; background: rgb(var(--rgb)); }
-.wmx-srow span { text-align: right; color: #aab; }
-.wmx-srow span:last-child { color: #7a8a83; }
 
 /* Voile pendant l'ouverture automatique (sous la vérification humaine du jeu, qui reste cliquable) */
 .wmx-cover { display: none; position: fixed; inset: 0 0 0 256px; z-index: 20; overflow: hidden; background: #0d0d0d; pointer-events: none; }
@@ -122,8 +111,6 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-toast { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 10002; padding: 9px 18px; border-radius: 999px; background: #0b1411f2; border: 1px solid #27493b; color: #e6efe9; font: 600 13px Outfit, system-ui, sans-serif; box-shadow: 0 10px 30px #000a; }
 .wmx-tile.flip { cursor: pointer; }
 .wmx-tile.flip:hover .wmx-inner { transform: rotateY(180deg) translateY(4px) scale(1.03); }
-.wmx-return { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); z-index: 10002; display: flex; align-items: center; gap: 12px; padding: 8px 10px 8px 16px; border-radius: 999px; background: #0b1411f2; border: 1px solid #27493b; box-shadow: 0 10px 30px #000a; color: #e6efe9; font: 600 13px Outfit, system-ui, sans-serif; }
-.wmx-return .wmx-btn { padding: 7px 14px; }
 
 /* Images : portrait = pleine carte ; paysage/carré = image entière sur fond flou */
 .wmx-art-img, .wmx-art-blur { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
@@ -135,61 +122,40 @@ html.wmx-opening .wmx-cover { display: block; }
   mask-image: linear-gradient(to bottom, transparent 0, #000 18%, #000 82%, transparent 100%); }
 .wmx-ct .wmx-meta strong, .wmx-face .wmx-meta strong { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 
-/* ===== Collection+ ===== */
+/* ===== Pages et fenêtres de l’extension (tableau de bord, fenêtres de dialogue) ===== */
 .wmx-cplus { position: fixed; top: 0; right: 0; bottom: 0; left: 256px; z-index: 50; display: flex; flex-direction: column; background: #0a0f0d; color: #e6efe9; font-family: Outfit, system-ui, sans-serif; }
 .wmx-cplus[hidden] { display: none; }
 .wmx-cp-head { display: flex; align-items: center; gap: 10px; padding: 14px 22px; border-bottom: 1px solid #1d2a25; flex-wrap: wrap; }
 .wmx-cp-head h2 { margin: 0 8px 0 0; font-size: 20px; color: var(--acc,#2dd4a0); }
-.wmx-tab, .wmx-chip2, .wmx-pg { font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
-.wmx-tab { padding: 7px 14px; border-radius: 999px; border: 1px solid #27493b; background: transparent; color: #cfe; }
-.wmx-tab.on { background: var(--acc,#2dd4a0); color: var(--acc-ink,#04130d); border-color: transparent; }
+.wmx-chip2 { font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
 .wmx-cp-status { margin-left: auto; color: #7f9a8d; font-size: 12px; }
-.wmx-cp-value { font-weight: 700; color: var(--acc,#2dd4a0); font-size: 13px; }
 .wmx-cp-head .wmx-close { margin-left: 6px; }
 .wmx-cp-scroll { flex: 1; overflow: auto; padding: 16px 22px 28px; }
-.wmx-cp-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
-.wmx-cp-tools .wmx-select { width: auto; min-width: 140px; }
-.wmx-cp-search { flex: 1 1 360px; width: auto; min-width: 260px; }
-.wmx-cp-tools { width: 100%; }
-.wmx-cp-range { display: inline-flex; gap: 6px; align-items: center; color: #7f9a8d; }
-.wmx-cp-range .wmx-input { width: 88px; }
 .wmx-chip2 { padding: 5px 12px; border-radius: 999px; border: 1px solid rgb(var(--rgb, 120 140 130) / .6); background: transparent; color: #cfe; }
 .wmx-chip2[aria-pressed=true] { background: rgb(var(--rgb, 45 212 160) / .22); border-color: rgb(var(--rgb, 45 212 160)); color: #fff; }
 .wmx-cp-prices { padding: 10px 12px; border: 1px solid #1d2a25; border-radius: 14px; background: #0d1411; margin-bottom: 14px; }
 .wmx-cp-pricehead { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font-size: 12px; color: #9db5a8; }
-.wmx-cp-pchips { display: inline-flex; gap: 6px; align-items: center; margin-left: auto; }
 .wmx-cp-pricehead .wmx-btn { padding: 6px 12px; }
 .wmx-cp-bar { height: 4px; border-radius: 2px; background: #16201b; margin-top: 8px; overflow: hidden; }
 .wmx-cp-bar i { display: block; height: 100%; width: 0; background: var(--acc,#2dd4a0); transition: width .3s; }
-.wmx-ct-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
 .wmx-ct { position: relative; aspect-ratio: 150 / 210; border-radius: 18px; overflow: hidden; cursor: pointer; background: linear-gradient(#222, #141414); border: 1px solid rgb(var(--rgb) / .74); box-shadow: 0 12px 28px rgba(0,0,0,.46), 0 0 14px rgb(var(--rgb) / .24), inset 0 0 0 1px rgb(var(--rgb) / .22); transition: transform .15s; }
 .wmx-ct:hover { transform: translateY(-3px); }
-.wmx-ct-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.wmx-ct-shade { position: absolute; inset: 0; z-index: 1; background: linear-gradient(to bottom, transparent 45%, rgba(0,0,0,.6) 68%, rgba(0,0,0,.92) 100%); }
 .wmx-ct .wmx-rar, .wmx-ct .wmx-meta, .wmx-ct-acts { z-index: 2; }
 .wmx-ct-acts { position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; }
 .wmx-ct-acts i { font: 700 11px system-ui; font-style: normal; padding: 2px 6px; border-radius: 7px; background: #000a; color: #ffd45a; }
-.wmx-ct-acts i.wmx-ct-n { color: #fff; }
 .wmx-bolt { width: 24px; height: 24px; padding: 0; border-radius: 7px; border: 1px solid #ffffff30; background: #000a; color: #fff; font-size: 13px; line-height: 1; cursor: pointer; }
 .wmx-bolt:hover:not(:disabled) { background: var(--acc,#2dd4a0); color: var(--acc-ink,#04130d); border-color: transparent; }
 .wmx-bolt.live { background: #facc15; color: #1a1300; border-color: transparent; box-shadow: 0 0 10px #facc1599; }
 .wmx-bolt:disabled { opacity: .35; cursor: default; }
 .wmx-bolt.queued { background: #60a5fa; color: #06111f; border-color: transparent; }
 .wmx-bolt.busy { background: #facc15; color: #1a1300; border-color: transparent; animation: wmx-pulse 1.2s infinite; }
-.wmx-reorder { padding: 5px 12px; font-size: 12px; }
 .wmx-qchip { position: fixed; right: 18px; bottom: 18px; z-index: 9500; display: flex; align-items: center; gap: 12px; max-width: min(520px, 90vw); padding: 9px 12px 9px 16px; border-radius: 999px; background: #0b1411f2; border: 1px solid #27493b; box-shadow: 0 10px 30px #000a; color: #e6efe9; font: 600 13px Outfit, system-ui, sans-serif; }
 .wmx-qtext { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wmx-qclear { flex: none; padding: 5px 12px; border-radius: 999px; border: 1px solid #555; background: transparent; color: #ddd; font-family: inherit; font-weight: 600; font-size: 12px; cursor: pointer; }
 .wmx-qclear:hover { border-color: #ef4444; color: #fecaca; }
 .wmx-ct-price { align-self: flex-start; font: 600 10px system-ui; padding: 2px 7px; border-radius: 7px; background: rgb(var(--rgb) / .2); color: rgb(var(--rgb)); border: 1px solid rgb(var(--rgb) / .4); }
 .wmx-cp-empty { grid-column: 1 / -1; color: #7f9a8d; padding: 24px 0; text-align: center; }
-.wmx-cp-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; color: #9db5a8; font-size: 12px; }
-.wmx-pager { display: flex; gap: 4px; align-items: center; }
-.wmx-pg { min-width: 30px; height: 30px; border-radius: 9px; border: 1px solid #27493b; background: transparent; color: #cfe; }
-.wmx-pg.on { background: var(--acc,#2dd4a0); color: var(--acc-ink,#04130d); border-color: transparent; }
-.wmx-pg:disabled { opacity: .35; cursor: default; }
-.wmx-pg-gap { color: #5d7569; padding: 0 4px; }
-.wmx-dash[hidden], .wmx-cards-view[hidden] { display: none; }
+.wmx-dash[hidden] { display: none; }
 .wmx-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 14px; }
 .wmx-metric { padding: 14px 16px; border-radius: 14px; background: #0d1411; border: 1px solid #1d2a25; display: flex; flex-direction: column; gap: 2px; }
 .wmx-metric b { font-size: 24px; }
@@ -248,8 +214,6 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-page-open nav a[href]:not(.wmx-nav-item) > div { display: none; }
 
 /* ===== Page « Enchères » et bulle flottante ===== */
-.wmx-auc-body { display: flex; flex-direction: column; gap: 22px; }
-.wmx-auc-sec h3 { margin: 0 0 10px; font-size: 15px; color: var(--acc,#2dd4a0); }
 .wmx-auc-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
 .wmx-auc-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 14px; background: #0d1411; border: 1px solid rgb(var(--rgb, 40 60 50) / .5); }
 .wmx-auc-img { flex: none; width: 54px; height: 76px; border-radius: 10px; object-fit: cover; background: #1a2420; border: 1px solid rgb(var(--rgb, 80 90 85) / .6); }
@@ -259,9 +223,6 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-auc-time { font: 600 12px Outfit, system-ui, sans-serif; color: #facc15; font-variant-numeric: tabular-nums; }
 .wmx-auc-side { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .wmx-auc-side .wmx-btn { padding: 6px 12px; font-size: 12px; white-space: nowrap; }
-.wmx-auc-badge { font: 700 10px Outfit, system-ui, sans-serif; padding: 2px 8px; border-radius: 999px; text-transform: uppercase; letter-spacing: .04em; }
-.wmx-auc-badge.ok { background: rgb(45 212 160 / .2); color: #2dd4a0; }
-.wmx-auc-badge.ko { background: rgb(239 68 68 / .2); color: #fca5a5; }
 .wmx-bubble { position: fixed; right: 18px; bottom: 72px; z-index: 9400; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; font-family: Outfit, system-ui, sans-serif; }
 .wmx-bubble[hidden] { display: none; }
 .wmx-bubble-pill { display: flex; align-items: center; gap: 8px; padding: 9px 16px; border-radius: 999px; border: 1px solid #27493b; background: #0b1411f2; color: #e6efe9; font: 600 13px Outfit, system-ui, sans-serif; cursor: pointer; box-shadow: 0 10px 30px #000a; }
@@ -273,7 +234,6 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-bubble-head span { display: flex; gap: 6px; }
 .wmx-bubble-body { display: flex; flex-direction: column; gap: 14px; }
 .wmx-bubble-body .wmx-auc-list { grid-template-columns: 1fr; }
-.wmx-bubble-body .wmx-auc-sec h3 { font-size: 13px; }
 
 /* ===== Bulle des enchères : deux colonnes (0.6.1) ===== */
 .wmx-bubble-panel { width: min(860px, 94vw); }
@@ -318,12 +278,6 @@ html.wmx-opening .wmx-cover { display: block; }
 @media (prefers-reduced-motion: reduce) { .wmx-bubble-panel, .wmx-bubble-pill, .wmx-auc-row { transition: none; } }
 
 /* ===== Chargement des prix par rareté ou par étiquette (0.6.3) ===== */
-.wmx-cp-pmode { display: inline-flex; gap: 6px; align-items: center; margin-left: auto; }
-.wmx-cp-pickrow { margin: 8px 0 2px; }
-.wmx-cp-pickrow .wmx-cp-pchips { margin-left: 0; display: flex; flex-wrap: wrap; }
-.wmx-cp-ptags { display: flex; flex-wrap: wrap; gap: 6px; max-height: 92px; overflow: auto; padding-right: 4px; }
-.wmx-cp-ptags .wmx-chip2 { padding: 4px 10px; }
-.wmx-cp-pickrow [hidden] { display: none; }
 
 /* ===== Lots 2 et 5 (0.7.0) ===== */
 /* La bulle des enchères sort de sa pastille, s'étend, et s'y replie à la fermeture. */
@@ -385,7 +339,6 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-mk-bid { margin-top: 6px; width: 100%; padding: 7px 10px; font-size: 12px; }
 .wmx-mk-bid.ok { background: rgb(45 212 160 / .18); color: #2dd4a0; border-color: rgb(45 212 160 / .5); }
 .wmx-mk-bid:disabled { opacity: .75; cursor: default; }
-.wmx-cp-select { margin-left: auto; padding: 6px 12px; font-size: 12px; }
 .wmx-tv-wrap { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
 .wmx-tv-btn { width: 100%; padding: 6px 10px; font-size: 12px; }
 .wmx-tv { display: flex; flex-direction: column; gap: 10px; padding: 10px; border-radius: 12px; background: #0b1411; border: 1px solid #27493b; font-family: Outfit, system-ui, sans-serif; font-size: 12px; color: #dbe8e1; text-align: left; }
@@ -416,47 +369,19 @@ html.wmx-opening .wmx-cover { display: block; }
 @keyframes wmx-pre-fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes wmx-pre-pop { from { opacity: 0; transform: translateY(10px) scale(.94); } to { opacity: 1; transform: none; } }
 
-/* ===== Mode sélection de Collection+ (0.10.0) ===== */
+/* ===== Pastille de sélection (anciens styles retirés) ===== */
 .wmx-ct-check { display: none; position: absolute; top: 8px; left: 46px; z-index: 6; width: 22px; height: 22px; border-radius: 7px; place-items: center; font-style: normal; font-size: 13px; font-weight: 800;
   color: transparent; background: #0b1411cc; border: 2px solid #ffffff88; transition: all .15s ease; }
-.wmx-selecting .wmx-ct-check { display: grid; }
-.wmx-selecting .wmx-ct { cursor: pointer; }
 .wmx-ct.sel { outline: 3px solid var(--acc,#2dd4a0); outline-offset: -3px; transform: translateY(-2px); }
-.wmx-ct.sel .wmx-ct-check { color: #06241b; background: var(--acc,#2dd4a0); border-color: var(--acc,#2dd4a0); }
 .wmx-selbar { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 30; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center; max-width: min(960px, calc(100vw - 40px));
   padding: 10px 14px; border-radius: 18px; background: #0b1411f2; border: 1px solid #27493b; box-shadow: 0 20px 50px #000c; backdrop-filter: blur(12px); font-family: Outfit, system-ui, sans-serif; animation: wmx-pre-pop .25s ease; }
-.wmx-selbar[hidden] { display: none; }
-.wmx-sel-count { font-weight: 700; font-size: 13px; color: var(--acc,#2dd4a0); margin-right: 4px; }
-.wmx-sel-btn { padding: 6px 11px; font-size: 12px; }
-.wmx-sel-btn.danger:not(:disabled) { color: #fca5a5; border-color: rgb(239 68 68 / .5); }
-.wmx-sel-btn:disabled { opacity: .4; cursor: default; }
-.wmx-selpop { position: fixed; left: 50%; bottom: 86px; transform: translateX(-50%); z-index: 31; width: min(440px, calc(100vw - 40px)); display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 16px; background: #0b1411f7; border: 1px solid #27493b; box-shadow: 0 24px 60px #000d; color: #e6efe9; font-family: Outfit, system-ui, sans-serif; animation: wmx-pre-pop .2s ease; }
-.wmx-selpop-head { display: flex; justify-content: space-between; align-items: center; }
-.wmx-selpop-list { display: flex; flex-wrap: wrap; gap: 6px; max-height: 190px; overflow: auto; }
-.wmx-selpop-row { display: flex; gap: 8px; justify-content: flex-end; }
-.wmx-selpop--danger { border-color: rgb(239 68 68 / .55); }
-.wmx-selpop small { color: #9db5a8; }
 
 /* ===== Barre de sélection et confirmation de défausse, dans le style du jeu (0.10.2) ===== */
-.wmx-selbar { flex-direction: column; align-items: flex-start; gap: 10px; padding: 14px 16px; border-radius: 20px; background: #101614f5; border: 1px solid #2a332f; }
-.wmx-sel-count { font-size: 14px; color: #c9d6cf; } .wmx-sel-count b { color: #3be1a5; margin-right: 6px; font-size: 15px; }
-.wmx-sel-row { display: flex; flex-wrap: wrap; gap: 8px; }
-.wmx-sel-btn { display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px; border-radius: 12px; border: 1px solid #ffffff14; background: #ffffff0a; color: #dbe6e0; font: 600 13px Outfit, system-ui, sans-serif; cursor: pointer; transition: background .15s ease, border-color .15s ease, opacity .15s ease; }
-.wmx-sel-btn:hover:not(:disabled) { background: #ffffff16; border-color: #ffffff30; }
-.wmx-sel-btn.strong { color: #fff; }
-.wmx-sel-btn.danger { background: #e5384f; border-color: #e5384f; color: #fff; }
-.wmx-sel-btn.danger:hover:not(:disabled) { background: #f0475e; }
-.wmx-sel-btn:disabled { opacity: .38; cursor: default; }
-.wmx-sel-btn.danger:disabled { background: #e5384f55; border-color: #e5384f55; }
 .wmx-dlg-back { position: fixed; inset: 0; z-index: 2147483100; display: grid; place-items: center; background: #02080599; backdrop-filter: blur(6px); animation: wmx-pre-fade .15s ease; }
 .wmx-dlg { width: min(420px, calc(100vw - 32px)); max-height: calc(100vh - 40px); overflow: auto; padding: 20px; border-radius: 18px; background: #101614; border: 1px solid #2a332f; box-shadow: 0 30px 80px #000d; color: #dbe6e0; font-family: Outfit, system-ui, sans-serif; animation: wmx-pre-pop .2s ease; }
 .wmx-dlg h3 { margin: 0 0 8px; font-size: 18px; color: #fff; }
 .wmx-dlg p { margin: 0 0 10px; font-size: 13px; line-height: 1.45; }
-.wmx-dlg-chips { display: flex; gap: 12px; margin-bottom: 10px; font-size: 13px; }
-.wmx-dlg-warn { color: #ff6b6b; font-weight: 700; }
-.wmx-dlg-list, .wmx-dlg-note { color: #8fa89c; font-size: 12px !important; }
-.wmx-dlg-strong { font-size: 15px !important; font-weight: 700; color: #e6efe9; }
-.wmx-dlg-gain { color: #9db5a8; } .wmx-dlg-gain b { color: #3be1a5; }
+.wmx-dlg-note { color: #8fa89c; font-size: 12px !important; }
 .wmx-dlg-row { display: flex; gap: 10px; margin-top: 14px; } .wmx-dlg-row .wmx-btn { flex: 1; padding: 11px; }
 .wmx-dlg .wmx-btn--danger { background: #e5384f; border-color: #e5384f; color: #fff; }
 
@@ -468,7 +393,6 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-pm-tags { max-height: 240px; overflow: auto; padding-right: 4px; }
 .wmx-pm-sum { margin: 0; color: #9db5a8; font-size: 13px; }
 .wmx-cp-pspacer { flex: 1; }
-.wmx-cp-pickrow, .wmx-cp-pmode { display: none; }
 
 /* ===== Collection du jeu enrichie (0.11.0) ===== */
 .wmx-nt-bar { margin: 0 0 14px; }

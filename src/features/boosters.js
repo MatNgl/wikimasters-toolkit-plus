@@ -8,7 +8,7 @@
   const ui = {};
 
   WMX.settings = { ...WMX.DEFAULTS };
-  // Réglages enregistrés : chargés sur toutes les pages (Collection+ lit le coefficient d'enchère, par exemple).
+  // Réglages enregistrés : chargés sur toutes les pages (le bouton ⚡ de la collection lit le coefficient d'enchère, par exemple).
   WMX.store.get('wmxSettings', {}).then((s) => Object.assign(WMX.settings, s));
   const rank = (r) => WMX.RARITIES.length - 1 - WMX.RARITIES.indexOf(r); // C = 0 … L = 5
 

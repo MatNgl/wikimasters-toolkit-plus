@@ -1,4 +1,4 @@
-// Marché : sous chaque enchère de la liste, la moyenne du marché de la carte (même source que Collection+) et un verdict
+// Marché : sous chaque enchère de la liste, la moyenne du marché de la carte (même source que la collection) et un verdict
 // « bonne affaire / prix correct / trop cher » comparant la mise (ou le prix de départ) à cette moyenne. Sur MES ventes : pas de
 // bouton de mise, et le verdict devient « bénéfice / prix du marché / à perte ».
 //
