@@ -15,7 +15,8 @@
   let saveTimer = null;
   const listeners = new Set();
   const job = { running: false, paused: false, done: 0, total: 0, failed: 0, token: 0 };
-  const sched = { hi: [], lo: [], pumping: false, blocks: 0, penaltyUntil: 0, pending: new Map() };
+  const sched = { hi: [], lo: [], slots: [false, false], blocks: 0, penaltyUntil: 0, pending: new Map() };
+  let lat = 0;                  // latence moyenne des réponses (ms) : quand le jeu est lent, un second ouvrier travaille en parallèle
   let ticker = null;
 
   const waitLeft = () => Math.max(0, Math.ceil((sched.penaltyUntil - Date.now()) / 1000));
@@ -50,42 +51,48 @@
     return { summary: j.summary || {} };
   }
 
-  async function pump() {
-    if (sched.pumping) return;
-    sched.pumping = true;
-    try {
-      await load();
-      while ((sched.hi.length || sched.lo.length) && WMX.alive()) {
-        const item = sched.hi.shift() || sched.lo.shift();
-        const left = sched.penaltyUntil - Date.now();
-        if (left > 0) await sleep(left);
-        let r;
-        try { r = await fetchSummary(item.cardId); } catch (_) { r = { error: 0 }; }
-        if (r.limited) {
-          sched.blocks += 1;
-          item.tries += 1;
-          gap = L.nextGap(gap, true, BASE_GAP);
-          lastStatus = r.status || 429;
-          if (item.tries > 12) { sched.pending.delete(item.cardId); item.resolve({ limited: true }); continue; }
-          sched.penaltyUntil = Date.now() + L.limitWait(sched.blocks, r.retryAfter) * 1000; // 6, 12, 18… s (60 s au plus)
-          (item.high ? sched.hi : sched.lo).unshift(item);
-          ensureTicker();
-          emit();
-          continue;
-        }
-        sched.blocks = 0; // un succès : la pause repart de sa valeur de base
-        gap = L.nextGap(gap, false, BASE_GAP);
-        if (r.error != null) lastStatus = r.error;
-        if (r.summary) { cache[item.cardId] = { t: Date.now(), s: r.summary }; scheduleSave(); }
-        sched.pending.delete(item.cardId);
-        item.resolve(r);
+  const queued = () => sched.hi.length || sched.lo.length;
+  /** Un ouvrier traite la file ; le second (idx 1) n'intervient que si le jeu est lent (> 1,5 s) et qu'aucun refus n'est en cours. */
+  async function worker(idx) {
+    await load();
+    while (queued() && WMX.alive()) {
+      if (idx > 0 && (lat < 1500 || sched.blocks > 0 || waitLeft() > 0)) { await sleep(500); continue; }
+      const item = sched.hi.shift() || sched.lo.shift();
+      if (!item) continue;
+      const left = sched.penaltyUntil - Date.now();
+      if (left > 0) await sleep(left);
+      let r;
+      const t0 = Date.now();
+      try { r = await fetchSummary(item.cardId); } catch (_) { r = { error: 0 }; }
+      lat = lat ? Math.round(lat * 0.7 + (Date.now() - t0) * 0.3) : Date.now() - t0;
+      if (r.limited) {
+        sched.blocks += 1;
+        item.tries += 1;
+        gap = L.nextGap(gap, true, BASE_GAP);
+        lastStatus = r.status || 429;
+        if (item.tries > 12) { sched.pending.delete(item.cardId); item.resolve({ limited: true }); continue; }
+        sched.penaltyUntil = Math.max(sched.penaltyUntil, Date.now() + L.limitWait(sched.blocks, r.retryAfter) * 1000); // 6, 12, 18… s (60 s au plus)
+        (item.high ? sched.hi : sched.lo).unshift(item);
+        ensureTicker();
         emit();
-        await sleep(gap);
+        continue;
       }
-    } finally {
-      sched.pumping = false;
-      if ((sched.hi.length || sched.lo.length) && WMX.alive()) pump();
+      sched.blocks = 0; // un succès : la pause repart de sa valeur de base
+      gap = L.nextGap(gap, false, BASE_GAP);
+      if (r.error != null) lastStatus = r.error;
+      if (r.summary) { cache[item.cardId] = { t: Date.now(), s: r.summary }; scheduleSave(); }
+      sched.pending.delete(item.cardId);
+      item.resolve(r);
+      emit();
+      await sleep(gap);
     }
+  }
+  function pump() {
+    sched.slots.forEach((busy, idx) => {
+      if (busy || !queued()) return;
+      sched.slots[idx] = true;
+      worker(idx).catch(() => {}).finally(() => { sched.slots[idx] = false; if (queued() && WMX.alive()) pump(); });
+    });
   }
 
   function schedule(cardId, high) {

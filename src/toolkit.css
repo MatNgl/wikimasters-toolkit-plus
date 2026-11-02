@@ -348,9 +348,11 @@ html.wmx-opening .wmx-cover { display: block; }
 
 /* Couronnes sur les cartes les plus chères du lot. */
 .wmx-tile { position: relative; }
-.wmx-crown { position: absolute; top: -16px; left: 50%; width: 32px; height: 26px; z-index: 5; pointer-events: none; color: #ffd45a;
+.wmx-crown { position: absolute; top: -19px; left: 50%; width: 38px; height: 31px; z-index: 5; pointer-events: none; color: #ffd45a;
   transform: translateX(-50%) rotate(-7deg); filter: drop-shadow(0 3px 6px #000b) drop-shadow(0 0 9px #ffd45aa6);
   animation: wmx-crown-in .6s cubic-bezier(.2,1.5,.4,1) both; }
-.wmx-crown[data-rank="2"] { color: #d5dde8; filter: drop-shadow(0 3px 6px #000b) drop-shadow(0 0 8px #d5dde88a); width: 28px; height: 23px; top: -14px; }
-.wmx-crown[data-rank="3"] { color: #d38b55; filter: drop-shadow(0 3px 6px #000b) drop-shadow(0 0 8px #d38b558a); width: 26px; height: 21px; top: -13px; }
+.wmx-crown[data-rank="2"] { color: #d5dde8; filter: drop-shadow(0 3px 6px #000b) drop-shadow(0 0 8px #d5dde88a); width: 33px; height: 27px; top: -17px; }
+.wmx-crown[data-rank="3"] { color: #d38b55; filter: drop-shadow(0 3px 6px #000b) drop-shadow(0 0 8px #d38b558a); width: 30px; height: 24px; top: -15px; }
 @keyframes wmx-crown-in { from { opacity: 0; transform: translateX(-50%) translateY(-14px) rotate(-22deg) scale(.4); } to { opacity: 1; transform: translateX(-50%) rotate(-7deg); } }
+
+.wmx-auc-time.ended { color: #7f8f87; }

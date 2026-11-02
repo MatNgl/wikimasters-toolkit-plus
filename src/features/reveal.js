@@ -93,12 +93,12 @@
   async function recordValue(tiles) {
     const cards = tiles.map((t) => t._card);
     if (!cards.length || cards.length % 5) return;
+    if (cards.some((c) => !WMX.prices.fresh(c.id))) return; // un prix manque encore : la moyenne serait fausse
     const prices = cards.map((c) => WMX.prices.get(c.id, WMX.normRarity(c.rarity) || 'C'));
-    if (prices.some((p) => !p)) return;
     const sig = cards.map((c) => c.id).sort().join(',');
     if (await WMX.store.get('lastValueSig', '') === sig) return;
     await WMX.store.set('lastValueSig', sig);
-    WMX.stats.addValue(prices.reduce((s, p) => s + p.avg, 0), cards.length / 5);
+    WMX.stats.addValue(prices.reduce((s, p) => s + (p?.avg || 0), 0), cards.length / 5); // « sans vente » compte pour 0
   }
 
   WMX.loadCardInfo = (c) => loadInfo(c); // image + description Wikipédia (cache partagé avec Collection+)
@@ -135,10 +135,14 @@
       lot.textContent = `${done ? 'Valeur estimée du lot' : 'Valeur des cartes révélées'} : ${Math.round(v).toLocaleString('fr-FR')} W · prix connus : ${n}/${flipped.length}`;
     };
     let finished = false;
+    let recorded = false;
     /** Couronnes sur les cartes les plus chères du lot (1 à 3 selon le nombre de cartes), une fois la révélation terminée. */
     const markCrowns = () => {
       if (!finished) return;
       const tiles = [...grid.querySelectorAll('.wmx-tile')].filter((t) => t._card);
+      // Tant qu'un prix manque encore, un classement serait faux : les couronnes n'apparaissent que lorsque tous les prix sont connus.
+      if (tiles.some((t) => !WMX.prices.fresh(t._card.id))) return;
+      if (!recorded) { recorded = true; recordValue(tiles); } // valeur du lot → moyenne par paquet des statistiques
       grid.querySelectorAll('.wmx-crown').forEach((c) => c.remove());
       const values = tiles.map((t) => WMX.prices.get(t._card.id, WMX.normRarity(t._card.rarity) || 'C')?.avg || 0);
       WMX.logic.crownIndexes(values).forEach((idx, rank) => {
@@ -204,7 +208,6 @@
         updateLot();
         finished = true;
         markCrowns();
-        recordValue(tiles);
       },
     };
   };

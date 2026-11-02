@@ -139,11 +139,15 @@
     await refresh();
     const a = S.selling.get(item.card_id);
     if (!a) return { skipped: true };
-    const res = await cancelAuction(a);
-    if (!res.ok) return { error: res.error };
-    await sleep(800);
-    await refresh();
-    return S.selling.has(item.card_id) ? { error: 'le jeu n’a pas annulé l’enchère (déjà misée ?)' } : { ok: true };
+    // Le serveur du jeu peut répondre par une erreur 503 quand il est surchargé : jusqu'à 3 essais espacés avant d'abandonner.
+    for (let t = 0; t < 3; t++) {
+      const res = await cancelAuction(a);
+      if (!res.ok) return { error: res.error };
+      await sleep(800 + t * 4000);
+      await refresh();
+      if (!S.selling.has(item.card_id)) return { ok: true };
+    }
+    return { error: 'le jeu n’a pas annulé l’enchère (serveur du jeu surchargé, ou enchère déjà misée) : réessayez plus tard' };
   }
 
   /** Pose ou retire le favori en cliquant l'étoile de la fiche du jeu (cadre invisible), comme l'utilisateur. */

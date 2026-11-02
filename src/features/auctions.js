@@ -213,7 +213,7 @@
         el('div', { class: 'wmx-auc-price' }, el('small', {}, 'Mise actuelle'), el('b', {}, `${fmt(a.current_bid || a.base_amount)} W`)),
         act);
     } else {
-      const act = a.current_bid ? '' : el('button', { class: 'wmx-btn wmx-btn--ghost wmx-auc-cancel', title: 'Annuler la vente et récupérer la carte' }, 'Annuler');
+      const act = a.current_bid || msLeft(a) <= 0 ? '' : el('button', { class: 'wmx-btn wmx-btn--ghost wmx-auc-cancel', title: 'Annuler la vente et récupérer la carte' }, 'Annuler');
       if (act) act.addEventListener('click', () => cancelSale(a));
       main = el('div', { class: 'wmx-auc-main' },
         el('div', { class: 'wmx-auc-name' }, title, rarityTag(r)),
@@ -251,6 +251,7 @@
       t.textContent = fmtLeft(left);
       const st = timeState(left);
       t.classList.toggle('low', st === 'low' || st === 'urgent');
+      t.classList.toggle('ended', st === 'ended');
       t.closest('.wmx-auc-row')?.classList.toggle('urgent', st === 'urgent');
     }
     for (const b of document.querySelectorAll('.wmx-auc-bid')) {
