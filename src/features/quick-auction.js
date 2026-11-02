@@ -13,7 +13,22 @@
   const notify = () => listeners.forEach((cb) => { try { cb(); } catch (_) { /* écouteur obsolète */ } });
   const slim = (it) => ({ card_id: it.card_id, title: it.title, rarity: it.rarity, starred: !!it.starred, tag: it.tag, add: it.add, want: it.want });
   const isAuctionOp = (o) => o.type === 'launch' || o.type === 'cancel';
-  const persist = () => WMX.store.set('quickQueue', S.queue.map((o) => ({ type: o.type, item: o.item })));
+  // L'opération en cours n'est PAS réécrite dans le stockage : un autre onglet ne peut pas la reprendre (pas de doublon).
+  const persist = () => WMX.store.set('quickQueue', S.queue.filter((o) => o !== S.current).map((o) => ({ id: o.id, type: o.type, item: o.item })));
+  const newId = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
+  const withLock = (name, fn) => (navigator.locks?.request ? navigator.locks.request(name, fn) : fn());
+  /**
+   * Plusieurs onglets peuvent avoir copié la même file : avant d'exécuter une opération, on la « réclame » dans le stockage
+   * partagé, sous verrou. Si un autre onglet l'a déjà prise (ou traitée), on passe : jamais deux fois la même opération.
+   */
+  const claim = (op) => withLock('wmx-queue', async () => {
+    const stored = await WMX.store.get('quickQueue', []);
+    const i = stored.findIndex((x) => x.id === op.id);
+    if (i < 0) return false;
+    stored.splice(i, 1);
+    await WMX.store.set('quickQueue', stored);
+    return true;
+  });
 
   const cfg = () => ({ coef: Number(WMX.settings?.quickCoef) || 0.9, dur: LABELS[WMX.settings?.quickDuration] || '1 h', prudent: !!WMX.settings?.quickPrudent });
 
@@ -253,6 +268,12 @@
     try {
       while (S.queue.length) {
         const op = S.queue[0];
+        if (!(await claim(op))) { // déjà prise par un autre onglet
+          S.queue = S.queue.filter((o) => o !== op);
+          S.batch.total = Math.max(S.batch.done, S.batch.total - 1);
+          updateChip(); notify();
+          continue;
+        }
         S.current = op;
         updateChip(); notify();
         let res;
@@ -287,6 +308,7 @@
   }
 
   function enqueue(op) {
+    op.id = op.id || newId();
     if (!S.running && !S.queue.length) S.batch = { done: 0, total: 0, ok: 0, failed: [] };
     S.queue.push(op);
     S.batch.total += 1;
@@ -367,9 +389,15 @@
 
   // Reprise : une file mémorisée (page rechargée en cours de route) repart toute seule.
   (async () => {
-    const q = await WMX.store.get('quickQueue', []);
+    const stored = await WMX.store.get('quickQueue', []);
+    // Une défausse est définitive : elle ne reprend JAMAIS toute seule après un rechargement (à relancer depuis la sélection).
+    const q = stored.filter((o) => o.type !== 'discard').map((o) => ({ ...o, id: o.id || newId() }));
+    if (q.length !== stored.length || q.some((o, i) => o.id !== stored[i]?.id)) {
+      await WMX.store.set('quickQueue', q);
+      setTimeout(() => WMX.toast?.(`${stored.length - q.length} défausse${stored.length - q.length > 1 ? 's' : ''} en attente abandonnée${stored.length - q.length > 1 ? 's' : ''} (page rechargée) : relancez-les depuis la sélection si besoin.`, 9000), 3000);
+    }
     if (!q.length) return;
-    S.queue = q.map((o) => ({ type: o.type, item: o.item }));
+    S.queue = q.map((o) => ({ id: o.id, type: o.type, item: o.item }));
     S.batch = { done: 0, total: q.length, ok: 0, failed: [] };
     updateChip();
     await sleep(4000); // laisse les réglages et les prix se charger

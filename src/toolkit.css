@@ -436,3 +436,26 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-selpop-row { display: flex; gap: 8px; justify-content: flex-end; }
 .wmx-selpop--danger { border-color: rgb(239 68 68 / .55); }
 .wmx-selpop small { color: #9db5a8; }
+
+/* ===== Barre de sélection et confirmation de défausse, dans le style du jeu (0.10.2) ===== */
+.wmx-selbar { flex-direction: column; align-items: flex-start; gap: 10px; padding: 14px 16px; border-radius: 20px; background: #101614f5; border: 1px solid #2a332f; }
+.wmx-sel-count { font-size: 14px; color: #c9d6cf; } .wmx-sel-count b { color: #3be1a5; margin-right: 6px; font-size: 15px; }
+.wmx-sel-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.wmx-sel-btn { display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px; border-radius: 12px; border: 1px solid #ffffff14; background: #ffffff0a; color: #dbe6e0; font: 600 13px Outfit, system-ui, sans-serif; cursor: pointer; transition: background .15s ease, border-color .15s ease, opacity .15s ease; }
+.wmx-sel-btn:hover:not(:disabled) { background: #ffffff16; border-color: #ffffff30; }
+.wmx-sel-btn.strong { color: #fff; }
+.wmx-sel-btn.danger { background: #e5384f; border-color: #e5384f; color: #fff; }
+.wmx-sel-btn.danger:hover:not(:disabled) { background: #f0475e; }
+.wmx-sel-btn:disabled { opacity: .38; cursor: default; }
+.wmx-sel-btn.danger:disabled { background: #e5384f55; border-color: #e5384f55; }
+.wmx-dlg-back { position: fixed; inset: 0; z-index: 2147483100; display: grid; place-items: center; background: #02080599; backdrop-filter: blur(6px); animation: wmx-pre-fade .15s ease; }
+.wmx-dlg { width: min(420px, calc(100vw - 32px)); max-height: calc(100vh - 40px); overflow: auto; padding: 20px; border-radius: 18px; background: #101614; border: 1px solid #2a332f; box-shadow: 0 30px 80px #000d; color: #dbe6e0; font-family: Outfit, system-ui, sans-serif; animation: wmx-pre-pop .2s ease; }
+.wmx-dlg h3 { margin: 0 0 8px; font-size: 18px; color: #fff; }
+.wmx-dlg p { margin: 0 0 10px; font-size: 13px; line-height: 1.45; }
+.wmx-dlg-chips { display: flex; gap: 12px; margin-bottom: 10px; font-size: 13px; }
+.wmx-dlg-warn { color: #ff6b6b; font-weight: 700; }
+.wmx-dlg-list, .wmx-dlg-note { color: #8fa89c; font-size: 12px !important; }
+.wmx-dlg-strong { font-size: 15px !important; font-weight: 700; color: #e6efe9; }
+.wmx-dlg-gain { color: #9db5a8; } .wmx-dlg-gain b { color: #3be1a5; }
+.wmx-dlg-row { display: flex; gap: 10px; margin-top: 14px; } .wmx-dlg-row .wmx-btn { flex: 1; padding: 11px; }
+.wmx-dlg .wmx-btn--danger { background: #e5384f; border-color: #e5384f; color: #fff; }

@@ -388,38 +388,76 @@
     search.focus();
   }
 
+  /** Fenêtre de confirmation de défausse, calquée sur celle du jeu. Rien n'est défaussé sans un clic explicite sur « Défausser ». */
   function confirmDiscard() {
     const { todo, skipped } = plan('discard');
-    if (!todo.length) return WMX.toast?.('Aucune carte défaussable dans la sélection (favorites ou en vente).');
-    ui.selbar.parentElement.querySelector('.wmx-selpop')?.remove();
-    const box = el('div', { class: 'wmx-selpop wmx-selpop--danger' },
-      el('strong', {}, `Défausser ${todo.length} carte${todo.length > 1 ? 's' : ''} ?`),
-      el('small', {}, `Action définitive : les cartes sont retirées de votre collection${skipped ? ` (${skipped} ignorée${skipped > 1 ? 's' : ''} : favorites ou en vente)` : ''}.`),
-      el('div', { class: 'wmx-selpop-row' },
-        el('button', { class: 'wmx-btn wmx-btn--ghost', onclick: () => box.remove() }, 'Annuler'),
-        el('button', { class: 'wmx-btn wmx-btn--danger', onclick: () => { box.remove(); launch('discard'); } }, `Défausser ${todo.length}`)));
-    ui.selbar.before(box);
+    if (!todo.length) return WMX.toast?.('Aucune carte défaussable dans la sélection (favorites, en vente ou en échange).');
+    document.querySelector('.wmx-selpop')?.remove();
+    const byR = {};
+    for (const i of todo) byR[i.rarity] = (byR[i.rarity] || 0) + 1;
+    const rare = todo.filter((i) => ['L', 'UR', 'SR'].includes(i.rarity)).length;
+    const names = todo.map((i) => i.title);
+    const close = () => backdrop.remove();
+    const backdrop = el('div', { class: 'wmx-dlg-back', onmousedown: (e) => { if (e.target === backdrop) close(); } },
+      el('div', { class: 'wmx-dlg', role: 'dialog', 'aria-label': 'Défausser' },
+        el('h3', {}, `Défausser ${todo.length} carte${todo.length > 1 ? 's' : ''} ?`),
+        el('div', { class: 'wmx-dlg-chips' }, ...R.filter((r) => byR[r]).map((r) => el('b', { style: `color:rgb(${WMX.RARITY_RGB[r]})` }, `${byR[r]} × ${r}`))),
+        rare ? el('p', { class: 'wmx-dlg-warn' }, `Attention : ${rare} carte${rare > 1 ? 's' : ''} rare${rare > 1 ? 's' : ''} (L / UR / SR) dans la sélection.`) : '',
+        el('p', { class: 'wmx-dlg-list' }, names.slice(0, 12).join(', ') + (names.length > 12 ? `, +${names.length - 12} autres…` : '')),
+        skipped ? el('p', { class: 'wmx-dlg-note' }, `${skipped} carte${skipped > 1 ? 's' : ''} de la sélection ${skipped > 1 ? 'sont' : 'est'} en favori, en vente ou en échange en attente : ${skipped > 1 ? 'elles ne seront pas défaussées' : 'elle ne sera pas défaussée'}.`) : '',
+        el('p', { class: 'wmx-dlg-strong' }, 'Un exemplaire de chaque carte sélectionnée sera retiré définitivement.'),
+        el('p', { class: 'wmx-dlg-gain' }, 'Vous recevrez ', el('b', {}, `ⓦ ${todo.length} wikibidous`), '.'),
+        el('div', { class: 'wmx-dlg-row' },
+          el('button', { class: 'wmx-btn wmx-btn--ghost', onclick: close }, 'Annuler'),
+          el('button', { class: 'wmx-btn wmx-btn--danger', onclick: () => { close(); launch('discard'); } }, 'Défausser'))));
+    document.body.append(backdrop);
   }
 
+  // Icônes (mêmes pictogrammes que la barre de sélection du jeu).
+  const ICO = {
+    check: '<rect x="3" y="3" width="18" height="18" rx="3"/><path d="m8 12 3 3 5-6"/>',
+    square: '<rect x="3" y="3" width="18" height="18" rx="3"/>',
+    tag: '<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1.2"/>',
+    star: '<path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>',
+    starOff: '<path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/><path d="m3 3 18 18"/>',
+    trash: '<path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14M10 11v6m4-6v6"/>',
+  };
+  const icon = (k) => { const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('width', '15'); s.setAttribute('height', '15'); s.setAttribute('fill', 'none'); s.setAttribute('stroke', 'currentColor'); s.setAttribute('stroke-width', '2'); s.setAttribute('stroke-linecap', 'round'); s.setAttribute('stroke-linejoin', 'round'); s.innerHTML = ICO[k]; return s; };
+
+  /** Barre d'actions, même présentation que celle du jeu : compteur, icônes, et le nombre de cartes que chaque action va toucher. */
   function renderSelbar() {
     if (!ui.selbar) return;
     ui.selbar.hidden = !S.selecting;
-    if (!S.selecting) { ui.selbar.parentElement?.querySelector('.wmx-selpop')?.remove(); return; }
+    if (!S.selecting) { document.querySelector('.wmx-selpop')?.remove(); return; }
     const n = S.sel.size;
-    const mk = (label, fn, cls) => { const b = el('button', { class: `wmx-btn wmx-btn--ghost wmx-sel-btn ${cls || ''}`, onclick: fn }, label); if (!n) b.disabled = true; return b; };
+    const count = (k, tag) => plan(k, tag).todo.length;
+    const pageTiles = [...ui.grid.querySelectorAll('.wmx-ct')];
+    const pageAll = pageTiles.length > 0 && pageTiles.every((t) => S.sel.has(t.dataset.id));
+    const mk = (ico, label, fn, { cls = '', off = false } = {}) => {
+      const b = el('button', { class: `wmx-sel-btn ${cls}`, onclick: fn }, icon(ico), el('span', {}, label));
+      if (off) b.disabled = true;
+      return b;
+    };
+    const fav = count('favOn');
+    const unfav = count('favOff');
+    const del = count('discard');
     ui.selbar.replaceChildren(
-      el('span', { class: 'wmx-sel-count' }, `${n} carte${n > 1 ? 's' : ''} sélectionnée${n > 1 ? 's' : ''}`),
-      el('button', { class: 'wmx-btn wmx-btn--ghost wmx-sel-btn', onclick: selectPage }, 'Tout sélectionner (page)'),
-      mk('Étiqueter', () => tagPicker(true)),
-      mk('Retirer l’étiquette', () => tagPicker(false)),
-      mk('★ Mettre en favori', () => launch('favOn')),
-      mk('☆ Retirer des favoris', () => launch('favOff')),
-      mk('Défausser', confirmDiscard, 'danger'),
-      n ? el('button', { class: 'wmx-btn wmx-btn--ghost wmx-sel-btn', onclick: () => { S.sel.clear(); ui.grid.querySelectorAll('.wmx-ct.sel').forEach((t) => t.classList.remove('sel')); renderSelbar(); } }, 'Désélectionner') : '');
+      el('div', { class: 'wmx-sel-count' }, el('b', {}, String(n)), ` carte${n > 1 ? 's' : ''} sélectionnée${n > 1 ? 's' : ''}`),
+      el('div', { class: 'wmx-sel-row' },
+        mk(pageAll ? 'square' : 'check', pageAll ? 'Désélectionner la page' : 'Tout sélectionner (page)', pageAll ? deselectPage : selectPage, { cls: 'strong' }),
+        mk('tag', 'Étiqueter', () => tagPicker(true), { off: !n }),
+        mk('tag', 'Retirer l’étiquette', () => tagPicker(false), { off: !n }),
+        mk('star', `Mettre en favori (${fav})`, () => launch('favOn'), { off: !fav }),
+        mk('starOff', `Retirer des favoris (${unfav})`, () => launch('favOff'), { off: !unfav }),
+        mk('trash', `Défausser (+${del})`, confirmDiscard, { cls: 'danger', off: !del })));
   }
 
   function selectPage() {
     for (const t of ui.grid.querySelectorAll('.wmx-ct')) { S.sel.add(t.dataset.id); t.classList.add('sel'); }
+    renderSelbar();
+  }
+  function deselectPage() {
+    for (const t of ui.grid.querySelectorAll('.wmx-ct')) { S.sel.delete(t.dataset.id); t.classList.remove('sel'); }
     renderSelbar();
   }
 
