@@ -459,3 +459,13 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-dlg-gain { color: #9db5a8; } .wmx-dlg-gain b { color: #3be1a5; }
 .wmx-dlg-row { display: flex; gap: 10px; margin-top: 14px; } .wmx-dlg-row .wmx-btn { flex: 1; padding: 11px; }
 .wmx-dlg .wmx-btn--danger { background: #e5384f; border-color: #e5384f; color: #fff; }
+
+/* ===== Fenêtre « Charger les prix » (0.10.4) ===== */
+.wmx-dlg--wide { width: min(560px, calc(100vw - 32px)); }
+.wmx-pm-body { display: flex; flex-direction: column; gap: 12px; }
+.wmx-pm-seg { display: inline-flex; gap: 6px; }
+.wmx-pm-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.wmx-pm-tags { max-height: 240px; overflow: auto; padding-right: 4px; }
+.wmx-pm-sum { margin: 0; color: #9db5a8; font-size: 13px; }
+.wmx-cp-pspacer { flex: 1; }
+.wmx-cp-pickrow, .wmx-cp-pmode { display: none; }

@@ -11,7 +11,7 @@
 
   const S = {
     items: [], page: 1, perPage: 50, sort: 'rarity', q: '', rar: new Set(), tag: '', fav: false, dup: false,
-    min: '', max: '', tab: 'cards', priceRar: new Set(['L', 'UR', 'SR', 'R']), priceMode: 'rar', priceTags: new Set(), selecting: false, sel: new Set(), tagsTouched: false, loading: false, loadedCount: 0,
+    min: '', max: '', tab: 'cards', priceRar: new Set(['L', 'UR', 'SR', 'R']), priceMode: 'rar', priceTags: new Set(), selecting: false, sel: new Set(), gone: new Map(), tagsTouched: false, loading: false, loadedCount: 0,
   };
   let overlay = null;  // page « Collection+ »
   let pageDash = null; // page « Tableau de bord »
@@ -58,15 +58,21 @@
       if (!rows.length) break;
       for (const r of rows) byId.set(r.id, compact(r));
       S.loadedCount = byId.size;
-      if (!hadCache && p % 4 === 0) { S.items = [...byId.values()]; fillTags(); refresh(); }
+      if (!hadCache && p % 4 === 0) { S.items = withoutDiscarded([...byId.values()]); fillTags(); refresh(); }
       renderStatus();
       await sleep(300);
     }
-    S.items = [...byId.values()];
+    S.items = withoutDiscarded([...byId.values()]);
     S.loading = false;
     WMX.store.set('invCache', { t: Date.now(), items: S.items });
     fillTags();
     refresh();
+  }
+
+  /** Un chargement lancé AVANT une défausse peut rendre des cartes déjà défaussées : on les retire (et on mémorise la correction). */
+  function withoutDiscarded(list) {
+    if (!S.gone.size) return list;
+    return list.map((it) => (S.gone.has(it.card_id) ? { ...it, count: it.count - S.gone.get(it.card_id) } : it)).filter((it) => it.count > 0);
   }
 
   // --- Filtres, tri ----------------------------------------------------------------------------
@@ -227,13 +233,13 @@
     for (const p of ui.priceBars) {
       p.info.textContent = info;
       p.bar.firstChild.style.width = pct;
-      p.btn.textContent = st.running ? (st.paused ? 'Reprendre' : 'Pause') : 'Charger les prix';
+      p.btn.textContent = st.running ? (st.paused ? 'Reprendre' : 'Pause') : 'Charger les prix…';
       p.stop.hidden = !st.running;
     }
   }
 
   function fillTags() {
-    fillPriceTags();
+    refreshPriceModal();
     if (!ui.tag) return;
     const counts = new Map();
     for (const it of S.items) for (const t of it.tags) counts.set(t.id, { ...t, n: (counts.get(t.id)?.n || 0) + 1 });
@@ -298,24 +304,78 @@
     perPage: S.perPage, sort: S.sort, priceMode: S.priceMode, priceRar: [...S.priceRar], priceTags: [...S.priceTags], tagsTouched: S.tagsTouched,
   });
 
-  function priceAction() {
-    const st = WMX.prices.state();
-    if (st.running) { if (st.paused) WMX.prices.resume(); else WMX.prices.pause(); return; }
-    // On ne recharge QUE les prix manquants : une moyenne déjà connue n'est jamais modifiée, et compte d'emblée dans la jauge.
+  /** Cartes concernées par le choix (raretés ou étiquettes) et, parmi elles, celles dont le prix manque ou est périmé. */
+  function pricePlan() {
     const byTag = S.priceMode === 'tag';
     const selected = byTag
       ? S.items.filter((it) => it.tags.some((t) => S.priceTags.has(t.id)))
       : S.items.filter((it) => S.priceRar.has(it.rarity));
-    const known = (it) => WMX.prices.fresh(it.card_id); // un prix encore valable (48 h, 96 h si très vendue) n'est pas rechargé
-    const todo = selected.filter((it) => !known(it))
+    // Un prix encore valable (48 h, 96 h si la carte est très vendue) n'est pas rechargé ; il compte d'emblée dans la jauge.
+    const todo = selected.filter((it) => !WMX.prices.fresh(it.card_id))
       .sort((a, b) => RANK[b.rarity] - RANK[a.rarity] || a.title.localeCompare(b.title, 'fr'));
-    if (!todo.length) {
-      const msg = !selected.length ? (byTag ? 'Choisissez au moins une étiquette' : 'Choisissez au moins une rareté')
-        : `Les prix de ces ${byTag ? 'étiquettes' : 'raretés'} sont déjà tous connus`;
-      ui.priceBars.forEach((p) => { p.info.textContent = msg; });
-      return;
-    }
+    return { selected, todo };
+  }
+
+  function startPriceLoad() {
+    const { selected, todo } = pricePlan();
+    if (!todo.length) return false;
     WMX.prices.start(todo, { base: selected.length - todo.length, total: selected.length });
+    return true;
+  }
+
+  let priceModal = null;
+  const refreshPriceModal = () => priceModal?.render();
+
+  /** Fenêtre de choix du chargement des prix : par rareté ou par étiquette, avec ce qu'il reste à charger pour chaque choix. */
+  function openPriceModal() {
+    if (priceModal) return;
+    if (!S.tagsTouched && !S.priceTags.size) { // « vente » est cochée d'office la première fois
+      const sale = S.items.flatMap((i) => i.tags).find((t) => /vente/i.test(t.name));
+      if (sale) S.priceTags.add(sale.id);
+    }
+    const body = el('div', { class: 'wmx-pm-body' });
+    const close = () => { back.remove(); priceModal = null; };
+    const go = el('button', { class: 'wmx-btn', onclick: () => { if (startPriceLoad()) close(); } }, 'Charger');
+    const back = el('div', { class: 'wmx-dlg-back', onmousedown: (e) => { if (e.target === back) close(); } },
+      el('div', { class: 'wmx-dlg wmx-dlg--wide', role: 'dialog', 'aria-label': 'Charger les prix' },
+        el('h3', {}, 'Charger les prix'),
+        el('p', { class: 'wmx-dlg-note' }, 'Choisissez ce qu’il faut charger. Seuls les prix manquants ou périmés sont demandés (validité 48 h, 96 h pour une carte très vendue) : ceux déjà connus ne changent pas.'),
+        body,
+        el('div', { class: 'wmx-dlg-row' }, el('button', { class: 'wmx-btn wmx-btn--ghost', onclick: close }, 'Annuler'), go)));
+    const missing = (list) => list.filter((it) => !WMX.prices.fresh(it.card_id)).length;
+    function render() {
+      const mode = (m, label) => el('button', { class: 'wmx-chip2', 'aria-pressed': String(S.priceMode === m), onclick: () => { S.priceMode = m; savePrefs(); render(); } }, label);
+      let chips;
+      if (S.priceMode === 'rar') {
+        chips = el('div', { class: 'wmx-pm-chips' }, ...R.map((r) => chip(`${r} · ${missing(S.items.filter((i) => i.rarity === r))} à charger`, WMX.RARITY_RGB[r], S.priceRar.has(r),
+          (on) => { on ? S.priceRar.add(r) : S.priceRar.delete(r); savePrefs(); render(); })));
+      } else {
+        const counts = new Map();
+        for (const it of S.items) for (const t of it.tags) { const e = counts.get(t.id) || { ...t, list: [] }; e.list.push(it); counts.set(t.id, e); }
+        const tags = [...counts.values()].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+        chips = el('div', { class: 'wmx-pm-chips wmx-pm-tags' }, ...(tags.length ? tags.map((t) => chip(`${t.name} · ${missing(t.list)}/${t.list.length}`, '', S.priceTags.has(t.id),
+          (on) => { S.tagsTouched = true; on ? S.priceTags.add(t.id) : S.priceTags.delete(t.id); savePrefs(); render(); }))
+          : [el('span', { class: 'wmx-cp-empty' }, 'Aucune étiquette dans la collection')]));
+      }
+      const { selected, todo } = pricePlan();
+      const mins = Math.max(1, Math.round((todo.length * 1.5) / 60));
+      body.replaceChildren(
+        el('div', { class: 'wmx-pm-seg' }, mode('rar', 'Par rareté'), mode('tag', 'Par étiquette')),
+        chips,
+        el('p', { class: 'wmx-pm-sum' }, !selected.length ? (S.priceMode === 'tag' ? 'Choisissez au moins une étiquette.' : 'Choisissez au moins une rareté.')
+          : todo.length ? `${fmt(todo.length)} prix à charger (${fmt(selected.length - todo.length)} déjà connus) · environ ${mins} min, selon la réponse du jeu.` : 'Tous les prix de ce choix sont déjà connus.'));
+      go.textContent = todo.length ? `Charger ${fmt(todo.length)} prix` : 'Charger';
+      go.disabled = !todo.length;
+    }
+    priceModal = { render };
+    document.body.append(back);
+    render();
+  }
+
+  function priceAction() {
+    const st = WMX.prices.state();
+    if (st.running) { if (st.paused) WMX.prices.resume(); else WMX.prices.pause(); return; }
+    openPriceModal();
   }
 
   // --- Mode sélection (étiqueter, retirer l'étiquette, favoris, défausse en lot), directement dans Collection+ ------------
@@ -473,61 +533,14 @@
       el('button', { class: 'wmx-close', title: 'Paramètres (enchère rapide, prix…)', onclick: () => WMX.openSettings() }, '⚙'));
   }
 
-  const syncPriceChips = () => {
-    document.querySelectorAll('.wmx-cp-pchips .wmx-chip2').forEach((b) => b.setAttribute('aria-pressed', String(S.priceRar.has(b.textContent))));
-    document.querySelectorAll('.wmx-cp-ptags .wmx-chip2').forEach((b) => b.setAttribute('aria-pressed', String(S.priceTags.has(b.dataset.tag))));
-    document.querySelectorAll('.wmx-cp-pmode .wmx-chip2').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === S.priceMode)));
-    for (const p of ui.priceBars || []) {
-      p.rarBox.hidden = S.priceMode !== 'rar';
-      p.tagBox.hidden = S.priceMode !== 'tag';
-    }
-  };
-
-  /** Puces d'étiquettes (une par étiquette de la collection) : les plus fournies d'abord ; « vente » est cochée d'office la première fois. */
-  function fillPriceTags() {
-    if (!ui.priceBars) return;
-    const counts = new Map();
-    for (const it of S.items) for (const t of it.tags) counts.set(t.id, { ...t, n: (counts.get(t.id)?.n || 0) + 1 });
-    const tags = [...counts.values()].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
-    if (!S.tagsTouched && !S.priceTags.size) {
-      const sale = tags.find((t) => /vente/i.test(t.name));
-      if (sale) S.priceTags.add(sale.id);
-    }
-    for (const p of ui.priceBars) {
-      p.tagBox.replaceChildren(...(tags.length ? tags.map((t) => {
-        const b = chip(`${t.name} (${t.n})`, t.color ? '' : '', S.priceTags.has(t.id), (on) => {
-          S.tagsTouched = true;
-          on ? S.priceTags.add(t.id) : S.priceTags.delete(t.id);
-          syncPriceChips(); savePrefs();
-        });
-        b.dataset.tag = t.id;
-        return b;
-      }) : [el('span', { class: 'wmx-cp-empty' }, 'Aucune étiquette dans la collection')]));
-    }
-    syncPriceChips();
-  }
-
-  /** Barre de chargement des prix (présente sur les deux pages, car la valeur en dépend). */
+  /** Barre de chargement des prix (présente sur les deux pages, car la valeur en dépend) : un seul bouton, qui ouvre la fenêtre de choix. */
   function makePriceBar() {
     const info = el('span', {});
     const bar = el('div', { class: 'wmx-cp-bar' }, el('i'));
-    const btn = el('button', { class: 'wmx-btn', onclick: priceAction }, 'Charger les prix');
+    const btn = el('button', { class: 'wmx-btn', onclick: priceAction }, 'Charger les prix…');
     const stop = el('button', { class: 'wmx-btn wmx-btn--ghost', hidden: '', onclick: () => WMX.prices.stop() }, 'Arrêter');
-    const modeChip = (mode, label) => {
-      const b = el('button', { class: 'wmx-chip2', 'aria-pressed': String(S.priceMode === mode), 'data-mode': mode }, label);
-      b.addEventListener('click', () => { S.priceMode = mode; syncPriceChips(); savePrefs(); });
-      return b;
-    };
-    const rarBox = el('span', { class: 'wmx-cp-pchips', ...(S.priceMode !== 'rar' ? { hidden: '' } : {}) },
-      ...R.map((r) => chip(r, WMX.RARITY_RGB[r], S.priceRar.has(r), (on) => { on ? S.priceRar.add(r) : S.priceRar.delete(r); syncPriceChips(); savePrefs(); })));
-    const tagBox = el('div', { class: 'wmx-cp-ptags', ...(S.priceMode !== 'tag' ? { hidden: '' } : {}) });
-    ui.priceBars.push({ info, bar, btn, stop, rarBox, tagBox });
-    return el('div', { class: 'wmx-cp-prices' },
-      el('div', { class: 'wmx-cp-pricehead' }, info,
-        el('span', { class: 'wmx-cp-pmode' }, 'Charger par', modeChip('rar', 'Raretés'), modeChip('tag', 'Étiquettes')),
-        btn, stop),
-      el('div', { class: 'wmx-cp-pickrow' }, rarBox, tagBox),
-      bar);
+    ui.priceBars.push({ info, bar, btn, stop });
+    return el('div', { class: 'wmx-cp-prices' }, el('div', { class: 'wmx-cp-pricehead' }, info, el('span', { class: 'wmx-cp-pspacer' }), btn, stop), bar);
   }
 
   function build() {
@@ -584,8 +597,10 @@
       fillTags();
     });
     window.addEventListener('wmx:discard', (e) => {
+      S.gone.set(e.detail.card_id, (S.gone.get(e.detail.card_id) || 0) + 1);
       for (const it of S.items) if (it.card_id === e.detail.card_id) { it.count -= 1; }
       S.items = S.items.filter((i) => i.count > 0);
+      WMX.store.set('invCache', { t: Date.now(), items: S.items }); // le cache ne réaffiche plus les cartes défaussées
       S.sel.forEach((id) => { if (!S.items.some((i) => i.id === id)) S.sel.delete(id); });
       refresh();
       renderSelbar();
