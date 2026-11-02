@@ -56,9 +56,7 @@ async function make(name, W, H, layout) {
       <text x="22" y="108" font-size="34" font-weight="800" fill="#ffffff">Toolkit+</text>
       <text x="22" y="140" font-size="15" font-weight="600" fill="#d7e6df">Prix du marché</text>
       <text x="22" y="162" font-size="15" font-weight="600" fill="#d7e6df">Paquets en un clic</text>
-      <text x="22" y="184" font-size="15" font-weight="600" fill="#d7e6df">Enchères automatiques</text>
-      <rect x="22" y="236" width="150" height="24" rx="12" fill="#ffffff" fill-opacity="0.1"/>
-      <text x="34" y="253" font-size="12" font-weight="600" fill="#b9cbc3">Extension non officielle</text>`), 0, 0);
+      <text x="22" y="184" font-size="15" font-weight="600" fill="#d7e6df">Enchères automatiques</text>`), 0, 0);
   });
 
   // --- 1400 × 560 ---
@@ -73,7 +71,6 @@ async function make(name, W, H, layout) {
       <text x="64" y="272" font-size="30" font-weight="600" fill="#d7e6df">Tous vos paquets d'un clic.</text>
       <text x="64" y="312" font-size="30" font-weight="600" fill="#d7e6df">Le vrai prix de chaque carte.</text>
       <text x="64" y="352" font-size="30" font-weight="600" fill="#d7e6df">Des enchères qui se jouent seules.</text>
-      <rect x="64" y="440" width="270" height="40" rx="20" fill="#ffffff" fill-opacity="0.1"/>
-      <text x="84" y="467" font-size="19" font-weight="600" fill="#b9cbc3">Extension non officielle</text>`), 0, 0);
+`), 0, 0);
   });
 })();

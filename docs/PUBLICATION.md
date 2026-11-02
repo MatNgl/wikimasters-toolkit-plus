@@ -2,10 +2,10 @@
 
 ## 1. Décision et mention obligatoire
 Toutes les fonctions sont publiées. Les règles de WikiMasters ([/rules](https://www.wiki-masters.com/rules), section 3 ; [/terms](https://www.wiki-masters.com/terms), section 6, lues le 2 novembre 2026) interdisent les « bots, scripts, macros » et « tout outil visant à jouer, ouvrir des paquets, échanger ou interagir à votre place », avec sanctions possibles. L'extension le dit donc clairement, aux quatre endroits où l'utilisateur la rencontre :
-- **fiche du store** (début de la description, voir §4) ;
+- **fiche du store** : bloc « À SAVOIR » en bas de la description (une seule fois, pas sur les images ni dans le résumé) ;
 - **README** ;
 - **Paramètres de l'extension → « À savoir »** (première section) ;
-- **rappel unique** au premier lancement (bandeau 20 s) et ligne dans la fenêtre de l'icône.
+- **rappel unique** au premier lancement (bandeau 20 s).
 
 Texte : « Extension non officielle, développée indépendamment de WikiMasters et non affiliée à WikiMasters ni à Wikipédia. Certaines fonctions (ouverture automatique des paquets, mises automatiques, enchères rapides ⚡, assistant de vente) ne sont pas approuvées par WikiMasters, dont les règles de la communauté interdisent les outils qui jouent ou interagissent à votre place. Elles sont désactivées par défaut ou ne se déclenchent que sur votre demande ; si vous les utilisez, c'est sous votre propre responsabilité et avec modération. »
 
@@ -27,7 +27,7 @@ Essai avant envoi : `chrome://extensions` → mode développeur → « Charger l
 
 ## 4. Fiche du store (à copier)
 **Nom** : WikiMasters Toolkit+
-**Résumé (132 car. max, repris du manifest)** : Prix du marché, ouverture de paquets en un clic, enchères automatiques et style de cartes. Extension non officielle.
+**Résumé (132 car. max, repris du manifest)** : Prix du marché, ouverture de paquets en un clic, enchères automatiques et style de cartes pour WikiMasters.
 **Description** : texte final dans [STORE-DESCRIPTION.txt](STORE-DESCRIPTION.txt) (celui ci-dessous est l'ancien brouillon).
 > ⚠ Extension non officielle, non affiliée à WikiMasters ni à Wikipédia. Certaines fonctions (ouverture automatique des paquets, mises automatiques, enchères rapides ⚡, assistant de vente) ne sont pas approuvées par WikiMasters, dont les règles interdisent les outils qui jouent à votre place. Elles sont désactivées par défaut ou ne se déclenchent que sur votre demande : vous les utilisez sous votre propre responsabilité, avec modération.
 >
