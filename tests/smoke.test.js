@@ -451,3 +451,24 @@ test('style de carte : appliqué à toute carte du jeu (marché, échanges…), 
   assert.equal(w.document.querySelectorAll('.wmx-sty, .wmx-sty-sheen').length, 0, 'style désactivé : tout est retiré');
   env.close();
 });
+
+test('révélation des paquets : la face des cartes reprend cadre, vagues et reflet du style de carte', async () => {
+  const env = createEnv({ fetchImpl: async () => json({ summary: {} }) });
+  const { w, WMX } = env;
+  Object.assign(WMX.settings, { speed: 'instant' });
+  const cards = [{ id: 'r1', wikipedia_title: 'Carte UR', rarity: 'UR' }, { id: 'r2', wikipedia_title: 'Carte C', rarity: 'C' }];
+  const s = WMX.revealSession();
+  s.addPack(cards);
+  await s.finish();
+  const faces = [...w.document.querySelectorAll('.wmx-face')];
+  assert.equal(faces.length, 2);
+  assert.ok(faces.every((f) => f.classList.contains('wmx-sty-rv') && f.querySelector('.wmx-sty-sheen') && f.querySelector('.wmx-sty-waves')), 'cadre, vagues et reflet sur chaque face');
+  s.close();
+  WMX.settings.cardStyle = false;
+  const s2 = WMX.revealSession();
+  s2.addPack(cards);
+  await s2.finish();
+  assert.equal(w.document.querySelectorAll('.wmx-face.wmx-sty-rv').length, 0, 'style désactivé : faces simples');
+  s2.close();
+  env.close();
+});

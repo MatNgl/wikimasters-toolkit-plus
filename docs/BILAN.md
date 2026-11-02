@@ -1,4 +1,4 @@
-# Bilan — WikiMasters Toolkit+ (v0.15.2)
+# Bilan — WikiMasters Toolkit+ (v0.16.0)
 
 ## Fait
 **Paquets** — « Tout ouvrir » et ouverture automatique (intervalle min/max, arrêt sur belle carte), écran de révélation façon gacha trié par rareté (prix, ★, ⚡, couronnes sur les cartes les plus chères, « Paquet n/N »), statistiques (répartition, valeur moyenne d'un paquet), menu centré qui sort d'un cadran, visible partout tant que l'auto tourne.
@@ -25,7 +25,7 @@
 - Mise à jour automatique : réservée au développement, à retirer d'une version publiée.
 
 ## Évolutions décidées
-À faire AVANT la publication : style de carte plein cadre étendu à la révélation des paquets, au marché et aux échanges. Ouverture de paquets en arrière-plan : possible. Refusés : veille du marché, bilan gains/dépenses, complétion de collection, tendance des prix.
+**Style de carte global (0.16)** : appliqué à toute carte affichée par le jeu (reconnue à sa structure : collection, marché + fiche d'enchère, « Toutes les cartes », fenêtre d'échange) et à l'écran de révélation des paquets. Vérifié en réel sur ces pages ; profil, guilde, batailles et demandes d'amis : pas de carte disponible pour tester, couverts par la même détection. Ouverture de paquets en arrière-plan : possible. Refusés : veille du marché, bilan gains/dépenses, complétion de collection, tendance des prix.
 
 ## Publication (Chrome Web Store) — liste de contrôle
 1. Retirer l'actualisation automatique et la permission `alarms` de la version publiée.
