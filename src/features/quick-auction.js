@@ -177,6 +177,11 @@
       await refresh();
       if (!S.selling.has(item.card_id) || (await stillActive()) === false) return { ok: true };
     }
+    // Serveur très lent : l'annulation peut être enregistrée après nos essais (vu sur Maxime Colin) → on guette encore ~45 s avant de conclure.
+    for (let t = 0; t < 9; t++) {
+      await sleep(5000);
+      if ((await stillActive()) === false) { await refresh(); return { ok: true }; }
+    }
     return { error: 'le jeu n’a pas annulé l’enchère (serveur du jeu surchargé, ou enchère déjà misée) : réessayez plus tard' };
   }
 
