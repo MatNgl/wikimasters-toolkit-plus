@@ -1,4 +1,4 @@
-# Bilan — WikiMasters Toolkit+ (v0.14.4)
+# Bilan — WikiMasters Toolkit+ (v0.15.2)
 
 ## Fait
 **Paquets** — « Tout ouvrir » et ouverture automatique (intervalle min/max, arrêt sur belle carte), écran de révélation façon gacha trié par rareté (prix, ★, ⚡, couronnes sur les cartes les plus chères, « Paquet n/N »), statistiques (répartition, valeur moyenne d'un paquet), menu centré qui sort d'un cadran, visible partout tant que l'auto tourne.
@@ -10,6 +10,11 @@
 **Prix** — valables 4 jours, jamais rechargés tout seuls, prix jamais chargés d'abord ; une requête à la fois (2 si le jeu est lent), pauses adaptatives.
 **Qualité** — 35 tests automatiques (fonctions pures + essais jsdom), mise à jour automatique de l'extension (développement), bannière « actualiser » après mise à jour, messages d'erreur clairs, README et docs à jour.
 
+**Assistant de vente** (0.15) — désactivé par défaut. Garde N enchères actives (3 par défaut) avec les cartes portant les étiquettes choisies (ex. VENTE) et remet en vente les invendues. Garde-fous : jamais une favorite, prix de départ plafonné (500 W), une vente annulée à la main écarte la carte 12 h, deux échecs la mettent de côté 6 h, 4 mises en vente auto par carte et par jour. Testé en réel : sélection, plafond, annulation.
+**Journal d'activité** (0.15) — Paramètres → Journal : actions de la file, de l'assistant et incidents ; « Copier le diagnostic ». Détection d'une page de collection modifiée par le jeu.
+**Défausse** — uniquement celle, native, du jeu (sélection) ; l'ancienne défausse carte par carte de l'extension est supprimée.
+**Annulation de vente** — validée en réel : le cadre invisible reste ouvert jusqu'à la confirmation du serveur (0.14.6), bouton « Annulation… ».
+
 ## À surveiller / ne fonctionne pas encore
 - Valeurs d'échange : jamais vues sur une vraie offre.
 - Notifications du navigateur : autorisation jamais accordée en test.
@@ -19,8 +24,8 @@
 - Dépendance aux classes CSS du jeu : un changement de design du jeu peut casser l'ajout des prix et du ⚡ sur la collection.
 - Mise à jour automatique : réservée au développement, à retirer d'une version publiée.
 
-## Idées d'évolution
-Voir la conversation du 2 novembre 2026 (propositions : veille du marché avec alertes, assistant de vente et remise en vente, bilan gains/dépenses, complétion de collection, extension du style de carte aux autres pages, tendance des prix).
+## Évolutions décidées
+À faire AVANT la publication : style de carte plein cadre étendu à la révélation des paquets, au marché et aux échanges. Ouverture de paquets en arrière-plan : possible. Refusés : veille du marché, bilan gains/dépenses, complétion de collection, tendance des prix.
 
 ## Publication (Chrome Web Store) — liste de contrôle
 1. Retirer l'actualisation automatique et la permission `alarms` de la version publiée.
