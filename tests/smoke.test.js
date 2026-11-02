@@ -370,3 +370,20 @@ test('tableau des enchères : une enchère qui sort de la liste ne provoque pas 
   assert.equal(w.document.querySelectorAll('.wmx-auc-row').length, 1);
   env.close();
 });
+
+test('annuler une vente : le bouton indique tout de suite « Annulation… » et se bloque', async () => {
+  const sale = auction('c1', { current_bid: null, end_at: inMin(30) });
+  const env = createEnv({ fetchImpl: async () => json({ selling: [sale], bidding: [], won: [{ winner_id: ME }], history: [] }) });
+  const { w, WMX } = env;
+  for (const f of WMX.features) await f.init?.();
+  await sleep(3400);
+  w.document.querySelector('.wmx-dial').click();
+  await sleep(100);
+  const btn = w.document.querySelector('.wmx-auc-cancel');
+  assert.equal(btn.textContent, 'Annuler');
+  btn.click();
+  assert.match(btn.textContent, /Annulation/);
+  assert.equal(btn.disabled, true, 'bloqué : pas de clics répétés');
+  assert.ok(btn.querySelector('.wmx-dots'));
+  env.close();
+});

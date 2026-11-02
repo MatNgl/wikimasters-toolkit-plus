@@ -524,3 +524,10 @@ html:not([data-wmx-route^="/pulls"]) .wmx-panel, html:not([data-wmx-route^="/pul
 .wmx-qx { width: 24px; height: 24px; padding: 0; border-radius: 8px; border: 1px solid #ffffff20; background: transparent; color: #cbd5d0; font-size: 15px; line-height: 1; cursor: pointer; transition: all .15s ease; }
 .wmx-qx:hover { background: #ef4444; border-color: #ef4444; color: #fff; }
 .wmx-qspin { width: 14px; height: 14px; margin: 0 auto; border-radius: 50%; border: 2px solid #ffffff22; border-top-color: var(--acc,#2dd4a0); animation: wmx-spin .8s linear infinite; }
+
+/* ===== Bouton « Annulation… » (0.14.4) ===== */
+.wmx-auc-cancel.busy { opacity: .85; cursor: default; border-color: #fbbf24; color: #fde68a; }
+.wmx-dots { display: inline-flex; margin-left: 1px; }
+.wmx-dots i { font-style: normal; animation: wmx-dot 1.2s infinite; opacity: .2; }
+.wmx-dots i:nth-child(2) { animation-delay: .2s; } .wmx-dots i:nth-child(3) { animation-delay: .4s; }
+@keyframes wmx-dot { 0%, 20% { opacity: .2; } 40% { opacity: 1; } 100% { opacity: .2; } }

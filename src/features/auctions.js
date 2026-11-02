@@ -288,6 +288,21 @@
     } finally { queueRunning = false; }
   }
 
+  /**
+   * Bouton « Annuler » d'une vente : « Annulation… » (trois points animés) et bloqué tant que l'annulation est demandée ou en cours,
+   * pour que l'on comprenne que l'action est prise en compte. Il redevient « Annuler » si elle échoue (au bout de quelques secondes).
+   */
+  function paintCancel(btn) {
+    const queued = WMX.quick?.stateOf(btn.dataset.card) === 'cancelling';
+    const recent = btn.dataset.t && Date.now() - Number(btn.dataset.t) < 4000; // temps de mise en file
+    const busy = queued || recent;
+    if (busy === (btn.dataset.busy === '1')) return;
+    btn.dataset.busy = busy ? '1' : '';
+    btn.disabled = !!busy;
+    btn.classList.toggle('busy', !!busy);
+    btn.replaceChildren(...(busy ? ['Annulation', el('span', { class: 'wmx-dots' }, el('i', {}, '.'), el('i', {}, '.'), el('i', {}, '.'))] : ['Annuler']));
+  }
+
   async function cancelSale(a) {
     const item = { card_id: a.card_id, title: cardTitle(a), rarity: rarityOf(a), starred: false };
     await WMX.quick?.refresh();
@@ -448,8 +463,16 @@
         el('div', { class: 'wmx-auc-acts' }, autoBtn, act));
       return el('div', { class: 'wmx-auc-row', style: `--rgb:${WMX.RARITY_RGB[r]}` }, img, main, side, S.autoOpen === a.id ? autoForm(a) : '');
     } else {
-      const act = a.current_bid || msLeft(a) <= 0 ? '' : el('button', { class: 'wmx-btn wmx-btn--ghost wmx-auc-cancel', title: 'Annuler la vente et récupérer la carte' }, 'Annuler');
-      if (act) act.addEventListener('click', () => cancelSale(a));
+      const act = a.current_bid || msLeft(a) <= 0 ? '' : el('button', { class: 'wmx-btn wmx-btn--ghost wmx-auc-cancel', 'data-card': a.card_id, title: 'Annuler la vente et récupérer la carte' }, 'Annuler');
+      if (act) {
+        paintCancel(act); // si l'annulation est déjà en cours (liste redessinée), le bouton le montre aussitôt
+        act.addEventListener('click', () => {
+          if (act.disabled) return;
+          act.dataset.t = String(Date.now());
+          paintCancel(act); // retour immédiat : « Annulation… », le bouton est bloqué (inutile de cliquer plusieurs fois)
+          cancelSale(a);
+        });
+      }
       main = el('div', { class: 'wmx-auc-main' },
         el('div', { class: 'wmx-auc-name' }, title, rarityTag(r)),
         a.current_bidder_id ? el('span', { class: 'wmx-auc-state ok' }, 'Mise reçue') : '',
@@ -497,6 +520,7 @@
       t.classList.toggle('ended', st === 'ended');
       t.closest('.wmx-auc-row')?.classList.toggle('urgent', st === 'urgent');
     }
+    for (const b of document.querySelectorAll('.wmx-auc-cancel')) paintCancel(b);
     for (const b of document.querySelectorAll('.wmx-auc-bid')) {
       const a = D.bidding.find((x) => x.id === b.dataset.id);
       if (!a) continue;
@@ -652,6 +676,7 @@
     name: 'auctions',
     init() {
       buildBubble();
+      WMX.quick?.onChange(() => { clearTimeout(S.qT); S.qT = setTimeout(() => { if (WMX.alive()) refresh(); }, 900); });
       // Élection du « chef » : un seul onglet du jeu exécute les mises automatiques (sinon chaque onglet miserait de son côté).
       if (navigator.locks?.request) navigator.locks.request('wmx-auto-leader', () => {
         S.leader = true;
