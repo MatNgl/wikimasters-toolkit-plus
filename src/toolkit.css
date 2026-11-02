@@ -371,3 +371,12 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-auc-autorow[hidden] { display: none; }
 .wmx-auc-auto .wmx-input { min-width: 0; flex: 1; }
 @keyframes wmx-auto-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+
+/* ===== Marché : moyenne et verdict sous chaque enchère (0.8.0) ===== */
+.wmx-mk { margin-top: 8px; width: 100%; padding: 6px 8px; border-radius: 10px; display: flex; flex-direction: column; gap: 1px; align-items: flex-start;
+  font: 600 11px Outfit, system-ui, sans-serif; color: #c9d6cf; background: #ffffff0d; border: 1px solid #ffffff14; }
+.wmx-mk b { font-size: 12px; }
+.wmx-mk.wait { color: #7f8f87; }
+.wmx-mk.deal { background: rgb(45 212 160 / .14); border-color: rgb(45 212 160 / .5); } .wmx-mk.deal b { color: #2dd4a0; }
+.wmx-mk.fair { background: rgb(100 191 255 / .12); border-color: rgb(100 191 255 / .4); } .wmx-mk.fair b { color: #7cc6ff; }
+.wmx-mk.high { background: rgb(239 68 68 / .12); border-color: rgb(239 68 68 / .45); } .wmx-mk.high b { color: #fca5a5; }

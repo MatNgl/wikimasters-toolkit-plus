@@ -84,6 +84,21 @@
       const near = items.some(({ rule, msLeft }) => rule.mode === 'outbid' || msLeft <= rule.secs * 1000 + 20000);
       return near ? 4000 : 10000;
     },
+    /**
+     * Verdict d'une enchère : prix (mise actuelle ou de départ) comparé à la moyenne du marché.
+     * ≤ 85 % de la moyenne : bonne affaire ; jusqu'à 115 % : prix correct ; au-delà : trop cher.
+     */
+    dealVerdict(price, avg, count) {
+      const p = Number(price);
+      const a = Number(avg);
+      if (!(a > 0) || !(p >= 0)) return { kind: 'unknown', label: 'Prix inconnu', pct: 0, low: false };
+      const ratio = p / a;
+      const pct = Math.round((ratio - 1) * 100);
+      const low = Number(count) < 3;
+      if (ratio <= 0.85) return { kind: 'deal', label: 'Bonne affaire', pct, low };
+      if (ratio <= 1.15) return { kind: 'fair', label: 'Prix correct', pct, low };
+      return { kind: 'high', label: 'Trop cher', pct, low };
+    },
     /** Message clair pour un échec réseau ou un code HTTP. */
     friendlyError(status) {
       if (status === 0 || status == null) return 'Connexion impossible : vérifiez votre réseau.';

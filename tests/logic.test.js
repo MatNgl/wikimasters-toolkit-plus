@@ -122,3 +122,15 @@ test('autoPollMs : rapide près de l\'échéance', () => {
   assert.equal(L.autoPollMs([{ rule: { mode: 'time', secs: 30 }, msLeft: 3_600_000 }]), 10000);
   assert.equal(L.autoPollMs([{ rule: { mode: 'time', secs: 30 }, msLeft: 49_000 }]), 4000);
 });
+
+test('dealVerdict : bonne affaire / correct / trop cher / inconnu', () => {
+  assert.deepEqual(L.dealVerdict(80, 100, 10), { kind: 'deal', label: 'Bonne affaire', pct: -20, low: false });
+  assert.equal(L.dealVerdict(85, 100, 10).kind, 'deal');
+  assert.equal(L.dealVerdict(86, 100, 10).kind, 'fair');
+  assert.equal(L.dealVerdict(115, 100, 10).kind, 'fair');
+  assert.equal(L.dealVerdict(116, 100, 10).kind, 'high');
+  assert.equal(L.dealVerdict(150, 100, 2).low, true);
+  assert.equal(L.dealVerdict(10, undefined, 0).kind, 'unknown');
+  assert.equal(L.dealVerdict(10, 0, 5).kind, 'unknown');
+  assert.equal(L.dealVerdict(0, 100, 5).kind, 'deal');
+});

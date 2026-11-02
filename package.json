@@ -2,5 +2,10 @@
   "name": "wikimasters-toolkit-plus",
   "private": true,
   "description": "Extension Chrome pour WikiMasters (tests des fonctions pures uniquement)",
-  "scripts": { "test": "node --test \"tests/*.test.js\"" }
+  "scripts": {
+    "test": "node --test --test-force-exit --test-timeout=60000 \"tests/*.test.js\""
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1"
+  }
 }

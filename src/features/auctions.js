@@ -245,7 +245,13 @@
     for (const a of D.bidding) {
       const rule = S.auto[a.id];
       if (!rule) continue;
-      const due = WMX.logic.autoBidDue(rule, { leading: leading(a), msLeft: msLeft(a), minBid: minOf(a), cooldownOk: Date.now() - (S.autoTry[a.id] || 0) > 6000 });
+      const m = minOf(a);
+      if (rule.cap && m && m > rule.cap && !leading(a)) { // le minimum dépasse le plafond : la règle s'arrête (et on prévient)
+        delete S.auto[a.id]; saveAuto(); renderAll();
+        alertUser('Mise automatique arrêtée', `« ${cardTitle(a)} » : le minimum (${fmt(m)} W) dépasse votre plafond de ${fmt(rule.cap)} W.`, `${a.id}:cap`);
+        continue;
+      }
+      const due = WMX.logic.autoBidDue(rule, { leading: leading(a), msLeft: msLeft(a), minBid: m, cooldownOk: Date.now() - (S.autoTry[a.id] || 0) > 6000 });
       if (!due) continue;
       S.autoTry[a.id] = Date.now();
       bid(a, { auto: true, cap: rule.cap });
