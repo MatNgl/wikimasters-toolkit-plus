@@ -403,7 +403,7 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-mk.loss { background: rgb(239 68 68 / .12); border-color: rgb(239 68 68 / .45); } .wmx-mk.loss b { color: #fca5a5; }
 
 /* ===== Aperçu immédiat pendant le chargement de la fiche (0.9.6) ===== */
-.wmx-pre-back { position: fixed; inset: 0; z-index: 9600; display: grid; place-items: center; background: #02080588; backdrop-filter: blur(4px); animation: wmx-pre-fade .2s ease; }
+.wmx-pre-back { position: fixed; inset: 0; z-index: 2147483000; display: grid; place-items: center; background: #02080588; backdrop-filter: blur(4px); animation: wmx-pre-fade .2s ease; }
 .wmx-pre { position: relative; width: 240px; padding: 14px; border-radius: 20px; background: #0b1411f2; border: 1px solid rgb(var(--rgb) / .7); box-shadow: 0 0 40px rgb(var(--rgb) / .25), 0 24px 60px #000c; font-family: Outfit, system-ui, sans-serif; color: #e6efe9; animation: wmx-pre-pop .3s cubic-bezier(.2,1.2,.3,1); }
 .wmx-pre .wmx-close { position: absolute; top: 8px; right: 8px; z-index: 3; }
 .wmx-pre-art { position: relative; height: 250px; border-radius: 14px; overflow: hidden; background: #111c17; }
