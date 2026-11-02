@@ -8,7 +8,7 @@
     speed: 'normal', order: 'rarity', images: true,
     stopOn: 'off', reserve: 0, fullStockOpen: true, anticipate: true,
     quickCoef: 0.9, quickDuration: '1h', quickPrudent: false, auctionBubble: true, auctionNotify: true, autoReload: true,
-    autoDefaultMode: 'time', autoDefaultSecs: 35, autoCapMode: 'avg', autoCapW: 100, autoCapPct: 20, autoDefaultOn: false,
+    autoDefaultMode: 'time', autoDefaultSecs: 35, autoCapMode: 'avg', autoCapW: 100, autoCapPct: 20, autoDefaultOn: false, cardStylePreview: true,
   };
 
   const SECTIONS = [
@@ -65,6 +65,13 @@
         { key: 'autoCapPct', type: 'number', min: -90, max: 500, step: 5, label: 'Écart à la moyenne (%)', desc: 'Pour le plafond « selon la moyenne » : +30 = jusqu’à 30 % au-dessus de la moyenne, 0 = à la moyenne, −10 = en dessous.' },
         { key: 'autoCapW', type: 'number', min: 1, max: 100000, step: 1, label: 'Plafond fixe (W)', desc: 'Pour le plafond « valeur fixe ».' },
         { key: 'autoDefaultOn', type: 'toggle', label: 'Appliquer aux nouvelles mises', desc: 'Programme automatiquement ces réglages sur chaque nouvelle mise que vous placez (désactivé par défaut).' },
+      ],
+    },
+    {
+      title: 'Aspect des cartes',
+      desc: 'Essai de trois styles de cartes dans la collection (plein cadre, vitrine, éditorial) sur quelques cartes Légendaires, UR et SR.',
+      items: [
+        { key: 'cardStylePreview', type: 'toggle', label: 'Aperçu des styles de cartes', desc: 'Applique les trois styles proposés aux cartes d’essai de la page Collection.' },
       ],
     },
     {

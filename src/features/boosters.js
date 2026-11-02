@@ -316,9 +316,30 @@
 
     ui.autoBtn = el('button', { class: 'wmx-btn wmx-btn--wide', onclick: () => (state.auto ? stopAuto() : startAuto()) });
     ui.fabCount = el('span', { class: 'wmx-fab-count', hidden: '' });
+    // Réduit, le menu devient un cadran comme celui des enchères : l'anneau suit la régénération du prochain paquet, le centre affiche le stock.
+    const RING = 2 * Math.PI * 30;
+    const ringSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    ringSvg.setAttribute('viewBox', '0 0 72 72');
+    ringSvg.setAttribute('class', 'wmx-fab-ring');
+    ringSvg.innerHTML = `<circle cx="36" cy="36" r="30" class="wmx-dial-bg"/><circle cx="36" cy="36" r="30" class="wmx-dial-ring" stroke-dasharray="${RING}" stroke-dashoffset="${RING}"/>`;
+    ui.fabRing = ringSvg;
+    ui.fabTxt = el('span', { class: 'wmx-fab-txt' }, el('b', {}, '–'), el('small', {}, 'paquets'));
+    let lastPacks = null;
+    const updateFab = () => {
+      if (/^\/pulls/.test(location.pathname)) { const i = packInfo(); if (document.body.innerText.match(/paquets?/i)) lastPacks = { ...i, nextIn: nextPackIn() }; }
+      if (!lastPacks) return;
+      const { packs, max, nextIn } = lastPacks;
+      const frac = packs >= max ? 1 : Math.min(1, Math.max(0, 1 - (nextIn ?? regen) / regen));
+      const ring = ringSvg.querySelector('.wmx-dial-ring');
+      ring.style.strokeDashoffset = String(RING * (1 - frac));
+      ring.style.stroke = packs >= max ? '#f59e0b' : '#2dd4a0';
+      ui.fabTxt.firstChild.textContent = `${packs}/${max}`;
+      ui.fabTxt.title = packs >= max ? 'Stock plein : ouvrez vos paquets' : `Prochain paquet dans ${mmss(nextIn ?? 0)}`;
+    };
+    setInterval(() => { if (WMX.alive()) updateFab(); }, 1000);
     // Bulle « W » : simple logo quand le menu est ouvert ; en mode réduit c'est le bouton pour l'agrandir.
     const fab = el('button', { class: 'wmx-fab', title: 'Agrandir le menu', onclick: () => { if (panel.classList.contains('wmx-collapsed')) setCollapsed(false); } },
-      'W', ui.fabCount, el('span', { class: 'wmx-fab-hint' }, '›'));
+      el('span', { class: 'wmx-fab-w' }, 'W'), ui.fabRing, ui.fabTxt, ui.fabCount, el('span', { class: 'wmx-fab-hint' }, '›'));
     const fold = el('button', { class: 'wmx-icon wmx-fold', title: 'Réduire le menu', 'aria-label': 'Réduire le menu', onclick: () => setCollapsed(true) }, '«');
 
     const body = el('div', { class: 'wmx-body' },
