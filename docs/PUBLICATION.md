@@ -15,8 +15,8 @@ Garde-fous de conception déjà en place : assistant de vente désactivé par d�
 ```
 npm run build            # ou : node scripts/build.js 1.0.1
 ```
-Crée `dist/wikimasters-toolkit-plus-<version>.zip` (≈ 120 Ko) : copie de `src/` et `icons/` **sans** `background.js` (rechargement automatique), sans la permission `alarms`, sans `version_name`. Seule permission restante : `storage` + accès à `https://www.wiki-masters.com/*`. Le script vérifie que chaque fichier cité dans le manifest est dans le paquet. La section « Extension / Mise à jour automatique » des Paramètres disparaît d'elle-même de cette version.
-Essai avant envoi : `chrome://extensions` → mode développeur → « Charger l'extension non empaquetée » → dossier `dist/package`.
+Crée `release/wikimasters-toolkit-plus-<version>.zip` (≈ 120 Ko, à envoyer au store) et le dossier `dist/` (même contenu, à charger tel quel dans Chrome) : copie de `src/` et `icons/` **sans** `background.js` (rechargement automatique), sans la permission `alarms`, sans `version_name`. Seule permission restante : `storage` + accès à `https://www.wiki-masters.com/*`. Le script vérifie que chaque fichier cité dans le manifest est dans le paquet. La section « Extension / Mise à jour automatique » des Paramètres disparaît d'elle-même de cette version.
+Essai avant envoi : `chrome://extensions` → mode développeur → « Charger l'extension non empaquetée » → dossier `dist` (le manifest.json est à sa racine).
 
 ## 3. Justification des permissions (formulaire du store)
 - **storage** : enregistre en local les réglages, le cache des prix (4 jours), la copie de la collection, les statistiques et le journal d'activité.

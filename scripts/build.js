@@ -1,5 +1,6 @@
-// Version publiable : copie l'extension dans dist/, sans les outils de développement (rechargement automatique, permission
-// « alarms », version_name), et crée dist/wikimasters-toolkit-plus-<version>.zip pour le Chrome Web Store.
+// Version publiable : copie l'extension dans dist/ (le dossier à charger dans chrome://extensions : manifest.json à sa racine), sans les
+// outils de développement (rechargement automatique, permission « alarms », version_name), et crée release/wikimasters-toolkit-plus-<version>.zip
+// pour le Chrome Web Store.
 // Usage : node scripts/build.js [version]   (1.0.0 par défaut)
 const fs = require('fs');
 const path = require('path');
@@ -7,8 +8,8 @@ const zlib = require('zlib');
 
 const root = path.resolve(__dirname, '..');
 const version = process.argv[2] || '1.0.0';
-const out = path.join(root, 'dist');
-const pkg = path.join(out, 'package');
+const pkg = path.join(root, 'dist');
+const out = path.join(root, 'release');
 
 const SKIP = new Set(['src/background.js']);
 const files = [];
@@ -22,7 +23,8 @@ const walk = (rel) => {
 walk('src');
 walk('icons');
 
-fs.rmSync(out, { recursive: true, force: true });
+fs.rmSync(pkg, { recursive: true, force: true });
+fs.mkdirSync(out, { recursive: true });
 for (const f of files) {
   fs.mkdirSync(path.dirname(path.join(pkg, f)), { recursive: true });
   fs.copyFileSync(path.join(root, f), path.join(pkg, f));

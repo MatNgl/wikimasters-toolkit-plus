@@ -41,7 +41,7 @@ Un prix est valable 4 jours. Rien n'est rechargé automatiquement : au chargemen
 - `src/background.js` : mise à jour automatique (développement)
 
 ## Version publiable
-`npm run build` crée `dist/wikimasters-toolkit-plus-<version>.zip` (sans le rechargement automatique ni la permission `alarms`). Dossier du Chrome Web Store : [docs/PUBLICATION.md](docs/PUBLICATION.md) ; politique de confidentialité : [docs/PRIVACY.md](docs/PRIVACY.md).
+`npm run build` crée `release/wikimasters-toolkit-plus-<version>.zip` et le dossier `dist/` (extension sans le rechargement automatique ni la permission `alarms`, chargeable dans Chrome). Dossier du Chrome Web Store : [docs/PUBLICATION.md](docs/PUBLICATION.md) ; politique de confidentialité : [docs/PRIVACY.md](docs/PRIVACY.md).
 
 ## Tests
 `npm install` puis `npm test` : tests unitaires des fonctions pures et essais de fumée (jsdom) qui exécutent la bulle, les mises automatiques, les prix, les couronnes, le marché, les échanges et la collection.
