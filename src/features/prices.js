@@ -7,7 +7,7 @@
 // rapide) servie avant la file « basse » (chargement par lots de Collection+).
 (() => {
   const { sleep } = WMX.dom;
-  const TTL = 24 * 3600 * 1000; // un prix est considéré à jour pendant 24 h
+  const TTL = 48 * 3600 * 1000; // un prix est considéré à jour pendant 2 jours (évite de recharger pour rien)
   const GAP_MS = 450;           // pause entre deux requêtes
   let cache = null;             // card_id -> { t, s: { RARETÉ: { average, count, latest } } }
   let saveTimer = null;

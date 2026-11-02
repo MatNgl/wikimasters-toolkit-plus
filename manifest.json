@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WikiMasters Toolkit+",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Ouverture groupée des paquets, statistiques, valeur des cartes, filtres et enchères rapides pour WikiMasters.",
   "permissions": [
     "storage"
@@ -61,5 +61,5 @@
       "world": "MAIN"
     }
   ],
-  "version_name": "0.5.1 · libellé des prix"
+  "version_name": "0.5.2 · prix valables 2 jours"
 }

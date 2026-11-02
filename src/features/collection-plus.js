@@ -217,7 +217,7 @@
     const noSale = S.items.filter((it) => WMX.prices.fresh(it.card_id) && !price(it)).length; // prix récupéré, mais aucune vente pour cette rareté
     const info = st.running
       ? `Prix : ${fmt(st.done)} / ${fmt(st.total)}${st.wait ? ` · pause ${st.wait} s (limite du jeu)` : ''}${st.failed ? ` · ${st.failed} à réessayer` : ''}${st.paused ? ' · en pause' : ''}`
-      : `Prix récupérés : ${fmt(fresh)} / ${fmt(t.total)} (dont ${fmt(noSale)} sans vente) · valables 24 h${st.failed ? ` · ${st.failed} à réessayer` : ''}`;
+      : `Prix récupérés : ${fmt(fresh)} / ${fmt(t.total)} (dont ${fmt(noSale)} sans vente) · valables 2 jours${st.failed ? ` · ${st.failed} à réessayer` : ''}`;
     const pct = `${st.running && st.total ? (st.done / st.total) * 100 : (t.total ? (fresh / t.total) * 100 : 0)}%`;
     for (const p of ui.priceBars) {
       p.info.textContent = info;
