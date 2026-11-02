@@ -72,6 +72,7 @@
     while (row.parentElement && !(grid && row.parentElement.contains(grid)) && row.parentElement !== document.body) row = row.parentElement;
     bar = bar || WMX.inventory.makePriceBar('wmx-nt-bar');
     row.before(bar);
+    WMX.inventory.renderStatus(); // la barre vient d'être insérée : on affiche tout de suite l'état
   }
 
   function scan() {

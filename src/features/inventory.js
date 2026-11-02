@@ -136,7 +136,7 @@
     const st = WMX.prices.state();
     const noSale = S.items.filter((it) => WMX.prices.fresh(it.card_id) && !price(it)).length; // prix demandé, mais aucune vente pour cette rareté
     const loaded = t.priced + noSale; // cartes dont le prix est connu (moyenne existante ou « sans vente »)
-    const info = S.loading && !S.items.length ? `Chargement de la collection : ${fmt(S.loadedCount)} cartes…`
+    const info = !S.items.length ? (S.loading || S.started ? `Chargement de la collection : ${fmt(S.loadedCount)} cartes…` : 'Collection non chargée')
       : st.running
         ? `Prix : ${fmt(st.done)} / ${fmt(st.total)}${st.wait ? ` · pause ${st.wait} s (limite du jeu)` : ''}${st.failed ? ` · ${st.failed} à réessayer` : ''}${st.paused ? ' · en pause' : ''}`
         : `Prix récupérés : ${fmt(loaded)} / ${fmt(t.total)} (dont ${fmt(noSale)} sans vente)${st.failed ? ` · ${st.failed} à réessayer` : ''}`;
@@ -253,7 +253,7 @@
   listeners.add(renderStatus);
 
   WMX.inventory = {
-    ensure, items: () => S.items, find: findAny, learn, totals, price, priceText, fmt, makePriceBar, openPriceModal,
+    ensure, renderStatus, items: () => S.items, find: findAny, learn, totals, price, priceText, fmt, makePriceBar, openPriceModal,
     onChange(cb) { listeners.add(cb); return () => listeners.delete(cb); },
     isLoading: () => S.loading,
   };
