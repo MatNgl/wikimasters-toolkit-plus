@@ -54,7 +54,7 @@ Texte prêt et rempli dans [PRIVACY.md](PRIVACY.md) (éditeur MatNgl, mise à jo
 - Option prudente : « Visibilité : non répertoriée » pour un premier lancement auprès d'un petit cercle, puis publique.
 
 ## 7. Champs du tableau de bord développeur (à copier-coller)
-Tableau de bord : https://chrome.google.com/webstore/devconsole → « Nouvel élément » → envoyer `release/wikimasters-toolkit-plus-1.0.0.zip`. (Cette adresse n'est pas pilotable par un outil d'automatisation : les champs se remplissent à la main.)
+Tableau de bord : https://chrome.google.com/webstore/devconsole → « Nouvel élément » → envoyer `release/wikimasters-toolkit-plus-<version>.zip`. (Cette adresse n'est pas pilotable par un outil d'automatisation : les champs se remplissent à la main.)
 
 **Fiche du store (Store listing)** : nom, résumé, description, catégorie et langue du §4 ; captures `release/store-screenshots/1…5` (1280×800) ; icône 128×128 : `icons/icon-128.png` ; page d'accueil / assistance : https://github.com/MatNgl/wikimasters-toolkit-plus ; e-mail d'assistance : mattheo.naegellen@gmail.com.
 
@@ -68,4 +68,4 @@ Tableau de bord : https://chrome.google.com/webstore/devconsole → « Nouvel é
 
 **Distribution** : visibilité « Non répertoriée » pour commencer (passage en « Publique » ensuite), régions : toutes.
 
-**Mises à jour** : incrémenter `version` (npm run build 1.0.1), envoyer le nouveau ZIP dans l'élément existant, « Soumettre pour examen ». Une publication sur GitHub ne met pas à jour le store.
+**Mises à jour** : incrémenter `version` (npm run build), envoyer le nouveau ZIP dans l'élément existant, « Soumettre pour examen ». Une publication sur GitHub ne met pas à jour le store.

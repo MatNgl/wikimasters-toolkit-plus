@@ -9,5 +9,6 @@
   "devDependencies": {
     "jsdom": "^29.1.1",
     "sharp": "^0.35.5"
-  }
+  },
+  "storeVersion": "1.0.1"
 }

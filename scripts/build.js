@@ -1,13 +1,17 @@
 // Version publiable : copie l'extension dans dist/ (le dossier à charger dans chrome://extensions : manifest.json à sa racine), sans les
 // outils de développement (rechargement automatique, permission « alarms », version_name), et crée release/wikimasters-toolkit-plus-<version>.zip
 // pour le Chrome Web Store.
-// Usage : node scripts/build.js [version]   (1.0.0 par défaut)
+// Usage : node scripts/build.js [version]
+// Sans argument, le numéro de version monte d'un cran à chaque build (1.0.1, 1.0.2, …) : le numéro du ZIP dit toujours quelle est la dernière
+// version construite. Il est mémorisé dans package.json ("storeVersion") ; les anciens ZIP de release/ sont supprimés.
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 
 const root = path.resolve(__dirname, '..');
-const version = process.argv[2] || '1.0.0';
+const pj = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+const bump = (v) => { const p = v.split('.').map(Number); p[2] += 1; return p.join('.'); };
+const version = process.argv[2] || bump(pj.storeVersion || '1.0.0');
 const pkg = path.join(root, 'dist');
 const out = path.join(root, 'release');
 
@@ -25,6 +29,7 @@ walk('icons');
 
 fs.rmSync(pkg, { recursive: true, force: true });
 fs.mkdirSync(out, { recursive: true });
+for (const old of fs.readdirSync(out)) if (/^wikimasters-toolkit-plus-.*.zip$/.test(old)) fs.rmSync(path.join(out, old));
 for (const f of files) {
   fs.mkdirSync(path.dirname(path.join(pkg, f)), { recursive: true });
   fs.copyFileSync(path.join(root, f), path.join(pkg, f));
@@ -73,3 +78,5 @@ end.writeUInt32LE(cdSize, 12); end.writeUInt32LE(offset, 16);
 const zip = path.join(out, `wikimasters-toolkit-plus-${version}.zip`);
 fs.writeFileSync(zip, Buffer.concat([...chunks, ...central, end]));
 console.log(`${entries.length} fichiers, ${(fs.statSync(zip).size / 1024).toFixed(0)} Ko -> ${path.relative(root, zip)}`);
+pj.storeVersion = version;
+fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify(pj, null, 2) + String.fromCharCode(10));
