@@ -50,6 +50,8 @@
       desc: 'Garde des enchères actives avec vos cartes portant certaines étiquettes, et remet en vente celles qui n’ont pas trouvé preneur. Même prix de départ et même durée que le bouton ⚡. Pour vendre des cartes précises, donnez-leur l’étiquette (sélection du jeu → étiquette).',
       items: [
         { key: 'autoSell', type: 'toggle', label: 'Activer l’assistant de vente', desc: 'Désactivé par défaut : une fois activé, il met de vraies cartes en vente tout seul (jamais une favorite).' },
+        { type: 'action', label: 'État de l’assistant', desc: 'Pourquoi il met (ou ne met pas) telle carte en vente, prochaines cartes, cartes écartées. Aussi dans la bulle des enchères.', button: 'Voir les détails', run: () => WMX.autoSell?.openPanel() },
+        { type: 'action', label: 'Forcer une passe', desc: 'Lance tout de suite une passe de l’assistant, sans attendre la prochaine (toutes les 45 s).', button: 'Lancer maintenant', run: () => WMX.autoSell?.runNow() },
         { key: 'autoSellTags', type: 'tags', label: 'Étiquettes à vendre', desc: 'Cochez une ou plusieurs étiquettes de votre compte. Seules les cartes qui en portent une sont concernées.' },
         { key: 'autoSellCap', type: 'number', min: 1, max: 1000000, step: 10, label: 'Prix de départ maximum (W)', desc: 'Garde-fou : l’assistant ne met jamais en vente une carte dont le prix de départ dépasserait ce montant (500 W par défaut). Pour une carte plus chère, utilisez le bouton ⚡ vous-même.' },
         { key: 'autoSellMax', type: 'number', min: 1, max: 10, step: 1, label: 'Enchères actives visées', desc: 'L’assistant complète jusqu’à ce nombre d’enchères en cours (vos ventes manuelles comptent). 10 = limite du jeu.' },

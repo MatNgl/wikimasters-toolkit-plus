@@ -499,3 +499,26 @@ test('prix : la carte sur laquelle on clique ⚡ passe devant le chargement des 
   assert.ok(seen.indexOf('d') <= 1, 'servie juste après celle en cours, avant b et c : ' + seen.join(','));
   env.close();
 });
+
+test('assistant de vente : l\'état publié dit pourquoi rien n\'est mis en vente, et « Lancer maintenant » refait une passe', async () => {
+  const env = createEnv({ fetchImpl: async () => json({ selling: [], bidding: [], won: [{ winner_id: ME }], history: [] }) });
+  const { w, WMX } = env;
+  const card = (id, over = {}) => ({ card_id: id, title: 'Carte ' + id, rarity: 'R', count: 1, starred: true, tags: [{ name: 'VENTE' }], ...over });
+  WMX.inventory.items = () => [card('f1'), card('f2')];
+  Object.assign(WMX.settings, { autoSell: true, autoSellTags: 'VENTE', autoSellMax: 3 });
+  const got = [];
+  WMX.quick.bulk = (type, items) => got.push(...items.map((i) => i.card_id));
+  const box = WMX.autoSell.footer();
+  assert.match(box.textContent, /en attente d’un onglet actif/, 'avant la première passe');
+  await WMX.autoSell.tick();
+  assert.match(box.querySelector('.wmx-as-txt').textContent, /aucune carte éligible sur 2 étiquetées/);
+  assert.deepEqual(got, []);
+  WMX.autoSell.openPanel();
+  const txt = w.document.querySelector('.wmx-aspanel').textContent;
+  assert.match(txt, /2 favorite \(verrouillée\)/, 'la raison est détaillée dans la fenêtre');
+  WMX.inventory.items = () => [card('f1', { starred: false })];
+  await WMX.autoSell.runNow();
+  assert.deepEqual(got, ['f1'], '« Lancer maintenant » refait une passe tout de suite');
+  assert.match(box.querySelector('.wmx-as-txt').textContent, /1 carte mise en file/);
+  env.close();
+});

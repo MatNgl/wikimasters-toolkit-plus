@@ -206,3 +206,14 @@ test('assistant de vente : le plafond écarte les cartes trop chères', () => {
   assert.deepEqual(ids(500), ['q', 'r'], 'la carte à 3 700 W est écartée, celle sans prix connu reste candidate (le plafond est revérifié au lancement)');
   assert.deepEqual(ids(0), ['p', 'q', 'r'], 'sans plafond : toutes, les plus chères en premier');
 });
+
+test('assistant de vente : le plan explique la raison de chaque carte mise de côté', () => {
+  const now = 1_000_000_000_000;
+  const card = (id, over = {}) => ({ card_id: id, title: id, rarity: 'R', count: 1, starred: false, tags: [{ name: 'VENTE' }], ...over });
+  const items = [card('ok'), card('fav', { starred: true }), card('busy'), card('skip'), card('cher'), card('jour'), card('autre', { tags: [{ name: 'Sport' }] })];
+  const plan = L.autoSellPlan(items, { tags: ['VENTE'], now, cap: 500, busy: new Set(['busy']), skip: { skip: now + 3600_000 }, log: { jour: [now - 1, now - 2, now - 3, now - 4] }, avg: (it) => (it.card_id === 'cher' ? 900 : 10) });
+  assert.equal(plan.tagged, 6, 'la carte d\'une autre étiquette n\'est pas comptée');
+  assert.deepEqual(plan.eligible.map((i) => i.card_id), ['ok']);
+  assert.deepEqual(Object.fromEntries(plan.excluded.map((e) => [e.card_id, e.reason])), { fav: 'favorite', busy: 'busy', skip: 'skipped', cher: 'capped', jour: 'perDay' });
+  assert.equal(plan.excluded.find((e) => e.card_id === 'skip').until, now + 3600_000);
+});

@@ -566,7 +566,7 @@
           el('button', { class: 'wmx-qclear', title: 'Paramètres des enchères', onclick: () => WMX.openSettings() }, '⚙'),
           el('button', { class: 'wmx-qclear', title: 'Actualiser maintenant', onclick: refresh }, '↻'),
           el('button', { class: 'wmx-qclear', title: 'Réduire', onclick: () => toggleBubble(false) }, '×'))),
-      S.bubbleBody);
+      S.bubbleBody, WMX.autoSell?.footer());
     S.bubblePanel = panel;
     enableDrag(S.bubbleHead);
     WMX.store.get('auctionBubblePos').then((p) => { if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) S.pos = p; }).catch(() => {});

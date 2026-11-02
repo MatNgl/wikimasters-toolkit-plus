@@ -569,3 +569,20 @@ html:not([data-wmx-route^="/pulls"]) .wmx-panel, html:not([data-wmx-route^="/pul
 
 /* La file d'attente reste visible par-dessus l'écran de révélation des paquets (0.16.3) */
 .wmx-qchip { z-index: 10001; }
+
+/* ===== Assistant de vente : ligne d'état et fenêtre de détails (0.17.0) ===== */
+.wmx-as-line { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-top: 1px solid #ffffff12; font-size: 12px; background: #0a110e; }
+.wmx-as-line strong { color: #cfe; font-weight: 600; white-space: nowrap; }
+.wmx-as-txt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #9db5a8; }
+.wmx-as-line[data-state="go"] .wmx-as-txt, .wmx-as-state[data-state="go"] { color: #2dd4a0; }
+.wmx-as-line[data-state="warn"] .wmx-as-txt, .wmx-as-state[data-state="warn"] { color: #fbbf24; }
+.wmx-as-line[data-state="off"] .wmx-as-txt, .wmx-as-state[data-state="off"] { color: #7f9a8d; }
+.wmx-as-state { font-size: 14px; font-weight: 600; padding: 4px 0 8px; }
+.wmx-as-meta { color: #9db5a8; font-size: 12px; padding: 2px 0; }
+.wmx-as-body h4 { margin: 14px 0 6px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: #7f9a8d; }
+.wmx-as-body { max-height: 62vh; overflow-y: auto; }
+.wmx-as-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 8px; padding: 4px 6px; border-radius: 8px; font-size: 12px; align-items: baseline; }
+.wmx-as-row:hover { background: #ffffff0a; }
+.wmx-as-row b { color: #cfe; }
+.wmx-as-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wmx-as-row small { color: #8aa; white-space: nowrap; }

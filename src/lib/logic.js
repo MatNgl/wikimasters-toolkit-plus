@@ -152,19 +152,35 @@
      * Jamais une carte favorite, déjà en vente, écartée (annulée à la main, échecs répétés) ou déjà remise en vente trop souvent ;
      * les cartes les plus chères d'abord.
      */
-    pickAutoSell(items, o) {
+    pickAutoSell(items, o) { return L.autoSellPlan(items, o).eligible.slice(0, Math.max(0, o.free || 0)); },
+    /**
+     * Mêmes règles que pickAutoSell, détaillées : `tagged` (cartes portant une étiquette choisie), `eligible` (triées, les plus chères d'abord)
+     * et `excluded` : chaque carte étiquetée mise de côté avec sa raison ('favorite' | 'busy' | 'skipped' | 'capped' | 'perDay') et, pour
+     * 'skipped', la date de fin de l'écart. Sert à expliquer pourquoi telle carte n'est pas (re)mise en vente.
+     */
+    autoSellPlan(items, o) {
       const key = (s) => String(s || '').trim().toLowerCase();
       const keys = new Set((o.tags || []).map(key).filter(Boolean));
-      if (!keys.size || !(o.free > 0)) return [];
       const day = 24 * L.HOUR;
       const perDay = o.perDay || 4;
       const avg = (it) => (o.avg && o.avg(it)) || 0;
-      const ok = (items || []).filter((it) => !(o.cap > 0 && avg(it) > o.cap) && !it.starred && it.count > 0 && !(o.busy && o.busy.has(it.card_id))
-        && (it.tags || []).some((t) => keys.has(key(t.name)))
-        && !((o.skip && o.skip[it.card_id]) > o.now)
-        && ((o.log && o.log[it.card_id]) || []).filter((t) => o.now - t < day).length < perDay);
-      ok.sort((a, b) => avg(b) - avg(a) || String(a.title).localeCompare(String(b.title)));
-      return ok.slice(0, o.free);
+      const plan = { tagged: 0, eligible: [], excluded: [] };
+      if (!keys.size) return plan;
+      for (const it of items || []) {
+        if (!(it.count > 0) || !(it.tags || []).some((t) => keys.has(key(t.name)))) continue;
+        plan.tagged += 1;
+        let why = null;
+        let until = null;
+        if (it.starred) why = 'favorite';
+        else if (o.busy && o.busy.has(it.card_id)) why = 'busy';
+        else if ((o.skip && o.skip[it.card_id]) > o.now) { why = 'skipped'; until = o.skip[it.card_id]; }
+        else if (o.cap > 0 && avg(it) > o.cap) why = 'capped';
+        else if (((o.log && o.log[it.card_id]) || []).filter((t) => o.now - t < day).length >= perDay) why = 'perDay';
+        if (why) plan.excluded.push({ card_id: it.card_id, title: it.title, rarity: it.rarity, reason: why, until, avg: avg(it) });
+        else plan.eligible.push(it);
+      }
+      plan.eligible.sort((a, b) => avg(b) - avg(a) || String(a.title).localeCompare(String(b.title)));
+      return plan;
     },
     /** Message clair pour un échec réseau ou un code HTTP. */
     friendlyError(status) {
