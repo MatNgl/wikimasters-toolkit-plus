@@ -66,3 +66,11 @@ Légende : ✅ fait et vérifié · 🟡 écrit, à tester · ⬜ à faire
 - **Paquets** : valeur moyenne d'un paquet dans les statistiques ; couronnes (1 à 3) sur les cartes les plus chères du lot ; le menu ne disparaît plus sur petit écran (réduit en bulle « W ») et s'élargit sur grand écran.
 - **Qualité** : fonctions pures dans `src/lib/logic.js` testées par `npm test` ; `WMX.reportError` (message clair, journal des 30 dernières erreurs).
 - Restent à faire : lots 3 (mise automatique), 4 (marché/échanges), icône.
+
+## 0.8.0 (à tester après rechargement)
+- **Mise automatique** (bulle, bouton ⏱ sur une mise) : « dès que je suis surenchéri » ou « quand il reste X s/min », plafond facultatif, toujours le minimum proposé, 3 échecs de suite = arrêt, alerte à l'arrêt. L'onglet du jeu doit rester ouvert.
+- **Marché** : sous chaque enchère visible, moyenne du marché + verdict (≤ 85 % bonne affaire, ≤ 115 % correct, au-delà trop cher).
+- **Annulation** : 3 essais espacés quand le serveur du jeu répond 503.
+- **Tests** : `npm test` (20+ essais : logique pure + essais de fumée jsdom qui exécutent bulle, mise automatique, prix, couronnes, marché).
+- **Icônes** : 3 propositions dans `icons/proposals/` (aperçu : `docs/icones.html`).
+- Non fait : valeur des échanges (la fenêtre d'échange du jeu ne donne pas les identifiants de cartes), sélection multiple/étiquetage en lot (existe dans l'ancienne extension).
