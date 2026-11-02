@@ -45,7 +45,13 @@
 
   /** Le cadre est vraiment prêt quand la LISTE de cartes du jeu est affichée (« Page 1 / N »), pas seulement la barre de recherche. */
   const listReady = (frame) => {
-    try { const d = frame.contentDocument; return !!(d && searchBox(d) && /Page \d+\s*\/\s*\d+/.test(d.body.innerText)); } catch (_) { return false; }
+    try {
+      const d = frame.contentDocument;
+      if (!d || !searchBox(d)) return false;
+      const txt = d.body.innerText;
+      // Quand la recherche ne renvoie qu'une page, le jeu masque « Page 1 / N » : des cartes affichées (ou « aucune carte ») suffisent.
+      return /Page \d+\s*\/\s*\d+/.test(txt) || /Aucune carte|Aucun résultat/i.test(txt) || d.querySelectorAll('img').length >= 1;
+    } catch (_) { return false; }
   };
 
   /** Charge (une seule fois) la Collection dans un cadre invisible. */

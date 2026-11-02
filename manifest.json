@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WikiMasters Toolkit+",
-  "version": "0.10.2",
+  "version": "0.10.3",
   "description": "Ouverture groupée des paquets, statistiques, valeur des cartes, filtres et enchères rapides pour WikiMasters.",
   "permissions": [
     "storage",
@@ -71,7 +71,7 @@
       "world": "MAIN"
     }
   ],
-  "version_name": "0.10.2 · barre de sélection comme le jeu, file sûre",
+  "version_name": "0.10.3 · opérations de file enchaînées",
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",
