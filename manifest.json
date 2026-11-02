@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WikiMasters Toolkit+",
-  "version": "0.15.3",
+  "version": "0.16.0",
   "description": "Ouverture groupée des paquets, statistiques, prix du marché, enchères et mises automatiques pour WikiMasters.",
   "permissions": [
     "storage",
@@ -52,6 +52,7 @@
         "src/features/auto-sell.js",
         "src/features/auctions.js",
         "src/features/inventory.js",
+        "src/features/card-style.js",
         "src/features/collection-native.js",
         "src/features/dashboard.js",
         "src/features/market.js",
@@ -76,7 +77,7 @@
       "world": "MAIN"
     }
   ],
-  "version_name": "0.15.3 · assistant de vente : étiquettes en menu déroulant",
+  "version_name": "0.16.0 · style de carte sur toutes les pages",
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",

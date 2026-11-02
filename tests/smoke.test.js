@@ -433,3 +433,21 @@ test('réglages : les étiquettes de l\'assistant se choisissent dans un menu d�
   assert.match(btn.textContent, /VENTE, Sport/);
   env.close();
 });
+
+test('style de carte : appliqué à toute carte du jeu (marché, échanges…), retiré quand on le désactive', async () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  const { w, WMX } = env;
+  const card = (r) => `<div class="relative rounded-2xl overflow-hidden"><img src="a.jpg"><div class="absolute h-[45%] z-20"></div><div class="absolute top-2 left-2 z-30">${r}</div><div class="absolute top-[45%] z-20"><h3>Titre</h3></div></div>`;
+  w.document.body.innerHTML = `<main>${card('UR')}${card('C')}<div class="wmx-modal">${card('L')}</div><div class="relative"><img><div class="absolute h-[45%]"></div></div></main>`;
+  WMX.cardStyle.scan();
+  const cs = [...w.document.querySelectorAll('main > div.rounded-2xl')];
+  assert.ok(cs.every((c) => c.classList.contains('wmx-sty') && c.querySelector('.wmx-sty-sheen')), 'les cartes reconnues à leur structure sont stylées');
+  assert.equal(cs[0].dataset.wmxR, 'UR');
+  assert.equal(cs[1].dataset.wmxR, 'C');
+  assert.equal(w.document.querySelector('.wmx-modal .wmx-sty'), null, 'jamais dans les fenêtres de l\'extension');
+  assert.equal(w.document.querySelectorAll('.wmx-sty').length, 2, 'ni sur un élément qui n\'est pas une carte');
+  WMX.settings.cardStyle = false;
+  WMX.cardStyle.scan();
+  assert.equal(w.document.querySelectorAll('.wmx-sty, .wmx-sty-sheen').length, 0, 'style désactivé : tout est retiré');
+  env.close();
+});

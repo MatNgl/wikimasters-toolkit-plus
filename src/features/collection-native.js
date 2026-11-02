@@ -41,29 +41,6 @@
   }
 
   // --- Aperçu de trois styles de cartes (A plein cadre · B vitrine · C éditorial) sur des cartes d'essai ---------------
-  const WAVES = '<svg xmlns="http://www.w3.org/2000/svg" width="56" height="20" viewBox="0 0 56 20"><path d="M0 10 Q14 0 28 10 T56 10" fill="none" stroke="white" stroke-width="1"/><path d="M0 18 Q14 8 28 18 T56 18" fill="none" stroke="white" stroke-width="1" opacity=".6"/></svg>';
-  document.documentElement.style.setProperty('--wmx-waves', `url("data:image/svg+xml;utf8,${encodeURIComponent(WAVES)}")`);
-
-  /**
-   * Style de carte de l'extension (plein cadre) pour TOUTES les raretés : l'illustration occupe toute la carte, le texte flotte sur
-   * un dégradé sombre, un cadre lumineux reprend la couleur de la rareté, un fin motif de vagues et un reflet brillant s'y ajoutent
-   * (le reflet tourne en continu sur les Légendaires, au survol pour les autres). Désactivable dans les Paramètres.
-   */
-  function applyStyle(card, rarity) {
-    const on = WMX.settings?.cardStyle !== false;
-    card.classList.toggle('wmx-sty', on);
-    card.classList.toggle('wmx-sty-a', on);
-    if (!on) { card.querySelectorAll('.wmx-sty-waves, .wmx-sty-sheen').forEach((e) => e.remove()); return; }
-    card.dataset.wmxR = rarity;
-    card.style.setProperty('--wmx-rgb', WMX.RARITY_RGB[rarity] || '255 255 255');
-    if (!card.querySelector('.wmx-sty-waves')) card.append(el('span', { class: 'wmx-sty-waves' }), el('span', { class: 'wmx-sty-sheen' }));
-    // Image PNG / paysage : entière (contain) sur un fond flouté, au lieu d'être rognée.
-    const art = card.querySelector('div[class*="h-[45%]"] img');
-    const wide = () => art && (/\.(png|svg)(\?|$)/i.test(art.currentSrc || art.src || '') || (art.naturalWidth && art.naturalWidth / art.naturalHeight > 1.25));
-    const check = () => card.classList.toggle('wmx-sty-contain', !!wide());
-    if (art) { check(); art.addEventListener('load', check, { once: true }); }
-  }
-
   function decorate(card) {
     if (!card.querySelector('.wmx-nt-price')) {
       card.append(el('span', { class: 'wmx-nt-price' }, 'Moy. …'));
@@ -84,7 +61,7 @@
       }
     }
     paint(card);
-    applyStyle(card, WMX.normRarity(norm(card.querySelector('div.absolute.top-2.left-2')?.textContent)) || 'C');
+    WMX.cardStyle?.apply(card); // le style de carte est global (card-style.js) ; appliqué ici sans attendre pour éviter un clignotement
   }
 
   /** Barre « valeur · prix · bouton » placée juste avant la ligne de recherche du jeu. */
@@ -100,15 +77,7 @@
     WMX.inventory.renderStatus(); // la barre vient d'être insérée : on affiche tout de suite l'état
   }
 
-  /** Description et attaque/défense : affichées ou masquées selon les Paramètres (classes sur la page, lues par le CSS). */
-  const syncFlags = () => {
-    const s = WMX.settings || {};
-    document.documentElement.classList.toggle('wmx-hide-desc', s.cardShowDesc === false);
-    document.documentElement.classList.toggle('wmx-hide-stats', s.cardShowStats === false);
-  };
-
   function scan() {
-    syncFlags();
     if (!isPage()) return;
     ensureBar();
     for (const h3 of document.querySelectorAll('main h3')) {
@@ -129,7 +98,7 @@
       WMX.inventory.onChange(() => { clearTimeout(window.__wmxNtRepaint); window.__wmxNtRepaint = setTimeout(repaintAll, 150); });
       WMX.quick?.onChange(() => { clearTimeout(window.__wmxNtRepaint); window.__wmxNtRepaint = setTimeout(repaintAll, 150); });
       window.addEventListener('wmx:fav', repaintAll);
-      window.addEventListener('wmx:settings', () => { syncFlags(); scan(); });
+      window.addEventListener('wmx:settings', scan);
       schedule();
       // Détection d'une page du jeu qui aurait changé : des cartes sont là mais aucune n'a pu recevoir prix et ⚡.
       setTimeout(() => {

@@ -31,7 +31,7 @@
     return infoCache.get(key);
   }
 
-  const styleVars = (r) => `--rgb:${RGB[r]};--glow:${GLOW[r]}px`;
+  const styleVars = (r) => `--rgb:${RGB[r]};--wmx-rgb:${RGB[r]};--glow:${GLOW[r]}px`;
 
   function realTile(c) {
     const r = rar(c);
@@ -63,8 +63,10 @@
       acts.replaceChildren(fav, bolt);
     };
     paintBtns();
-    const face = el('div', { class: 'wmx-face' },
+    const styled = WMX.settings?.cardStyle !== false; // mêmes ornements que les cartes du jeu (card-style.js) : cadre lumineux, vagues, reflet
+    const face = el('div', { class: `wmx-face${styled ? ' wmx-sty-rv' : ''}` },
       art, el('div', { class: 'wmx-shade' }),
+      ...(styled ? [el('span', { class: 'wmx-sty-waves' }), el('span', { class: 'wmx-sty-sheen' })] : []),
       el('span', { class: 'wmx-rar' }, r),
       acts,
       el('div', { class: 'wmx-meta' }, el('strong', {}, c.wikipedia_title || '?'), priceChip, desc));

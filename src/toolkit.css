@@ -552,3 +552,17 @@ html:not([data-wmx-route^="/pulls"]) .wmx-panel, html:not([data-wmx-route^="/pul
 .wmx-tagopt:hover { background: #ffffff0f; }
 .wmx-tagopt small { color: #8aa; font-variant-numeric: tabular-nums; }
 .wmx-tagopt span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ===== Style de carte global (0.16.0) ===== */
+/* Grande carte (fiche d'une enchère…) : textes plus grands */
+.wmx-sty-lg h3 { font-size: 19px !important; }
+.wmx-sty-lg p { font-size: 13px !important; -webkit-line-clamp: 2 !important; }
+.wmx-sty-lg > div[class*="top-[45%]"] { padding: 60px 16px 14px !important; }
+/* Fond flouté derrière une illustration entière (PNG / paysage) */
+.wmx-sty-contain > img { object-fit: contain !important; transform: none !important; }
+/* Écran de révélation des paquets : cadre lumineux, vagues et reflet comme sur les cartes du jeu */
+.wmx-face.wmx-sty-rv { box-shadow: inset 0 0 0 1.5px rgb(var(--rgb) / .95), 0 12px 28px rgba(0,0,0,.46), 0 0 26px rgb(var(--rgb) / .5); }
+.wmx-face .wmx-sty-waves { z-index: 1; opacity: .12; }
+.wmx-face .wmx-sty-sheen { z-index: 4; animation: none; opacity: 0; transition: opacity .3s ease; }
+.wmx-tile[data-r=L].flip .wmx-face .wmx-sty-sheen { opacity: 1; animation: wmx-sheen 6s ease-in-out infinite; }
+.wmx-tile.flip:hover .wmx-face .wmx-sty-sheen { opacity: 1; animation: wmx-sheen 2.4s ease-in-out infinite; }
