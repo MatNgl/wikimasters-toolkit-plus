@@ -356,3 +356,18 @@ html.wmx-opening .wmx-cover { display: block; }
 @keyframes wmx-crown-in { from { opacity: 0; transform: translateX(-50%) translateY(-14px) rotate(-22deg) scale(.4); } to { opacity: 1; transform: translateX(-50%) rotate(-7deg); } }
 
 .wmx-auc-time.ended { color: #7f8f87; }
+
+/* ===== Mise automatique (0.8.0) ===== */
+.wmx-auc-row { flex-wrap: wrap; }
+.wmx-auc-acts { display: flex; gap: 6px; align-items: center; }
+.wmx-auc-autobtn { width: 30px; height: 30px; border-radius: 10px; border: 1px solid #27493b; background: #0d1411; color: #9db5a8; cursor: pointer; font-size: 14px; transition: all .18s ease; }
+.wmx-auc-autobtn:hover { border-color: var(--acc,#2dd4a0); color: #fff; }
+.wmx-auc-autobtn.on { background: rgb(45 212 160 / .2); border-color: var(--acc,#2dd4a0); color: var(--acc,#2dd4a0); }
+.wmx-auc-autotag { font: 700 11px Outfit, system-ui, sans-serif; color: var(--acc,#2dd4a0); }
+.wmx-auc-auto { flex: 1 1 100%; display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 12px; background: #ffffff08; border: 1px dashed #27493b; animation: wmx-auto-in .25s ease; }
+.wmx-auc-auto strong { font-size: 12px; color: var(--acc,#2dd4a0); }
+.wmx-auc-auto small { color: #9db5a8; font-size: 11px; line-height: 1.35; }
+.wmx-auc-autorow { display: flex; gap: 8px; }
+.wmx-auc-autorow[hidden] { display: none; }
+.wmx-auc-auto .wmx-input { min-width: 0; flex: 1; }
+@keyframes wmx-auto-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }

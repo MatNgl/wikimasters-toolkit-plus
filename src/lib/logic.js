@@ -53,6 +53,37 @@
       const n = L.crownCount(values.length);
       return values.map((v, i) => [Number(v), i]).filter(([v]) => v > 0).sort((a, b) => b[0] - a[0] || a[1] - b[1]).slice(0, n).map(([, i]) => i);
     },
+    /**
+     * Règle de mise automatique saisie par l'utilisateur → règle normalisée, ou null si invalide.
+     * mode « outbid » : dès qu'on est surenchéri ; mode « time » : quand il reste `amount` secondes (ou minutes) ; plafond facultatif.
+     */
+    parseAutoRule({ mode, amount, unit, cap } = {}) {
+      const c = Math.floor(Number(cap));
+      const rule = {};
+      if (Number.isFinite(c) && c > 0) rule.cap = c;
+      if (mode === 'outbid') return { mode, ...rule };
+      if (mode !== 'time') return null;
+      const n = Number(amount) * (unit === 'min' ? 60 : 1);
+      if (!Number.isFinite(n) || n <= 0) return null;
+      return { mode, secs: Math.min(6 * 3600, Math.max(5, Math.round(n))), ...rule };
+    },
+    autoLabel(rule) {
+      if (!rule) return '';
+      const when = rule.mode === 'outbid' ? 'dès surenchère' : rule.secs < 120 ? `à ${rule.secs} s` : `à ${Math.round(rule.secs / 60)} min`;
+      return `Auto · ${when}${rule.cap ? ` · max ${rule.cap} W` : ''}`;
+    },
+    /** Faut-il miser maintenant ? st = { leading, msLeft, minBid (ou null), cooldownOk }. */
+    autoBidDue(rule, st) {
+      if (!rule || st.leading || st.msLeft <= 0 || !st.cooldownOk) return false;
+      if (rule.cap && st.minBid && st.minBid > rule.cap) return false;
+      return rule.mode === 'outbid' ? true : st.msLeft <= rule.secs * 1000;
+    },
+    /** Cadence d'actualisation (ms) quand des mises automatiques existent : rapide près de l'échéance, 0 s'il n'y en a pas. */
+    autoPollMs(items) {
+      if (!items.length) return 0;
+      const near = items.some(({ rule, msLeft }) => rule.mode === 'outbid' || msLeft <= rule.secs * 1000 + 20000);
+      return near ? 4000 : 10000;
+    },
     /** Message clair pour un échec réseau ou un code HTTP. */
     friendlyError(status) {
       if (status === 0 || status == null) return 'Connexion impossible : vérifiez votre réseau.';

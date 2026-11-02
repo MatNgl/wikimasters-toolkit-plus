@@ -16,7 +16,13 @@
   const rarityOf = (a) => WMX.normRarity(a.snapshot_rarity || a.card?.rarity) || 'C';
   const leading = (a) => !!D.me && a.current_bidder_id === D.me;
   const msLeft = (a) => new Date(a.end_at).getTime() - Date.now();
+  const msLeftById = (id) => { const a = D.bidding.find((x) => x.id === id); return a ? msLeft(a) : 9e9; };
   const { fmtLeft, timeState } = WMX.logic; // sous 5 min : chronomètre rouge ; sous 2 min : alerte
+  S.auto = {};                              // mises automatiques : { idEnchère: règle } (mémorisées)
+  S.autoTry = {};                           // dernier essai de mise automatique par enchère
+  S.autoFails = {};
+  S.autoOpen = null;                        // enchère dont le formulaire de mise automatique est ouvert
+  const saveAuto = () => WMX.store.set('autoBids', S.auto);
   const notified = new Set();               // alertes déjà envoyées (une seule fois chacune)
 
   // --- Alertes ----------------------------------------------------------------------------
@@ -89,6 +95,10 @@
       const first = !D.loaded;
       D.loaded = true;
       checkOutbid(first);
+      let dirty = false;
+      for (const id of Object.keys(S.auto)) if (!D.bidding.some((x) => x.id === id)) { delete S.auto[id]; delete S.autoTry[id]; dirty = true; } // enchère terminée
+      if (dirty) saveAuto();
+      for (const id of Object.keys(S.auto)) { const x = D.bidding.find((b) => b.id === id); if (x) frameFor(x); } // page prête à l'avance : miser sans attendre
       pruneFrames();
       renderAll();
       S.fails = 0;
@@ -101,10 +111,11 @@
   /** Cadence : 8 s si la bulle est ouverte, sinon 1 min ; rien quand l'onglet est caché. */
   function schedulePoll() {
     clearTimeout(S.timer);
-    const ms = S.bubbleOpen ? 8000 : 60000;
+    const fast = WMX.logic.autoPollMs(Object.entries(S.auto).map(([id, rule]) => ({ rule, msLeft: msLeftById(id) })));
+    const ms = fast || (S.bubbleOpen ? 8000 : 60000);
     S.timer = setTimeout(async () => {
       if (!WMX.alive()) return;
-      if (!document.hidden) await refresh();
+      if (!document.hidden || Object.keys(S.auto).length) await refresh(); // une mise automatique doit voir l'enchère même onglet masqué
       schedulePoll();
     }, ms);
   }
@@ -147,9 +158,9 @@
     input.dispatchEvent(new w.Event('change', { bubbles: true }));
   }
 
-  async function bid(a) {
-    if (S.betting) return WMX.toast('Une mise est déjà en cours…');
-    if (leading(a)) return WMX.toast('Vous menez déjà cette enchère.');
+  async function bid(a, opts = {}) {
+    if (S.betting) return opts.auto ? undefined : WMX.toast('Une mise est déjà en cours…');
+    if (leading(a)) return opts.auto ? undefined : WMX.toast('Vous menez déjà cette enchère.');
     S.betting = a.id;
     renderAll();
     try {
@@ -161,6 +172,11 @@
       if (!btn) return WMX.toast('Bouton « Miser » introuvable sur la page de l’enchère.', 6000);
       const min = Number(input.min);
       if (!Number.isFinite(min) || min <= 0) return WMX.toast('Minimum de mise illisible : rien n’a été misé.', 6000);
+      if (opts.cap && min > opts.cap) { // plafond de la mise automatique dépassé : on s'arrête
+        delete S.auto[a.id]; saveAuto();
+        alertUser('Mise automatique arrêtée', `« ${cardTitle(a)} » : le minimum (${fmt(min)} W) dépasse votre plafond de ${fmt(opts.cap)} W.`, `${a.id}:cap`);
+        return;
+      }
       setNumber(input, min); // exactement le minimum proposé par le jeu
       await sleep(250);
       if (Number(input.value) !== min) return WMX.toast('Le montant saisi n’a pas été pris en compte : rien n’a été misé.', 6000);
@@ -168,9 +184,14 @@
       await sleep(1800);
       await refresh();
       const now = D.bidding.find((x) => x.id === a.id);
-      WMX.toast(now && leading(now)
-        ? `Mise de ${fmt(min)} W placée sur « ${cardTitle(a)} » : vous menez.`
+      const won = !!(now && leading(now));
+      WMX.toast(won
+        ? `${opts.auto ? 'Mise automatique' : 'Mise'} de ${fmt(min)} W placée sur « ${cardTitle(a)} » : vous menez.`
         : 'La mise n’est pas confirmée : solde insuffisant, ou quelqu’un a surenchéri entre-temps. Vérifiez la page de l’enchère.', 7000);
+      if (opts.auto) { // 3 échecs de suite : on arrête pour ne pas boucler
+        S.autoFails[a.id] = won ? 0 : (S.autoFails[a.id] || 0) + 1;
+        if (S.autoFails[a.id] >= 3) { delete S.auto[a.id]; saveAuto(); alertUser('Mise automatique arrêtée', `« ${cardTitle(a)} » : 3 mises sans effet (solde insuffisant ?).`, `${a.id}:fails`); }
+      }
     } finally {
       S.betting = null;
       renderAll();
@@ -181,6 +202,55 @@
     const item = { card_id: a.card_id, title: cardTitle(a), rarity: rarityOf(a), starred: false };
     await WMX.quick?.refresh();
     if (!WMX.quick?.cancelItem(item)) WMX.toast('Cette vente n’est plus active.');
+  }
+
+  // --- Mise automatique -----------------------------------------------------------------------
+  function setAuto(a, rule) {
+    if (rule) { S.auto[a.id] = rule; S.autoFails[a.id] = 0; frameFor(a); } else { delete S.auto[a.id]; delete S.autoTry[a.id]; }
+    saveAuto();
+    S.autoOpen = null;
+    renderAll();
+    schedulePoll();
+  }
+  function autoForm(a) {
+    const cur = S.auto[a.id];
+    const mode = el('select', { class: 'wmx-input wmx-select' },
+      el('option', { value: 'time' }, 'Quand il reste…'), el('option', { value: 'outbid' }, 'Dès que je suis surenchéri'));
+    mode.value = cur?.mode || 'time';
+    const secs = cur?.secs || 30;
+    const useMin = secs >= 120 && secs % 60 === 0;
+    const amount = el('input', { class: 'wmx-input', type: 'number', min: '1', step: '1', value: String(useMin ? secs / 60 : secs) });
+    const unit = el('select', { class: 'wmx-input wmx-select' }, el('option', { value: 's' }, 'secondes'), el('option', { value: 'min' }, 'minutes'));
+    unit.value = useMin ? 'min' : 's';
+    const cap = el('input', { class: 'wmx-input', type: 'number', min: '1', step: '1', placeholder: 'Plafond en W (facultatif)', value: cur?.cap ? String(cur.cap) : '' });
+    const when = el('div', { class: 'wmx-auc-autorow' }, amount, unit);
+    const sync = () => { when.hidden = mode.value !== 'time'; };
+    mode.addEventListener('change', sync); sync();
+    const save = el('button', { class: 'wmx-btn' }, cur ? 'Enregistrer' : 'Activer');
+    save.addEventListener('click', () => {
+      const rule = WMX.logic.parseAutoRule({ mode: mode.value, amount: amount.value, unit: unit.value, cap: cap.value });
+      if (!rule) return WMX.toast('Durée invalide.');
+      setAuto(a, rule);
+    });
+    const off = cur ? el('button', { class: 'wmx-btn wmx-btn--ghost' }, 'Désactiver') : '';
+    if (off) off.addEventListener('click', () => setAuto(a, null));
+    return el('div', { class: 'wmx-auc-auto' },
+      el('strong', {}, 'Mise automatique'), mode, when, cap,
+      el('small', {}, 'Mise exactement le minimum proposé par le jeu. L’onglet du jeu doit rester ouvert. Le délai de réponse du jeu dépend de votre connexion : gardez une marge (au moins 20 s).'),
+      el('div', { class: 'wmx-auc-autorow' }, save, off));
+  }
+  /** Chaque seconde : une règle est-elle à déclencher ? (une seule mise à la fois, 6 s minimum entre deux essais) */
+  function runAuto() {
+    if (S.betting || !D.loaded) return;
+    for (const a of D.bidding) {
+      const rule = S.auto[a.id];
+      if (!rule) continue;
+      const due = WMX.logic.autoBidDue(rule, { leading: leading(a), msLeft: msLeft(a), minBid: minOf(a), cooldownOk: Date.now() - (S.autoTry[a.id] || 0) > 6000 });
+      if (!due) continue;
+      S.autoTry[a.id] = Date.now();
+      bid(a, { auto: true, cap: rule.cap });
+      return;
+    }
   }
 
   // --- Affichage -------------------------------------------------------------------------------
@@ -205,13 +275,18 @@
       const lead = leading(a);
       const act = el('button', { class: 'wmx-btn wmx-auc-bid', 'data-id': a.id }, 'Surenchérir');
       act.addEventListener('click', () => bid(a));
+      const rule = S.auto[a.id];
+      const autoBtn = el('button', { class: `wmx-auc-autobtn${rule ? ' on' : ''}`, title: rule ? 'Mise automatique active : cliquer pour la modifier' : 'Programmer une mise automatique', 'aria-label': 'Mise automatique' }, '⏱');
+      autoBtn.addEventListener('click', () => { S.autoOpen = S.autoOpen === a.id ? null : a.id; renderAll(); });
       main = el('div', { class: 'wmx-auc-main' },
         el('div', { class: 'wmx-auc-name' }, title, rarityTag(r)),
         el('span', { class: `wmx-auc-state ${lead ? 'ok' : 'ko'}` }, lead ? 'Vous menez' : 'Surenchéri'),
-        timeEl(a));
+        timeEl(a),
+        rule ? el('span', { class: 'wmx-auc-autotag' }, WMX.logic.autoLabel(rule)) : '');
       side = el('div', { class: 'wmx-auc-side' },
         el('div', { class: 'wmx-auc-price' }, el('small', {}, 'Mise actuelle'), el('b', {}, `${fmt(a.current_bid || a.base_amount)} W`)),
-        act);
+        el('div', { class: 'wmx-auc-acts' }, autoBtn, act));
+      return el('div', { class: 'wmx-auc-row', style: `--rgb:${WMX.RARITY_RGB[r]}` }, img, main, side, S.autoOpen === a.id ? autoForm(a) : '');
     } else {
       const act = a.current_bid || msLeft(a) <= 0 ? '' : el('button', { class: 'wmx-btn wmx-btn--ghost wmx-auc-cancel', title: 'Annuler la vente et récupérer la carte' }, 'Annuler');
       if (act) act.addEventListener('click', () => cancelSale(a));
@@ -239,7 +314,8 @@
   }
 
   function renderAll() {
-    if (S.bubbleBody && S.bubbleOpen) S.bubbleBody.replaceChildren(...content());
+    const typing = S.bubbleBody?.contains(document.activeElement) && /INPUT|SELECT/.test(document.activeElement.tagName);
+    if (S.bubbleBody && S.bubbleOpen && !typing) S.bubbleBody.replaceChildren(...content()); // pas de reconstruction pendant une saisie
     S.pillSig = null;
     tick();
   }
@@ -261,7 +337,7 @@
       b.textContent = S.betting === a.id ? 'Mise en cours…' : leading(a) ? 'Vous menez' : (m ? `Surenchérir · ${fmt(m)} W` : 'Surenchérir');
       b.disabled = !!S.betting || leading(a) || msLeft(a) <= 0;
     }
-    if (D.loaded) checkUrgent();
+    if (D.loaded) { checkUrgent(); runAuto(); }
     updatePill();
     if (S.bubble) S.bubble.hidden = WMX.settings?.auctionBubble === false || !D.loaded;
   }
@@ -371,6 +447,7 @@
     name: 'auctions',
     init() {
       buildBubble();
+      WMX.store.get('autoBids', {}).then((r) => { S.auto = r || {}; });
       setInterval(() => { if (WMX.alive()) tick(); }, 1000);
       setTimeout(async () => { await refresh(); schedulePoll(); }, 3000);
     },

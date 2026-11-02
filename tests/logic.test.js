@@ -80,3 +80,45 @@ test('friendlyError : messages lisibles', () => {
   assert.match(L.friendlyError(503), /503/);
   assert.match(L.friendlyError(418), /418/);
 });
+
+test('parseAutoRule : normalise et refuse les valeurs invalides', () => {
+  assert.deepEqual(L.parseAutoRule({ mode: 'outbid' }), { mode: 'outbid' });
+  assert.deepEqual(L.parseAutoRule({ mode: 'outbid', cap: '120' }), { mode: 'outbid', cap: 120 });
+  assert.deepEqual(L.parseAutoRule({ mode: 'time', amount: 30, unit: 's' }), { mode: 'time', secs: 30 });
+  assert.deepEqual(L.parseAutoRule({ mode: 'time', amount: 2, unit: 'min', cap: 50 }), { mode: 'time', secs: 120, cap: 50 });
+  assert.equal(L.parseAutoRule({ mode: 'time', amount: 1, unit: 's' }).secs, 5); // plancher 5 s
+  assert.equal(L.parseAutoRule({ mode: 'time', amount: 99999, unit: 'min' }).secs, 6 * 3600);
+  assert.equal(L.parseAutoRule({ mode: 'time', amount: 0 }), null);
+  assert.equal(L.parseAutoRule({ mode: 'time', amount: 'abc' }), null);
+  assert.equal(L.parseAutoRule({ mode: 'x' }), null);
+  assert.equal(L.parseAutoRule(), null);
+});
+
+test('autoLabel', () => {
+  assert.equal(L.autoLabel({ mode: 'outbid' }), 'Auto · dès surenchère');
+  assert.equal(L.autoLabel({ mode: 'time', secs: 30 }), 'Auto · à 30 s');
+  assert.equal(L.autoLabel({ mode: 'time', secs: 300, cap: 80 }), 'Auto · à 5 min · max 80 W');
+  assert.equal(L.autoLabel(null), '');
+});
+
+test('autoBidDue : jamais si on mène, si c\'est fini, en pause, ou au-dessus du plafond', () => {
+  const ok = { leading: false, msLeft: 20_000, cooldownOk: true, minBid: 10 };
+  assert.equal(L.autoBidDue({ mode: 'outbid' }, { ...ok, msLeft: 3_600_000 }), true);
+  assert.equal(L.autoBidDue({ mode: 'time', secs: 30 }, ok), true);
+  assert.equal(L.autoBidDue({ mode: 'time', secs: 30 }, { ...ok, msLeft: 31_000 }), false);
+  assert.equal(L.autoBidDue({ mode: 'time', secs: 30 }, { ...ok, leading: true }), false);
+  assert.equal(L.autoBidDue({ mode: 'outbid' }, { ...ok, leading: true }), false);
+  assert.equal(L.autoBidDue({ mode: 'outbid' }, { ...ok, msLeft: 0 }), false);
+  assert.equal(L.autoBidDue({ mode: 'outbid' }, { ...ok, cooldownOk: false }), false);
+  assert.equal(L.autoBidDue({ mode: 'outbid', cap: 9 }, ok), false);
+  assert.equal(L.autoBidDue({ mode: 'outbid', cap: 10 }, ok), true);
+  assert.equal(L.autoBidDue({ mode: 'outbid', cap: 9 }, { ...ok, minBid: null }), true); // minimum inconnu : le contrôle se fait au moment de miser
+  assert.equal(L.autoBidDue(null, ok), false);
+});
+
+test('autoPollMs : rapide près de l\'échéance', () => {
+  assert.equal(L.autoPollMs([]), 0);
+  assert.equal(L.autoPollMs([{ rule: { mode: 'outbid' }, msLeft: 9e6 }]), 4000);
+  assert.equal(L.autoPollMs([{ rule: { mode: 'time', secs: 30 }, msLeft: 3_600_000 }]), 10000);
+  assert.equal(L.autoPollMs([{ rule: { mode: 'time', secs: 30 }, msLeft: 49_000 }]), 4000);
+});
