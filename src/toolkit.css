@@ -415,3 +415,24 @@ html.wmx-opening .wmx-cover { display: block; }
 @keyframes wmx-spin { to { transform: rotate(360deg); } }
 @keyframes wmx-pre-fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes wmx-pre-pop { from { opacity: 0; transform: translateY(10px) scale(.94); } to { opacity: 1; transform: none; } }
+
+/* ===== Mode sélection de Collection+ (0.10.0) ===== */
+.wmx-ct-check { display: none; position: absolute; top: 8px; left: 46px; z-index: 6; width: 22px; height: 22px; border-radius: 7px; place-items: center; font-style: normal; font-size: 13px; font-weight: 800;
+  color: transparent; background: #0b1411cc; border: 2px solid #ffffff88; transition: all .15s ease; }
+.wmx-selecting .wmx-ct-check { display: grid; }
+.wmx-selecting .wmx-ct { cursor: pointer; }
+.wmx-ct.sel { outline: 3px solid var(--acc,#2dd4a0); outline-offset: -3px; transform: translateY(-2px); }
+.wmx-ct.sel .wmx-ct-check { color: #06241b; background: var(--acc,#2dd4a0); border-color: var(--acc,#2dd4a0); }
+.wmx-selbar { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 30; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center; max-width: min(960px, calc(100vw - 40px));
+  padding: 10px 14px; border-radius: 18px; background: #0b1411f2; border: 1px solid #27493b; box-shadow: 0 20px 50px #000c; backdrop-filter: blur(12px); font-family: Outfit, system-ui, sans-serif; animation: wmx-pre-pop .25s ease; }
+.wmx-selbar[hidden] { display: none; }
+.wmx-sel-count { font-weight: 700; font-size: 13px; color: var(--acc,#2dd4a0); margin-right: 4px; }
+.wmx-sel-btn { padding: 6px 11px; font-size: 12px; }
+.wmx-sel-btn.danger:not(:disabled) { color: #fca5a5; border-color: rgb(239 68 68 / .5); }
+.wmx-sel-btn:disabled { opacity: .4; cursor: default; }
+.wmx-selpop { position: fixed; left: 50%; bottom: 86px; transform: translateX(-50%); z-index: 31; width: min(440px, calc(100vw - 40px)); display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 16px; background: #0b1411f7; border: 1px solid #27493b; box-shadow: 0 24px 60px #000d; color: #e6efe9; font-family: Outfit, system-ui, sans-serif; animation: wmx-pre-pop .2s ease; }
+.wmx-selpop-head { display: flex; justify-content: space-between; align-items: center; }
+.wmx-selpop-list { display: flex; flex-wrap: wrap; gap: 6px; max-height: 190px; overflow: auto; }
+.wmx-selpop-row { display: flex; gap: 8px; justify-content: flex-end; }
+.wmx-selpop--danger { border-color: rgb(239 68 68 / .55); }
+.wmx-selpop small { color: #9db5a8; }

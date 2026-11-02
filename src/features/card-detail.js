@@ -14,6 +14,7 @@
   let toastTimer = null;
   let lastUse = Date.now();
 
+  const home = (kind) => (kind === 'work' ? '/collection#wmx-auto' : '/collection'); // le cadre d'automatisation garde sa marque #wmx-auto
   const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
 
   function toast(text, ms = 4500) {
@@ -52,7 +53,8 @@
     lastUse = Date.now();
     const s = F[kind];
     if (s.frame) return s.ready;
-    s.frame = el('iframe', { class: `wmx-sheet-frame wmx-${kind}`, src: '/collection', title: 'Fiche de carte', tabindex: '-1' });
+    // Le cadre d'automatisation porte la marque #wmx-auto : les confirmations natives du jeu (défausse…) y sont acceptées (frame-hook.js).
+    s.frame = el('iframe', { class: `wmx-sheet-frame wmx-${kind}`, src: kind === 'work' ? '/collection#wmx-auto' : '/collection', title: 'Fiche de carte', tabindex: '-1' });
     document.body.append(s.frame);
     const frame = s.frame;
     s.ready = waitFor(() => listReady(frame), 180000, 400).then((ok) => !!ok);
@@ -147,10 +149,10 @@
     if (onList()) return true;
     try { // navigation interne du jeu (rapide) : on clique « Collection » dans le cadre
       const link = frame.contentDocument.querySelector('nav a[href="/collection"]');
-      if (link) link.click(); else frame.contentWindow.location.href = '/collection';
-    } catch (_) { frame.src = '/collection'; }
+      if (link) link.click(); else frame.contentWindow.location.href = home(kind);
+    } catch (_) { frame.src = home(kind); }
     if (await waitFor(onList, 20000, 200)) return true;
-    frame.src = '/collection'; // dernier recours : rechargement complet du cadre
+    frame.src = home(kind); // dernier recours : rechargement complet du cadre
     return !!(await waitFor(onList, 120000, 400));
   }
 

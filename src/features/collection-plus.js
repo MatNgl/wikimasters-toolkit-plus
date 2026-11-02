@@ -11,7 +11,7 @@
 
   const S = {
     items: [], page: 1, perPage: 50, sort: 'rarity', q: '', rar: new Set(), tag: '', fav: false, dup: false,
-    min: '', max: '', tab: 'cards', priceRar: new Set(['L', 'UR', 'SR', 'R']), priceMode: 'rar', priceTags: new Set(), tagsTouched: false, loading: false, loadedCount: 0,
+    min: '', max: '', tab: 'cards', priceRar: new Set(['L', 'UR', 'SR', 'R']), priceMode: 'rar', priceTags: new Set(), selecting: false, sel: new Set(), tagsTouched: false, loading: false, loadedCount: 0,
   };
   let overlay = null;  // page « Collection+ »
   let pageDash = null; // page « Tableau de bord »
@@ -124,10 +124,15 @@
     const t = el('div', { class: 'wmx-ct', 'data-id': it.id, 'data-r': it.rarity, style: `--rgb:${WMX.RARITY_RGB[it.rarity]}`, title: 'Cliquer pour ouvrir la fiche' },
       el('div', { class: 'wmx-ct-shade' }),
       el('span', { class: 'wmx-rar' }, it.rarity),
+      el('i', { class: 'wmx-ct-check' }, '✓'),
       el('div', { class: 'wmx-ct-acts' }, bolt(it), it.starred ? el('i', { class: 'wmx-star' }, '★') : '', it.count > 1 ? el('i', { class: 'wmx-ct-n' }, `×${it.count}`) : ''),
       el('div', { class: 'wmx-meta' }, el('strong', {}, it.title), el('span', { class: 'wmx-ct-price' }, priceText(it))));
     if (it.image) WMX.dom.artLayers(it.image, t);
-    t.addEventListener('click', () => WMX.openCardDetail?.({ id: it.card_id, wikipedia_title: it.title, rarity: it.rarity, lang: it.lang }));
+    if (S.sel.has(it.id)) t.classList.add('sel');
+    t.addEventListener('click', () => {
+      if (S.selecting) return toggleSel(it, t); // mode sélection : un clic coche / décoche la carte
+      return WMX.openCardDetail?.({ id: it.card_id, wikipedia_title: it.title, rarity: it.rarity, lang: it.lang });
+    });
     return t;
   }
 
@@ -313,26 +318,109 @@
     WMX.prices.start(todo, { base: selected.length - todo.length, total: selected.length });
   }
 
-  /**
-   * Mode sélection natif du jeu (étiqueter, retirer l'étiquette, favoris, défausse en lot) : Collection+ peut être ouverte depuis
-   * n'importe quelle page, donc on repasse d'abord sur la collection du jeu, on attend qu'elle soit chargée, puis on clique
-   * son bouton « Sélectionner » (ou on le signale s'il est déjà actif : le menu du bas est alors déjà affiché).
-   */
-  async function openNativeSelect() {
-    close();
-    if (location.pathname !== '/collection') {
-      window.dispatchEvent(new CustomEvent('wmx:navigate', { detail: '/collection' }));
-      await WMX.dom.waitFor(() => location.pathname === '/collection', 15000, 150);
-    }
-    const native = (re) => [...document.querySelectorAll('button')].find((x) => re.test(x.textContent.trim()) && !x.closest('.wmx-cplus'));
-    WMX.toast?.('Ouverture de la collection du jeu…', 20000);
-    // La liste du jeu (« Page 1 / N ») doit être affichée : c'est là que le bouton apparaît.
-    await WMX.dom.waitFor(() => /Page \d+\s*\/\s*\d+/.test(document.body.innerText), 30000, 250);
-    const btn = await WMX.dom.waitFor(() => native(/^(☑\s*)?Sélectionner$/) || native(/^Quitter la sélection$/), 12000, 200);
-    WMX.toast?.('');
-    if (!btn) return WMX.toast?.('Le bouton « Sélectionner » du jeu est introuvable : actualisez la page (F5) puis réessayez.', 7000);
-    if (/Quitter/.test(btn.textContent)) return WMX.toast?.('Le mode sélection du jeu est déjà actif : utilisez le menu en bas de l’écran.', 5000);
-    btn.click();
+  // --- Mode sélection (étiqueter, retirer l'étiquette, favoris, défausse en lot), directement dans Collection+ ------------
+  const selItems = () => S.items.filter((i) => S.sel.has(i.id));
+  const tagKey = (s) => String(s || '').trim().toLowerCase();
+  const hasTag = (it, name) => it.tags.some((t) => tagKey(t.name) === tagKey(name));
+
+  function toggleSel(it, t) {
+    if (S.sel.has(it.id)) S.sel.delete(it.id); else S.sel.add(it.id);
+    t.classList.toggle('sel', S.sel.has(it.id));
+    renderSelbar();
+  }
+
+  function toggleSelect(on = !S.selecting) {
+    S.selecting = on;
+    if (!on) S.sel.clear();
+    overlay?.classList.toggle('wmx-selecting', on);
+    document.querySelectorAll('.wmx-cp-select').forEach((b) => { b.textContent = on ? '✕ Quitter la sélection' : '☑ Sélectionner'; });
+    ui.grid?.querySelectorAll('.wmx-ct.sel').forEach((t) => { if (!on) t.classList.remove('sel'); });
+    renderSelbar();
+  }
+
+  /** Cartes à traiter par une action : celles pour lesquelles elle a un effet, avec le nombre de cartes ignorées. */
+  function plan(kind, tag) {
+    const all = selItems();
+    const keep = {
+      favOn: (i) => !i.starred,
+      favOff: (i) => i.starred,
+      tagAdd: (i) => !hasTag(i, tag),
+      tagRemove: (i) => hasTag(i, tag),
+      discard: (i) => !i.starred && !WMX.quick?.selling(i.card_id),
+    }[kind];
+    const todo = all.filter(keep);
+    return { todo, skipped: all.length - todo.length };
+  }
+
+  function launch(kind, tag) {
+    const { todo, skipped } = plan(kind, tag);
+    if (!todo.length) return WMX.toast?.(skipped ? 'Rien à faire : toutes les cartes sélectionnées sont déjà dans cet état (ou verrouillées).' : 'Aucune carte sélectionnée.');
+    const n = kind === 'favOn' ? WMX.quick.bulk('favorite', todo, { want: 'on' })
+      : kind === 'favOff' ? WMX.quick.bulk('favorite', todo, { want: 'off' })
+      : kind === 'tagAdd' ? WMX.quick.bulk('tag', todo, { tag, add: true })
+      : kind === 'tagRemove' ? WMX.quick.bulk('tag', todo, { tag, add: false })
+      : WMX.quick.bulk('discard', todo);
+    WMX.toast?.(`${n} carte${n > 1 ? 's' : ''} en file d’attente${skipped ? ` · ${skipped} ignorée${skipped > 1 ? 's' : ''} (déjà fait ou verrouillée)` : ''}. Suivi dans la pastille ⚡.`, 6000);
+    S.sel.clear();
+    ui.grid?.querySelectorAll('.wmx-ct.sel').forEach((t) => t.classList.remove('sel'));
+    renderSelbar();
+  }
+
+  /** Fenêtre de choix d'une étiquette (ajout : toutes ; retrait : celles des cartes sélectionnées). */
+  function tagPicker(add) {
+    const counts = new Map();
+    for (const it of add ? S.items : selItems()) for (const t of it.tags) counts.set(tagKey(t.name), { name: t.name, n: (counts.get(tagKey(t.name))?.n || 0) + 1 });
+    const tags = [...counts.values()].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+    const box = el('div', { class: 'wmx-selpop' });
+    const search = el('input', { class: 'wmx-input', type: 'search', placeholder: add ? 'Étiqueter avec…' : 'Retirer l’étiquette…' });
+    const list = el('div', { class: 'wmx-selpop-list' });
+    const draw = () => {
+      const q = tagKey(search.value);
+      const rows = tags.filter((t) => !q || tagKey(t.name).includes(q));
+      list.replaceChildren(...(rows.length ? rows.map((t) => el('button', { class: 'wmx-chip2', onclick: () => { box.remove(); launch(add ? 'tagAdd' : 'tagRemove', t.name); } }, `${t.name} (${t.n})`))
+        : [el('span', { class: 'wmx-cp-empty' }, add ? 'Aucune étiquette de ce nom (le jeu ne crée pas d’étiquette ici)' : 'Les cartes sélectionnées n’ont aucune étiquette')]));
+    };
+    search.addEventListener('input', draw);
+    box.append(el('div', { class: 'wmx-selpop-head' }, el('strong', {}, add ? 'Étiqueter les cartes sélectionnées' : 'Retirer une étiquette'), el('button', { class: 'wmx-close', onclick: () => box.remove() }, '×')), search, list);
+    ui.selbar.parentElement.querySelector('.wmx-selpop')?.remove();
+    ui.selbar.before(box);
+    draw();
+    search.focus();
+  }
+
+  function confirmDiscard() {
+    const { todo, skipped } = plan('discard');
+    if (!todo.length) return WMX.toast?.('Aucune carte défaussable dans la sélection (favorites ou en vente).');
+    ui.selbar.parentElement.querySelector('.wmx-selpop')?.remove();
+    const box = el('div', { class: 'wmx-selpop wmx-selpop--danger' },
+      el('strong', {}, `Défausser ${todo.length} carte${todo.length > 1 ? 's' : ''} ?`),
+      el('small', {}, `Action définitive : les cartes sont retirées de votre collection${skipped ? ` (${skipped} ignorée${skipped > 1 ? 's' : ''} : favorites ou en vente)` : ''}.`),
+      el('div', { class: 'wmx-selpop-row' },
+        el('button', { class: 'wmx-btn wmx-btn--ghost', onclick: () => box.remove() }, 'Annuler'),
+        el('button', { class: 'wmx-btn wmx-btn--danger', onclick: () => { box.remove(); launch('discard'); } }, `Défausser ${todo.length}`)));
+    ui.selbar.before(box);
+  }
+
+  function renderSelbar() {
+    if (!ui.selbar) return;
+    ui.selbar.hidden = !S.selecting;
+    if (!S.selecting) { ui.selbar.parentElement?.querySelector('.wmx-selpop')?.remove(); return; }
+    const n = S.sel.size;
+    const mk = (label, fn, cls) => { const b = el('button', { class: `wmx-btn wmx-btn--ghost wmx-sel-btn ${cls || ''}`, onclick: fn }, label); if (!n) b.disabled = true; return b; };
+    ui.selbar.replaceChildren(
+      el('span', { class: 'wmx-sel-count' }, `${n} carte${n > 1 ? 's' : ''} sélectionnée${n > 1 ? 's' : ''}`),
+      el('button', { class: 'wmx-btn wmx-btn--ghost wmx-sel-btn', onclick: selectPage }, 'Tout sélectionner (page)'),
+      mk('Étiqueter', () => tagPicker(true)),
+      mk('Retirer l’étiquette', () => tagPicker(false)),
+      mk('★ Mettre en favori', () => launch('favOn')),
+      mk('☆ Retirer des favoris', () => launch('favOff')),
+      mk('Défausser', confirmDiscard, 'danger'),
+      n ? el('button', { class: 'wmx-btn wmx-btn--ghost wmx-sel-btn', onclick: () => { S.sel.clear(); ui.grid.querySelectorAll('.wmx-ct.sel').forEach((t) => t.classList.remove('sel')); renderSelbar(); } }, 'Désélectionner') : '');
+  }
+
+  function selectPage() {
+    for (const t of ui.grid.querySelectorAll('.wmx-ct')) { S.sel.add(t.dataset.id); t.classList.add('sel'); }
+    renderSelbar();
   }
 
   /** Bandeau propre à une page : titre, état, valeur, paramètres. Pas d'onglets ni de croix : on change de page par la barre latérale. */
@@ -341,7 +429,7 @@
     const value = el('span', { class: 'wmx-cp-value' });
     ui.heads.push({ status, value });
     const select = title === 'Collection+'
-      ? el('button', { class: 'wmx-btn wmx-btn--ghost wmx-cp-select', title: 'Ouvre le mode sélection du jeu (défausse, étiquettes…) sur la collection', onclick: openNativeSelect }, '☑ Sélectionner')
+      ? el('button', { class: 'wmx-btn wmx-btn--ghost wmx-cp-select', title: 'Sélectionner des cartes pour les étiqueter, les mettre en favori ou les défausser en lot', onclick: () => toggleSelect() }, S.selecting ? '✕ Quitter la sélection' : '☑ Sélectionner')
       : '';
     return el('header', { class: 'wmx-cp-head' }, el('h2', {}, title), status, value, select,
       el('button', { class: 'wmx-close', title: 'Paramètres (enchère rapide, prix…)', onclick: () => WMX.openSettings() }, '⚙'));
@@ -436,6 +524,8 @@
     // Deux pages à part entière : chacune a son propre bandeau et son propre contenu.
     overlay = el('section', { class: 'wmx-cplus', id: 'wmx-cplus', hidden: '' }, head('Collection+'), el('div', { class: 'wmx-cp-scroll' }, ui.cardsView));
     pageDash = el('section', { class: 'wmx-cplus', id: 'wmx-dashboard', hidden: '' }, head('Tableau de bord'), el('div', { class: 'wmx-cp-scroll' }, makePriceBar(), ui.dash));
+    ui.selbar = el('div', { class: 'wmx-selbar', hidden: '' });
+    overlay.append(ui.selbar);
     document.body.append(overlay, pageDash);
     window.addEventListener('resize', place);
 
@@ -444,6 +534,23 @@
     window.addEventListener('wmx:fav', (e) => {
       for (const it of S.items) if (it.card_id === e.detail.card_id) it.starred = e.detail.starred;
       refreshTiles();
+    });
+    // Étiquette posée ou retirée / carte défaussée par la file : la grille se met à jour sans rechargement.
+    window.addEventListener('wmx:tag', (e) => {
+      const { card_id, tag, add } = e.detail;
+      const known = S.items.flatMap((i) => i.tags).find((t) => tagKey(t.name) === tagKey(tag));
+      for (const it of S.items) {
+        if (it.card_id !== card_id) continue;
+        it.tags = add ? (hasTag(it, tag) ? it.tags : [...it.tags, known || { id: tag, name: tag, color: null }]) : it.tags.filter((t) => tagKey(t.name) !== tagKey(tag));
+      }
+      fillTags();
+    });
+    window.addEventListener('wmx:discard', (e) => {
+      for (const it of S.items) if (it.card_id === e.detail.card_id) { it.count -= 1; }
+      S.items = S.items.filter((i) => i.count > 0);
+      S.sel.forEach((id) => { if (!S.items.some((i) => i.id === id)) S.sel.delete(id); });
+      refresh();
+      renderSelbar();
     });
     setInterval(() => { if (isOpen() && WMX.alive()) WMX.quick?.refresh(); }, 60000);
 
@@ -479,6 +586,7 @@
 
   /** Quitter la page : seulement en allant ailleurs dans le jeu (pas de bouton de fermeture). */
   function close() {
+    if (S.selecting) toggleSelect(false);
     if (overlay) { overlay.hidden = true; pageDash.hidden = true; }
     document.documentElement.classList.remove('wmx-page-open');
     markNav();

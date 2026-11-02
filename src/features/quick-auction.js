@@ -11,7 +11,8 @@
   const S = { fav: new Map(), selling: new Map(), max: 10, queue: [], current: null, running: false, batch: { done: 0, total: 0, ok: 0, failed: [] } };
   const listeners = new Set();
   const notify = () => listeners.forEach((cb) => { try { cb(); } catch (_) { /* écouteur obsolète */ } });
-  const slim = (it) => ({ card_id: it.card_id, title: it.title, rarity: it.rarity, starred: !!it.starred });
+  const slim = (it) => ({ card_id: it.card_id, title: it.title, rarity: it.rarity, starred: !!it.starred, tag: it.tag, add: it.add, want: it.want });
+  const isAuctionOp = (o) => o.type === 'launch' || o.type === 'cancel';
   const persist = () => WMX.store.set('quickQueue', S.queue.map((o) => ({ type: o.type, item: o.item })));
 
   const cfg = () => ({ coef: Number(WMX.settings?.quickCoef) || 0.9, dur: LABELS[WMX.settings?.quickDuration] || '1 h', prudent: !!WMX.settings?.quickPrudent });
@@ -160,11 +161,67 @@
       if (!star) return { error: 'étoile des favoris introuvable' };
       const before = star.getAttribute('aria-label');
       const wasStarred = !/^ajouter/i.test(before);
+      if ((item.want === 'on' && wasStarred) || (item.want === 'off' && !wasStarred)) return { ok: true }; // déjà dans l'état voulu
       star.click();
       await waitFor(() => star.getAttribute('aria-label') !== before, 5000, 120);
       const starred = !wasStarred;
       S.fav.set(item.card_id, starred);
       window.dispatchEvent(new CustomEvent('wmx:fav', { detail: { card_id: item.card_id, starred } }));
+      return { ok: true };
+    } finally {
+      WMX.sheet.closeSheet('work');
+    }
+  }
+
+  const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+  /** Ajoute (item.add) ou retire l'étiquette item.tag d'une carte, avec le champ « Ajouter une étiquette… » de la fiche du jeu. */
+  async function doTag(item) {
+    const r = await WMX.sheet.exclusive(() => WMX.sheet.openInFrame({ id: item.card_id, wikipedia_title: item.title, rarity: item.rarity }, 'work'), 'work');
+    if (r.error) return { error: SHEET_ERRORS[r.error] };
+    const { root, d, w } = r;
+    try {
+      const want = norm(item.tag);
+      const chipBtn = () => [...root.querySelectorAll('button')].find((b) => norm(b.getAttribute('aria-label')) === norm(`Retirer l'étiquette ${item.tag}`) || norm(b.getAttribute('aria-label')) === norm(`Retirer l’étiquette ${item.tag}`));
+      if (!item.add) {
+        const b = chipBtn();
+        if (!b) return { ok: true }; // la carte n'a déjà plus cette étiquette
+        b.click();
+        if (!(await waitFor(() => !chipBtn(), 6000, 150))) return { error: `l’étiquette « ${item.tag} » n’a pas été retirée` };
+      } else {
+        if (chipBtn()) return { ok: true }; // déjà étiquetée
+        const input = root.querySelector('input[placeholder^="Ajouter une étiquette"]');
+        if (!input) return { error: 'champ « Ajouter une étiquette » introuvable' };
+        input.focus();
+        setNumber(w, input, item.tag);
+        // On ne choisit JAMAIS « Créer… » : seulement l'étiquette existante portant exactement ce nom.
+        const opt = await waitFor(() => [...d.querySelectorAll('li[role=option] button')].find((b) => norm(b.textContent) === want), 6000, 150);
+        if (!opt) { setNumber(w, input, ''); return { error: `étiquette « ${item.tag} » introuvable dans les suggestions du jeu` }; }
+        opt.click();
+        if (!(await waitFor(() => chipBtn(), 6000, 150))) return { error: `l’étiquette « ${item.tag} » n’a pas été ajoutée` };
+      }
+      window.dispatchEvent(new CustomEvent('wmx:tag', { detail: { card_id: item.card_id, tag: item.tag, add: !!item.add } }));
+      return { ok: true };
+    } finally {
+      WMX.sheet.closeSheet('work');
+    }
+  }
+
+  /** Défausse UNE carte avec le bouton « Défausser » de la fiche (et sa confirmation éventuelle). Une carte favorite est refusée. */
+  async function doDiscard(item) {
+    const r = await WMX.sheet.exclusive(() => WMX.sheet.openInFrame({ id: item.card_id, wikipedia_title: item.title, rarity: item.rarity }, 'work'), 'work');
+    if (r.error) return { error: SHEET_ERRORS[r.error] };
+    const { root, d } = r;
+    try {
+      const star = [...root.querySelectorAll('button')].find((b) => /favoris/i.test(b.getAttribute('aria-label') || ''));
+      if (star && /^retirer/i.test(star.getAttribute('aria-label') || '')) return { error: 'carte favorite : verrouillée, impossible de la défausser' };
+      const btn = [...root.querySelectorAll('button')].find((b) => /^Défausser/i.test(b.textContent.trim()));
+      if (!btn || btn.disabled) return { error: 'bouton « Défausser » indisponible (carte verrouillée ou en vente ?)' };
+      btn.click();
+      const confirm = await waitFor(() => [...d.querySelectorAll('button')].find((b) => b !== btn && /^(Confirmer|Oui|Valider|Défausser( la carte)?)$/i.test(b.textContent.trim())), 2500, 120);
+      confirm?.click();
+      if (!(await waitFor(() => !root.isConnected || !btn.isConnected, 9000, 200))) return { error: 'le jeu n’a pas défaussé la carte' };
+      window.dispatchEvent(new CustomEvent('wmx:discard', { detail: { card_id: item.card_id } }));
       return { ok: true };
     } finally {
       WMX.sheet.closeSheet('work');
@@ -179,8 +236,8 @@
       c = el('div', { class: 'wmx-qchip' }, el('span', { class: 'wmx-qtext' }), el('button', { class: 'wmx-qclear', onclick: clearQueue }, 'Vider la file'));
       document.body.append(c);
     }
-    const cur = S.current ? ` · ${{ launch: 'mise en vente', cancel: 'annulation', favorite: 'favori' }[S.current.type]} : ${S.current.item.title}` : '';
-    c.querySelector('.wmx-qtext').textContent = `⚡ Enchères ${S.batch.done}/${S.batch.total}${cur}`;
+    const cur = S.current ? ` · ${{ launch: 'mise en vente', cancel: 'annulation', favorite: 'favori', tag: 'étiquette', discard: 'défausse' }[S.current.type]} : ${S.current.item.title}` : '';
+    c.querySelector('.wmx-qtext').textContent = `⚡ File ${S.batch.done}/${S.batch.total}${cur}`;
   }
 
   function clearQueue() {
@@ -199,7 +256,7 @@
         S.current = op;
         updateChip(); notify();
         let res;
-        try { res = op.type === 'launch' ? await doLaunch(op.item) : op.type === 'cancel' ? await doCancel(op.item) : await doFavorite(op.item); } catch (e) { console.warn('[WMX] file d’enchères', op.type, op.item.title, e); res = { error: `${e?.name || 'Erreur'} : ${e?.message || e}` }; }
+        try { res = op.type === 'launch' ? await doLaunch(op.item) : op.type === 'cancel' ? await doCancel(op.item) : op.type === 'tag' ? await doTag(op.item) : op.type === 'discard' ? await doDiscard(op.item) : await doFavorite(op.item); } catch (e) { console.warn('[WMX] file d’enchères', op.type, op.item.title, e); res = { error: `${e?.name || 'Erreur'} : ${e?.message || e}` }; }
         S.queue = S.queue.filter((o) => o !== op);
         S.current = null;
         S.batch.done += 1;
@@ -217,7 +274,7 @@
       if (b.total > 1 || b.failed.length) {
         WMX.toast(`File terminée : ${b.ok} réussie${b.ok > 1 ? 's' : ''}${b.failed.length ? ` · ${b.failed.length} à vérifier (${b.failed.slice(0, 2).join(' ; ')})` : ''}.`, 9000);
       } else if (b.ok) {
-        WMX.toast({ launch: 'Enchère lancée. Recliquez sur ⚡ pour l’annuler.', cancel: 'Enchère annulée : la carte est de retour dans votre collection.', favorite: 'Favori mis à jour.' }[S.lastOpType] || 'Terminé.', 5000);
+        WMX.toast({ launch: 'Enchère lancée. Recliquez sur ⚡ pour l’annuler.', cancel: 'Enchère annulée : la carte est de retour dans votre collection.', favorite: 'Favori mis à jour.', tag: 'Étiquette mise à jour.', discard: 'Carte défaussée.' }[S.lastOpType] || 'Terminé.', 5000);
       }
       const lastLaunched = S.lastLaunched && S.selling.get(S.lastLaunched);
       if (lastLaunched) prewarm(lastLaunched); // prépare l'annulation éventuelle de la dernière enchère lancée
@@ -239,8 +296,8 @@
   }
 
   const stateOf = (cardId) => {
-    if (S.current && S.current.type !== 'favorite' && S.current.item.card_id === cardId) return S.current.type === 'launch' ? 'working' : 'cancelling';
-    const q = S.queue.find((o) => o.type !== 'favorite' && o.item.card_id === cardId);
+    if (S.current && isAuctionOp(S.current) && S.current.item.card_id === cardId) return S.current.type === 'launch' ? 'working' : 'cancelling';
+    const q = S.queue.find((o) => isAuctionOp(o) && o.item.card_id === cardId);
     if (q) return q.type === 'launch' ? 'queued' : 'cancelling';
     return S.selling.has(cardId) ? 'live' : 'idle';
   };
@@ -254,6 +311,14 @@
     stateOf,
     favState,
     isStarred,
+    /**
+     * Opérations en lot sur des cartes (mode sélection de Collection+) : 'favorite' (want 'on' | 'off'), 'tag' (tag, add), 'discard'.
+     * Chaque carte est mise dans la même file que les enchères, traitée en arrière-plan, et reprend après un rechargement.
+     */
+    bulk(type, items, extra = {}) {
+      for (const it of items) enqueue({ type, item: slim({ ...it, ...extra }) });
+      return items.length;
+    },
     /** Ajoute ou retire le favori (file d'attente, comme les enchères). */
     toggleFavorite(item) {
       if (favState(item.card_id) === 'working') return;
