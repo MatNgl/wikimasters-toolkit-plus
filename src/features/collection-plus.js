@@ -313,12 +313,22 @@
     WMX.prices.start(todo, { base: selected.length - todo.length, total: selected.length });
   }
 
+  /** Mode sélection natif du jeu (défausse, étiquettes… en lot) : on repasse sur la collection du jeu et on clique son bouton. */
+  async function openNativeSelect() {
+    close();
+    const btn = await WMX.dom.waitFor(() => [...document.querySelectorAll('button')].find((b) => /^\s*Sélectionner\s*$/.test(b.textContent) && !b.closest('.wmx-cplus')), 6000, 150);
+    if (btn) btn.click(); else WMX.toast?.('Le bouton « Sélectionner » du jeu est introuvable.');
+  }
+
   /** Bandeau propre à une page : titre, état, valeur, paramètres. Pas d'onglets ni de croix : on change de page par la barre latérale. */
   function head(title) {
     const status = el('span', { class: 'wmx-cp-status' });
     const value = el('span', { class: 'wmx-cp-value' });
     ui.heads.push({ status, value });
-    return el('header', { class: 'wmx-cp-head' }, el('h2', {}, title), status, value,
+    const select = title === 'Collection+'
+      ? el('button', { class: 'wmx-btn wmx-btn--ghost wmx-cp-select', title: 'Ouvre le mode sélection du jeu (défausse, étiquettes…) sur la collection', onclick: openNativeSelect }, '☑ Sélectionner')
+      : '';
+    return el('header', { class: 'wmx-cp-head' }, el('h2', {}, title), status, value, select,
       el('button', { class: 'wmx-close', title: 'Paramètres (enchère rapide, prix…)', onclick: () => WMX.openSettings() }, '⚙'));
   }
 

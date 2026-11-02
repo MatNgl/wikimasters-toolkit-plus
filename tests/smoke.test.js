@@ -186,3 +186,50 @@ test('marché : badge de moyenne et verdict sous chaque enchère visible', async
   assert.ok(txt('m1').classList.contains('deal') && txt('m3').classList.contains('high'));
   env.close();
 });
+
+test('marché : « Miser le minimum » pose le minimum de la page d\'enchère, sans navigation', async () => {
+  const list = [{ id: 'q1', card_id: 'k1', snapshot_rarity: 'R', base_amount: 10, current_bid: null, card: { wikipedia_title: 'Carte Q1', rarity: 'R' } }];
+  const env = createEnv({ fetchImpl: async (u) => (String(u).includes('/sales') ? json({ summary: { R: { average: 12, count: 5, latest: 11 } } }) : json({ auctions: list, selling: [], bidding: [], won: [], history: [] })) });
+  const { w, WMX } = env;
+  const clicks = fakeBidPages(w, 11);
+  w.history.pushState({}, '', '/marketplace');
+  w.document.body.innerHTML = '<a class="card-frame" href="/marketplace/q1"><div>Carte Q1</div></a>';
+  for (const f of WMX.features) if (f.name === 'market' || f.name === 'auctions') await f.init();
+  for (let i = 0; i < 60 && !w.document.querySelector('.wmx-mk-bid'); i++) await sleep(150);
+  const btn = w.document.querySelector('.wmx-mk-bid');
+  assert.ok(btn, 'bouton présent');
+  assert.equal(btn.textContent, 'Miser le minimum');
+  btn.click();
+  for (let i = 0; i < 40 && !clicks.length; i++) await sleep(150);
+  assert.deepEqual(clicks, ['11']);
+  assert.equal(w.location.pathname, '/marketplace', 'aucune navigation');
+  env.close();
+});
+
+test('échanges : valeurs des deux côtés, wikibidous et écart', async () => {
+  const env = createEnv({ fetchImpl: async (u) => {
+    const id = String(u).match(/cards\/([^/]+)\//)?.[1];
+    return json({ summary: { UR: { average: id === 'c1' ? 100 : 40, count: 9, latest: 1 }, R: { average: 10, count: 9, latest: 1 } } });
+  } });
+  const { w, WMX } = env;
+  w.history.pushState({}, '', '/trades');
+  w.document.body.innerHTML = `<div class="card-frame"><span title="Alpha">Alpha</span><span title="Beta">Beta</span>Offre de bob et moi
+    <button aria-label="Voir le détail de l'échange">+</button></div>`;
+  for (const f of WMX.features) if (f.name === 'trades') f.init();
+  w.dispatchEvent(new w.CustomEvent('wmx:api', { detail: { url: '/api/trades', method: 'GET', status: 200, data: { trades: [{
+    id: 't1', initiator_id: 'u1', recipient_id: 'u2', initiator_wikibidous: 5, recipient_wikibidous: 0,
+    initiator: { username: 'bob' }, recipient: { username: 'moi' },
+    items: [
+      { offered_by: 'u1', card_id: 'c1', snapshot_rarity: 'UR', card: { wikipedia_title: 'Alpha' } },
+      { offered_by: 'u2', card_id: 'c2', snapshot_rarity: 'UR', card: { wikipedia_title: 'Beta' } },
+    ] }] } } }));
+  for (let i = 0; i < 40 && !w.document.querySelector('.wmx-tv-btn'); i++) await sleep(150);
+  w.document.querySelector('.wmx-tv-btn').click();
+  for (let i = 0; i < 60 && !/Écart/.test(w.document.body.textContent) || /…/.test(w.document.querySelector('.wmx-tv')?.textContent || ''); i++) await sleep(150);
+  const txt = w.document.querySelector('.wmx-tv').textContent;
+  assert.match(txt, /bob · 1 carte/);
+  assert.match(txt, /Total.*105 W/, 'Alpha 100 + 5 wikibidous');
+  assert.match(txt, /Total.*40 W/);
+  assert.match(txt, /Écart : 65 W en faveur de moi/);
+  env.close();
+});

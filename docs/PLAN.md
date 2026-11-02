@@ -74,3 +74,8 @@ Légende : ✅ fait et vérifié · 🟡 écrit, à tester · ⬜ à faire
 - **Tests** : `npm test` (20+ essais : logique pure + essais de fumée jsdom qui exécutent bulle, mise automatique, prix, couronnes, marché).
 - **Icônes** : 3 propositions dans `icons/proposals/` (aperçu : `docs/icones.html`).
 - Non fait : valeur des échanges (la fenêtre d'échange du jeu ne donne pas les identifiants de cartes), sélection multiple/étiquetage en lot (existe dans l'ancienne extension).
+
+## 0.9.0 (à tester après rechargement)
+- **Marché** : bouton « Miser le minimum » sous chaque enchère (page d'enchère préchargée au survol, aucune navigation) ; devient « Surenchérir (minimum) » si on est dépassé et « ✓ Vous menez » sinon.
+- **Échanges** : bouton « Valeurs » sur chaque offre (cartes des deux côtés, moyennes, wikibidous, total, écart) — principe repris de l'ancienne extension, données `/api/trades`.
+- **Collection+** : bouton « ☑ Sélectionner » qui ouvre le mode sélection natif du jeu (défausse, étiquettes en lot).

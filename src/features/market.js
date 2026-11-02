@@ -13,7 +13,7 @@
 
   const learn = (list) => {
     for (const a of Array.isArray(list) ? list : []) {
-      if (a?.id && a.card_id) byAuction.set(a.id, { card_id: a.card_id, rarity: WMX.normRarity(a.snapshot_rarity || a.card?.rarity) || 'C', price: a.current_bid || a.base_amount });
+      if (a?.id && a.card_id) byAuction.set(a.id, { title: a.card?.wikipedia_title || '', card_id: a.card_id, rarity: WMX.normRarity(a.snapshot_rarity || a.card?.rarity) || 'C', price: a.current_bid || a.base_amount });
     }
   };
   const learnAll = (data) => { for (const k of ['auctions', 'selling', 'bidding', 'won', 'history']) learn(data?.[k]); };
@@ -21,9 +21,38 @@
   const anchors = () => [...document.querySelectorAll('a.card-frame[href^="/marketplace/"]')];
   const idOf = (a) => a.getAttribute('href').split('/').pop().split(/[?#]/)[0];
 
+  const BID_LABEL = { none: 'Miser le minimum', outbid: 'Surenchérir (minimum)', leading: '✓ Vous menez' };
+  /** Bouton de mise : pose le minimum proposé par le jeu sans ouvrir la page de l'enchère (page préchargée au survol). */
+  function ensureBid(a, info) {
+    const id = idOf(a);
+    let btn = a.querySelector(':scope > .wmx-mk-bid');
+    if (!btn) {
+      btn = el('button', { class: 'wmx-btn wmx-mk-bid', type: 'button' });
+      btn.addEventListener('pointerenter', () => WMX.auctions?.warm(id));
+      btn.addEventListener('click', async (e) => {
+        e.preventDefault(); e.stopPropagation(); // le bouton est dans un lien : pas de navigation
+        if (!WMX.auctions) return;
+        btn.disabled = true;
+        btn.textContent = 'Mise en cours…';
+        try { await WMX.auctions.bidById(id, info.title); } finally { paintBid(a); }
+      });
+      a.append(btn);
+    }
+    paintBid(a);
+  }
+  function paintBid(a) {
+    const btn = a.querySelector(':scope > .wmx-mk-bid');
+    if (!btn || !WMX.auctions) return;
+    const st = WMX.auctions.stateOf(idOf(a));
+    btn.textContent = BID_LABEL[st];
+    btn.classList.toggle('ok', st === 'leading');
+    btn.disabled = st === 'leading' || !!WMX.auctions.busy();
+  }
+
   function paint(a) {
     const info = byAuction.get(idOf(a));
     if (!info) return;
+    ensureBid(a, info);
     let b = a.querySelector(':scope > .wmx-mk');
     if (!b) { b = el('div', { class: 'wmx-mk' }); a.append(b); }
     const p = WMX.prices.get(info.card_id, info.rarity);
@@ -77,6 +106,7 @@
       }, { rootMargin: '200px' });
       const schedule = () => { clearTimeout(timer); timer = setTimeout(scan, 250); };
       new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
+      window.addEventListener('wmx:bids', () => anchors().forEach(paintBid));
       WMX.prices.onProgress(() => anchors().forEach((a) => { if (a.querySelector(':scope > .wmx-mk')) paint(a); }));
       schedule();
     },

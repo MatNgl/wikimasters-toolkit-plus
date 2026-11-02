@@ -101,6 +101,7 @@
       for (const id of Object.keys(S.auto)) { const x = D.bidding.find((b) => b.id === id); if (x) frameFor(x); } // page prête à l'avance : miser sans attendre
       pruneFrames();
       renderAll();
+      window.dispatchEvent(new CustomEvent('wmx:bids'));
       S.fails = 0;
     } catch (err) { // réseau : on garde l'affichage précédent, et on prévient après plusieurs échecs de suite
       S.fails = (S.fails || 0) + 1;
@@ -447,7 +448,15 @@
     window.addEventListener('resize', applyPos);
   }
 
-  WMX.auctions = { refresh, state: () => D };
+  /** Utilisé par la page Marché : miser le minimum sur une enchère sans ouvrir sa page. */
+  WMX.auctions = {
+    refresh,
+    state: () => D,
+    bidById(id, title) { return bid(D.bidding.find((x) => x.id === id) || { id, card: { wikipedia_title: title } }); },
+    warm(id) { if (id && !S.betting) frameFor({ id }); },
+    stateOf(id) { const x = D.bidding.find((b) => b.id === id); return !x ? 'none' : leading(x) ? 'leading' : 'outbid'; },
+    busy: () => S.betting,
+  };
 
   WMX.register({
     name: 'auctions',
