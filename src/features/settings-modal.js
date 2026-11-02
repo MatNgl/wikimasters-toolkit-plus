@@ -8,7 +8,7 @@
     speed: 'normal', order: 'rarity', images: true,
     stopOn: 'off', reserve: 0, fullStockOpen: true, anticipate: true,
     quickCoef: 0.9, quickDuration: '1h', quickPrudent: false, auctionBubble: true, auctionNotify: true, autoReload: true,
-    autoDefaultMode: 'time', autoDefaultSecs: 35, autoCapMode: 'avg', autoCapW: 100, autoCapPct: 20, autoDefaultOn: false, cardStylePreview: true,
+    autoDefaultMode: 'time', autoDefaultSecs: 35, autoCapMode: 'avg', autoCapW: 100, autoCapPct: 20, autoDefaultOn: false, cardStyle: true,
   };
 
   const SECTIONS = [
@@ -69,9 +69,9 @@
     },
     {
       title: 'Aspect des cartes',
-      desc: 'Essai de trois styles de cartes dans la collection (plein cadre, vitrine, éditorial) sur quelques cartes Légendaires, UR et SR.',
+      desc: 'Apparence des cartes dans la page Collection.',
       items: [
-        { key: 'cardStylePreview', type: 'toggle', label: 'Aperçu des styles de cartes', desc: 'Applique les trois styles proposés aux cartes d’essai de la page Collection.' },
+        { key: 'cardStyle', type: 'toggle', label: 'Style de carte plein cadre', desc: 'Illustration sur toute la carte, texte sur dégradé, cadre à la couleur de la rareté, vagues fines et reflet. Désactivez pour revoir les cartes du jeu telles quelles (actualisez la page).' },
       ],
     },
     {

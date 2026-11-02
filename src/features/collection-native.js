@@ -41,25 +41,20 @@
   }
 
   // --- Aperçu de trois styles de cartes (A plein cadre · B vitrine · C éditorial) sur des cartes d'essai ---------------
-  // Essai : style A sur la première rangée de cartes Légendaires, style B sur la deuxième.
-  let lRows = [];
-  const norm2 = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
   const WAVES = '<svg xmlns="http://www.w3.org/2000/svg" width="56" height="20" viewBox="0 0 56 20"><path d="M0 10 Q14 0 28 10 T56 10" fill="none" stroke="white" stroke-width="1"/><path d="M0 18 Q14 8 28 18 T56 18" fill="none" stroke="white" stroke-width="1" opacity=".6"/></svg>';
   document.documentElement.style.setProperty('--wmx-waves', `url("data:image/svg+xml;utf8,${encodeURIComponent(WAVES)}")`);
 
-  function applyStyle(card, title, rarity) {
-    let key = null;
-    if (WMX.settings?.cardStylePreview !== false) {
-      if (rarity === 'L') {
-        const top = card.parentElement?.offsetTop ?? 0;
-        let i = lRows.indexOf(top);
-        if (i < 0) { lRows.push(top); i = lRows.length - 1; }
-        key = ['a', 'b'][i] || null;
-      }
-    }
-    for (const k of ['a', 'b', 'c']) card.classList.toggle(`wmx-sty-${k}`, k === key);
-    card.classList.toggle('wmx-sty', !!key);
-    if (!key) { card.querySelectorAll('.wmx-sty-waves, .wmx-sty-sheen').forEach((e) => e.remove()); return; }
+  /**
+   * Style de carte de l'extension (plein cadre) pour TOUTES les raretés : l'illustration occupe toute la carte, le texte flotte sur
+   * un dégradé sombre, un cadre lumineux reprend la couleur de la rareté, un fin motif de vagues et un reflet brillant s'y ajoutent
+   * (le reflet tourne en continu sur les Légendaires, au survol pour les autres). Désactivable dans les Paramètres.
+   */
+  function applyStyle(card, rarity) {
+    const on = WMX.settings?.cardStyle !== false;
+    card.classList.toggle('wmx-sty', on);
+    card.classList.toggle('wmx-sty-a', on);
+    if (!on) { card.querySelectorAll('.wmx-sty-waves, .wmx-sty-sheen').forEach((e) => e.remove()); return; }
+    card.dataset.wmxR = rarity;
     card.style.setProperty('--wmx-rgb', WMX.RARITY_RGB[rarity] || '255 255 255');
     if (!card.querySelector('.wmx-sty-waves')) card.append(el('span', { class: 'wmx-sty-waves' }), el('span', { class: 'wmx-sty-sheen' }));
     // Image PNG / paysage : entière (contain) sur un fond flouté, au lieu d'être rognée.
@@ -89,7 +84,7 @@
       }
     }
     paint(card);
-    applyStyle(card, norm(card.querySelector('h3')?.textContent), WMX.normRarity(norm(card.querySelector('div.absolute.top-2.left-2')?.textContent)) || 'C');
+    applyStyle(card, WMX.normRarity(norm(card.querySelector('div.absolute.top-2.left-2')?.textContent)) || 'C');
   }
 
   /** Barre « valeur · prix · bouton » placée juste avant la ligne de recherche du jeu. */
@@ -108,7 +103,6 @@
   function scan() {
     if (!isPage()) return;
     ensureBar();
-    lRows = [];
     for (const h3 of document.querySelectorAll('main h3')) {
       const card = cardOf(h3);
       if (card && card.querySelector('div.absolute.top-2.left-2') && starBtn(card)) decorate(card); // seulement les vraies cartes (rareté + étoile)
