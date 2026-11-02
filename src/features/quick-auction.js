@@ -199,6 +199,7 @@
         S.queue = S.queue.filter((o) => o !== op);
         S.current = null;
         S.batch.done += 1;
+        S.lastOpType = op.type;
         if (res.ok) S.batch.ok += 1;
         else if (res.limit) { // plus de place : on arrête les mises en vente restantes
           const rest = S.queue.filter((o) => o.type === 'launch').length + 1;
@@ -212,8 +213,7 @@
       if (b.total > 1 || b.failed.length) {
         WMX.toast(`File terminée : ${b.ok} réussie${b.ok > 1 ? 's' : ''}${b.failed.length ? ` · ${b.failed.length} à vérifier (${b.failed.slice(0, 2).join(' ; ')})` : ''}.`, 9000);
       } else if (b.ok) {
-        const last = [...S.selling.values()].at(-1);
-        WMX.toast(last ? 'Enchère lancée. Recliquez sur ⚡ pour l’annuler.' : 'Terminé.', 5000);
+        WMX.toast({ launch: 'Enchère lancée. Recliquez sur ⚡ pour l’annuler.', cancel: 'Enchère annulée : la carte est de retour dans votre collection.', favorite: 'Favori mis à jour.' }[S.lastOpType] || 'Terminé.', 5000);
       }
       const lastLaunched = S.lastLaunched && S.selling.get(S.lastLaunched);
       if (lastLaunched) prewarm(lastLaunched); // prépare l'annulation éventuelle de la dernière enchère lancée
