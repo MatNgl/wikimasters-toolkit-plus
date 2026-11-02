@@ -114,12 +114,12 @@
   }
 
   /** Annule une enchère depuis sa page de détail ; la confirmation du jeu est validée par frame-hook.js (adresse #wmx-auto). */
-  async function cancelAuction(auction) {
+  async function cancelAuction(auction, waitMs = 90000) {
     const f = warm.get(auction.id) || el('iframe', { class: 'wmx-sheet-frame', src: `/marketplace/${auction.id}#wmx-auto`, title: 'Annulation', tabindex: '-1' });
     if (!f.isConnected) document.body.append(f);
     try {
       const find = (re) => { try { return [...f.contentDocument.querySelectorAll('button')].find((b) => re.test(b.textContent)); } catch (_) { return null; } };
-      const btn = await waitFor(() => find(/Annuler et récupérer/i), 90000, 300);
+      const btn = await waitFor(() => find(/Annuler et récupérer/i), waitMs, 300);
       if (!btn) return { error: 'bouton d’annulation introuvable (enchère déjà misée ou terminée ?)' };
       btn.click();
       const confirm = await waitFor(() => find(/^(Confirmer|Oui|Valider|Annuler la vente|Annuler l.enchère)/i), 2000, 120);
@@ -162,12 +162,20 @@
     const a = S.selling.get(item.card_id);
     if (!a) return { skipped: true };
     // Le serveur du jeu peut répondre par une erreur 503 quand il est surchargé : jusqu'à 3 essais espacés avant d'abandonner.
+    // État réel de l'enchère (la liste peut être en retard) : une enchère qui n'est plus « active » est bien annulée.
+    const stillActive = async () => {
+      try {
+        const res = await fetch(`/api/marketplace/${a.id}`, { cache: 'no-store' });
+        const st = (await res.json())?.auction?.status;
+        return st ? st === 'active' : null;
+      } catch (_) { return null; }
+    };
     for (let t = 0; t < 3; t++) {
-      const res = await cancelAuction(a);
-      if (!res.ok) return { error: res.error };
+      const res = await cancelAuction(a, t ? 20000 : 90000);
+      if (!res.ok) { if ((await stillActive()) === false) { await refresh(); return { ok: true }; } return { error: res.error }; }
       await sleep(800 + t * 4000);
       await refresh();
-      if (!S.selling.has(item.card_id)) return { ok: true };
+      if (!S.selling.has(item.card_id) || (await stillActive()) === false) return { ok: true };
     }
     return { error: 'le jeu n’a pas annulé l’enchère (serveur du jeu surchargé, ou enchère déjà misée) : réessayez plus tard' };
   }
