@@ -432,6 +432,10 @@ test('réglages : les étiquettes de l\'assistant se choisissent dans un menu d�
   assert.equal(opts[2].querySelector('small').textContent, '2', 'avec leur nombre de cartes');
   opts[1].querySelector('input').click();
   assert.match(btn.textContent, /VENTE, Sport/);
+  const panel = w.document.querySelector('.wmx-tagpanel');
+  assert.ok(panel.style.maxHeight && (panel.style.top !== 'auto' || panel.style.bottom !== 'auto'), 'la liste est placée par rapport à l\'écran, avec une hauteur adaptée (jamais coupée par la fenêtre)');
+  btn.click();
+  assert.equal(panel.hidden, true, 'un second clic referme la liste');
   env.close();
 });
 

@@ -184,11 +184,32 @@
           }) : [el('p', { class: 'wmx-jempty' }, 'Aucune étiquette trouvée : l’inventaire est peut-être encore en cours de chargement.')]));
         };
         const wrap = el('div', { class: 'wmx-tagpick' }, btn, panel);
-        const outside = (e) => { if (!wrap.contains(e.target)) { panel.hidden = true; document.removeEventListener('mousedown', outside, true); } };
+        // La liste est positionnée par rapport à l'écran (et non à la zone défilante des réglages, qui la coupait) : elle s'ouvre
+        // vers le bas, ou vers le haut s'il y a plus de place, et sa hauteur s'adapte à l'espace disponible.
+        const place = () => {
+          const r = btn.getBoundingClientRect();
+          const vh = window.innerHeight;
+          const below = vh - r.bottom - 12;
+          const above = r.top - 12;
+          const up = below < 200 && above > below;
+          Object.assign(panel.style, {
+            left: `${r.left}px`, width: `${r.width}px`, maxHeight: `${Math.max(120, Math.min(320, up ? above : below))}px`,
+            top: up ? 'auto' : `${r.bottom + 4}px`, bottom: up ? `${vh - r.top + 4}px` : 'auto',
+          });
+        };
+        const closePanel = () => {
+          panel.hidden = true;
+          document.removeEventListener('mousedown', outside, true);
+          window.removeEventListener('scroll', place, true);
+          window.removeEventListener('resize', place);
+        };
+        const outside = (e) => { if (!wrap.contains(e.target)) closePanel(); };
         btn.addEventListener('click', () => {
-          if (!panel.hidden) { panel.hidden = true; return; }
-          drawPanel(); panel.hidden = false;
+          if (!panel.hidden) { closePanel(); return; }
+          drawPanel(); panel.hidden = false; place();
           document.addEventListener('mousedown', outside, true);
+          window.addEventListener('scroll', place, true);
+          window.addEventListener('resize', place);
         });
         return wrap;
       }
