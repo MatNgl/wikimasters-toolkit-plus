@@ -50,7 +50,7 @@
       desc: 'Garde des enchères actives avec vos cartes portant certaines étiquettes, et remet en vente celles qui n’ont pas trouvé preneur. Même prix de départ et même durée que le bouton ⚡. Pour vendre des cartes précises, donnez-leur l’étiquette (sélection du jeu → étiquette).',
       items: [
         { key: 'autoSell', type: 'toggle', label: 'Activer l’assistant de vente', desc: 'Désactivé par défaut : une fois activé, il met de vraies cartes en vente tout seul (jamais une favorite).' },
-        { key: 'autoSellTags', type: 'text', label: 'Étiquettes à vendre', desc: 'Noms séparés par des virgules (ex. VENTE, Doublons). Seules les cartes portant l’une d’elles sont concernées.' },
+        { key: 'autoSellTags', type: 'tags', label: 'Étiquettes à vendre', desc: 'Cochez une ou plusieurs étiquettes de votre compte. Seules les cartes qui en portent une sont concernées.' },
         { key: 'autoSellCap', type: 'number', min: 1, max: 1000000, step: 10, label: 'Prix de départ maximum (W)', desc: 'Garde-fou : l’assistant ne met jamais en vente une carte dont le prix de départ dépasserait ce montant (500 W par défaut). Pour une carte plus chère, utilisez le bouton ⚡ vous-même.' },
         { key: 'autoSellMax', type: 'number', min: 1, max: 10, step: 1, label: 'Enchères actives visées', desc: 'L’assistant complète jusqu’à ce nombre d’enchères en cours (vos ventes manuelles comptent). 10 = limite du jeu.' },
       ],
@@ -131,6 +131,44 @@
           i.value = String(draft[it.key]);
         });
         return i;
+      }
+      if (it.type === 'tags') {
+        // Menu déroulant à cases à cocher : les étiquettes réelles du compte (d'après l'inventaire), avec leur nombre de cartes.
+        const chosen = () => String(draft[it.key] || '').split(',').map((s) => s.trim()).filter(Boolean);
+        const known = () => {
+          const m = new Map();
+          for (const card of WMX.inventory?.items?.() || []) for (const t of card.tags || []) {
+            const k = String(t.name).trim().toLowerCase();
+            const e = m.get(k) || { name: String(t.name).trim(), n: 0 };
+            e.n += 1; m.set(k, e);
+          }
+          for (const s of chosen()) if (!m.has(s.toLowerCase())) m.set(s.toLowerCase(), { name: s, n: 0 }); // étiquette choisie mais plus vue (inventaire pas chargé)
+          return [...m.values()].sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
+        };
+        const label = () => { const c = chosen(); return c.length ? c.join(', ') : 'Choisir des étiquettes…'; };
+        const btn = el('button', { class: 'wmx-input wmx-select wmx-tagbtn', type: 'button', 'aria-haspopup': 'listbox', title: 'Étiquettes de votre compte' }, label());
+        const panel = el('div', { class: 'wmx-tagpanel', role: 'listbox', hidden: true });
+        const drawPanel = () => {
+          const list = known();
+          panel.replaceChildren(...(list.length ? list.map((t) => {
+            const cb = el('input', { type: 'checkbox' });
+            cb.checked = chosen().some((s) => s.toLowerCase() === t.name.toLowerCase());
+            cb.addEventListener('change', () => {
+              const rest = chosen().filter((s) => s.toLowerCase() !== t.name.toLowerCase());
+              draft[it.key] = (cb.checked ? [...rest, t.name] : rest).join(', ');
+              btn.textContent = label();
+            });
+            return el('label', { class: 'wmx-tagopt' }, cb, el('span', {}, t.name), el('small', {}, t.n ? String(t.n) : ''));
+          }) : [el('p', { class: 'wmx-jempty' }, 'Aucune étiquette trouvée : l’inventaire est peut-être encore en cours de chargement.')]));
+        };
+        const wrap = el('div', { class: 'wmx-tagpick' }, btn, panel);
+        const outside = (e) => { if (!wrap.contains(e.target)) { panel.hidden = true; document.removeEventListener('mousedown', outside, true); } };
+        btn.addEventListener('click', () => {
+          if (!panel.hidden) { panel.hidden = true; return; }
+          drawPanel(); panel.hidden = false;
+          document.addEventListener('mousedown', outside, true);
+        });
+        return wrap;
       }
       if (it.type === 'text') {
         const i = el('input', { class: 'wmx-input', type: 'text', value: String(draft[it.key] ?? ''), placeholder: 'VENTE' });

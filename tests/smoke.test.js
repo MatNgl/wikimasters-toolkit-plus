@@ -416,3 +416,20 @@ test('journal d\'activité : entrées en série, rapport copiable', async () => 
   assert.equal((await WMX.journal.list()).length, 0);
   env.close();
 });
+
+test('réglages : les étiquettes de l\'assistant se choisissent dans un menu déroulant des étiquettes du compte', async () => {
+  const env = createEnv({ fetchImpl: async () => json({ selling: [], bidding: [], won: [{ winner_id: ME }], history: [] }) });
+  const { w, WMX } = env;
+  const card = (id, ...tags) => ({ card_id: id, title: id, rarity: 'R', count: 1, starred: false, tags: tags.map((name) => ({ name })) });
+  WMX.inventory.items = () => [card('a', 'VENTE'), card('b', 'VENTE', 'Animaux'), card('c', 'Sport')];
+  WMX.openSettings();
+  const btn = w.document.querySelector('.wmx-tagbtn');
+  assert.match(btn.textContent, /VENTE/, 'la sélection actuelle est affichée');
+  btn.click();
+  const opts = [...w.document.querySelectorAll('.wmx-tagopt')];
+  assert.deepEqual(opts.map((o) => o.querySelector('span').textContent), ['Animaux', 'Sport', 'VENTE'], 'les étiquettes du compte, triées');
+  assert.equal(opts[2].querySelector('small').textContent, '2', 'avec leur nombre de cartes');
+  opts[1].querySelector('input').click();
+  assert.match(btn.textContent, /VENTE, Sport/);
+  env.close();
+});
