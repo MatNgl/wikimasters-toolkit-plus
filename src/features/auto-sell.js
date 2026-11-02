@@ -18,8 +18,8 @@
   /** Une passe : remplit les emplacements libres avec des cartes éligibles (file vide, inventaire chargé, onglet leader). */
   async function tick() {
     if (!on() || !S.leader || S.busy || !WMX.alive()) return;
-    if (WMX.quick.isRunning() || WMX.inventory.isLoading()) return;
-    const items = WMX.inventory.items();
+    if (WMX.quick.isRunning()) return;
+    const items = WMX.inventory.items(); // la liste en cache suffit : l'inventaire se recharge parfois pendant des minutes (jeu lent)
     if (!items.length || !tags().length) return;
     S.busy = true;
     try {

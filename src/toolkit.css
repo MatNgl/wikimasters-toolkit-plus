@@ -541,3 +541,4 @@ html:not([data-wmx-route^="/pulls"]) .wmx-panel, html:not([data-wmx-route^="/pul
 .wmx-jrow.warn span { color: #fbbf24; }
 .wmx-jrow.error span { color: #f87171; }
 .wmx-jempty { color: #9db5a8; padding: 18px 8px; text-align: center; }
+.wmx-setrow input.wmx-input[type="text"] { width: 190px; }

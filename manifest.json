@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WikiMasters Toolkit+",
-  "version": "0.15.0",
+  "version": "0.15.1",
   "description": "Ouverture groupée des paquets, statistiques, prix du marché, enchères et mises automatiques pour WikiMasters.",
   "permissions": [
     "storage",
@@ -76,7 +76,7 @@
       "world": "MAIN"
     }
   ],
-  "version_name": "0.15.0 · assistant de vente, journal d'activité, défausse 100 % native",
+  "version_name": "0.15.1 · assistant de vente : n'attend plus la fin du rechargement de l'inventaire",
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",
