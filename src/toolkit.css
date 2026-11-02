@@ -566,3 +566,6 @@ html:not([data-wmx-route^="/pulls"]) .wmx-panel, html:not([data-wmx-route^="/pul
 .wmx-face .wmx-sty-sheen { z-index: 4; animation: none; opacity: 0; transition: opacity .3s ease; }
 .wmx-tile[data-r=L].flip .wmx-face .wmx-sty-sheen { opacity: 1; animation: wmx-sheen 6s ease-in-out infinite; }
 .wmx-tile.flip:hover .wmx-face .wmx-sty-sheen { opacity: 1; animation: wmx-sheen 2.4s ease-in-out infinite; }
+
+/* La file d'attente reste visible par-dessus l'écran de révélation des paquets (0.16.3) */
+.wmx-qchip { z-index: 10001; }

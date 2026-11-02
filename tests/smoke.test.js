@@ -486,3 +486,16 @@ test('prix : une erreur 503 du jeu surchargé est réessayée au lieu d\'abandon
   assert.equal(WMX.prices.get('lent', 'R').avg, 12);
   env.close();
 });
+
+test('prix : la carte sur laquelle on clique ⚡ passe devant le chargement des prix de l\'ouverture', async () => {
+  const seen = [];
+  const env = createEnv({ files: ['src/lib/namespace.js', 'src/lib/storage.js', 'src/lib/logic.js', 'src/lib/dom.js', 'src/features/stats.js', 'src/features/prices.js'],
+    fetchImpl: async (u) => { seen.push(String(u).match(/cards\/([^/]+)\//)[1]); return json({ summary: { R: { average: 5, count: 3, latest: 5 } } }); } });
+  const { WMX } = env;
+  await WMX.prices.load();
+  await WMX.prices.prefetch(['a', 'b', 'c', 'd'].map((id) => ({ id, rarity: 'R' })));
+  await WMX.prices.fetchOne('d'); // déjà demandée (en fin de file) : elle doit passer devant
+  assert.equal(seen[seen.length - 1], 'd');
+  assert.ok(seen.indexOf('d') <= 1, 'servie juste après celle en cours, avant b et c : ' + seen.join(','));
+  env.close();
+});

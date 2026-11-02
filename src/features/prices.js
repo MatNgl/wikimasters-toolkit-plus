@@ -111,9 +111,16 @@
     });
   }
 
-  function schedule(cardId, high) {
-    if (high && sched.pending.has(cardId)) return sched.pending.get(cardId); // déjà demandée
-    const p = new Promise((resolve) => { (high ? sched.hi : sched.lo).push({ cardId, high, resolve, tries: 0 }); });
+  /** front : la carte passe devant toutes les autres demandes (clic de l'utilisateur sur ⚡ : il attend ce prix précis). */
+  function schedule(cardId, high, front = false) {
+    if (high && sched.pending.has(cardId)) { // déjà demandée : on la fait passer devant si l'utilisateur l'attend
+      if (front) { const i = sched.hi.findIndex((x) => x.cardId === cardId); if (i > 0) sched.hi.unshift(...sched.hi.splice(i, 1)); }
+      return sched.pending.get(cardId);
+    }
+    const p = new Promise((resolve) => {
+      const item = { cardId, high, resolve, tries: 0 };
+      if (high && front) sched.hi.unshift(item); else (high ? sched.hi : sched.lo).push(item);
+    });
     if (high) sched.pending.set(cardId, p);
     pump();
     return p;
@@ -155,7 +162,7 @@
     /** Prix d'UNE carte tout de suite (enchère rapide), prioritaire sur le chargement par lots. */
     async fetchOne(cardId) {
       await load();
-      return schedule(cardId, true);
+      return schedule(cardId, true, true);
     },
     /**
      * Cartes qu'on vient de tirer (réponse de /api/packs/open) : leur prix est récupéré en arrière-plan, pendant la pause

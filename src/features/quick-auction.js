@@ -430,7 +430,11 @@
       if (st === 'live') return enqueue({ type: 'cancel', item: slim(item) });
       if (isStarred(item)) return WMX.toast('Carte favorite : le jeu la verrouille, impossible de la vendre.');
       if (S.selling.size + WMX.quick.queued() >= S.max) return WMX.toast(`Limite de ${S.max} enchères actives : ${S.selling.size} en vente, ${WMX.quick.queued()} en file.`);
-      return enqueue({ type: 'launch', item: slim(item) });
+      const ahead = S.queue.length; // opérations déjà en attente (assistant de vente, autres cartes…)
+      enqueue({ type: 'launch', item: slim(item) });
+      // Retour immédiat : sans lui, le clic sur ⚡ ne semblait rien faire (la mise en vente prend plusieurs secondes, la file peut être occupée).
+      WMX.toast(ahead ? `« ${item.title} » : en file d’attente (${ahead} opération${ahead > 1 ? 's' : ''} avant elle)…` : `« ${item.title} » : mise en vente en cours…`, 4000);
+      return undefined;
     },
   };
 
