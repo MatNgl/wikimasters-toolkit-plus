@@ -94,7 +94,9 @@
 .wmx-panel.wmx-collapsed { background: transparent; border-color: transparent; box-shadow: none; backdrop-filter: none; }
 .wmx-badge[hidden] { display: none; }
 @media (max-width: 1450px) { .wmx-panel { width: 250px; } }
-@media (max-width: 1250px) { .wmx-panel { display: none; } }
+@media (min-width: 1800px) { .wmx-panel { width: 340px; } }
+@media (min-width: 2300px) { .wmx-panel { width: 380px; } }
+.wmx-panel:not(.wmx-collapsed) { max-height: calc(100vh - 104px); overflow-y: auto; }
 html:not([data-wmx-route^="/pulls"]) .wmx-panel { display: none; }
 
 /* Statistiques (barres par rareté) */
@@ -322,3 +324,33 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-cp-ptags { display: flex; flex-wrap: wrap; gap: 6px; max-height: 92px; overflow: auto; padding-right: 4px; }
 .wmx-cp-ptags .wmx-chip2 { padding: 4px 10px; }
 .wmx-cp-pickrow [hidden] { display: none; }
+
+/* ===== Lots 2 et 5 (0.7.0) ===== */
+/* La bulle des enchères sort de sa pastille, s'étend, et s'y replie à la fermeture. */
+.wmx-bubble-panel { width: min(860px, calc(100vw - 24px)); max-height: min(62vh, calc(100vh - 150px));
+  border-radius: 999px; transform: scale(.06); opacity: 0;
+  transition: transform .3s cubic-bezier(.5,0,.75,0), opacity .22s ease .08s, border-radius .3s ease; }
+.wmx-bubble-panel.open { border-radius: 18px; transform: none; opacity: 1;
+  transition: transform .46s cubic-bezier(.22,1,.36,1), opacity .18s ease, border-radius .4s ease; }
+.wmx-bubble-panel > * { opacity: 0; transition: opacity .16s ease; }
+.wmx-bubble-panel.open > * { opacity: 1; transition: opacity .26s ease .16s; }
+.wmx-bubble-pill.on { transform: scale(.96); }
+.wmx-bubble-pill.alert { border-color: #ef4444; animation: wmx-pill-pulse 1.5s ease-in-out infinite; }
+@keyframes wmx-pill-pulse { 0%,100% { box-shadow: 0 10px 30px #000a, 0 0 0 0 #ef444466; } 50% { box-shadow: 0 10px 30px #000a, 0 0 0 9px #ef444400; } }
+.wmx-auc-warn { font-style: normal; padding: 2px 8px; border-radius: 999px; background: #f59e0b; color: #1a1200; font-size: 11px; font-weight: 800; }
+.wmx-auc-row.urgent { border-color: #ef4444; box-shadow: 0 0 0 1px #ef444466, 0 0 18px #ef444433; }
+@media (prefers-reduced-motion: reduce) { .wmx-bubble-pill.alert { animation: none; } }
+
+/* Valeur moyenne d'un paquet (statistiques du menu). */
+.wmx-avgpack { margin-top: 10px; padding: 8px 10px; border-radius: 12px; background: #ffffff08; border: 1px solid #ffffff10; display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.wmx-avgpack small { color: #8fa89c; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
+.wmx-avgpack b { font: 800 18px Outfit, system-ui, sans-serif; color: var(--acc,#2dd4a0); font-variant-numeric: tabular-nums; }
+
+/* Couronnes sur les cartes les plus chères du lot. */
+.wmx-tile { position: relative; }
+.wmx-crown { position: absolute; top: -16px; left: 50%; width: 32px; height: 26px; z-index: 5; pointer-events: none; color: #ffd45a;
+  transform: translateX(-50%) rotate(-7deg); filter: drop-shadow(0 3px 6px #000b) drop-shadow(0 0 9px #ffd45aa6);
+  animation: wmx-crown-in .6s cubic-bezier(.2,1.5,.4,1) both; }
+.wmx-crown[data-rank="2"] { color: #d5dde8; filter: drop-shadow(0 3px 6px #000b) drop-shadow(0 0 8px #d5dde88a); width: 28px; height: 23px; top: -14px; }
+.wmx-crown[data-rank="3"] { color: #d38b55; filter: drop-shadow(0 3px 6px #000b) drop-shadow(0 0 8px #d38b558a); width: 26px; height: 21px; top: -13px; }
+@keyframes wmx-crown-in { from { opacity: 0; transform: translateX(-50%) translateY(-14px) rotate(-22deg) scale(.4); } to { opacity: 1; transform: translateX(-50%) rotate(-7deg); } }

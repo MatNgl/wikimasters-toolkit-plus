@@ -26,6 +26,20 @@
   }
   WMX.toast = toast;
 
+  // Gestion des erreurs : message lisible (au plus un par domaine toutes les 30 s), trace dans la console et mémoire des 30 derniers.
+  const lastShown = {};
+  WMX.reportError = function reportError(scope, status, detail = '') {
+    const msg = WMX.logic.friendlyError(status);
+    console.warn(`[WMX] ${scope}`, status, detail);
+    WMX.store.get('errorLog', []).then((log) => {
+      log.push({ t: Date.now(), scope, status, detail: String(detail).slice(0, 200) });
+      WMX.store.set('errorLog', log.slice(-30));
+    });
+    if (Date.now() - (lastShown[scope] || 0) < 30000) return;
+    lastShown[scope] = Date.now();
+    toast(msg + (detail ? ` (${detail})` : ''), 7000);
+  };
+
   const searchBox = (d) => [...d.querySelectorAll('input')].find((i) => /recherch/i.test(i.placeholder || ''));
 
   /** Le cadre est vraiment prêt quand la LISTE de cartes du jeu est affichée (« Page 1 / N »), pas seulement la barre de recherche. */
@@ -178,12 +192,19 @@
   };
 
   /** Affiche la fiche du jeu par-dessus l'écran en cours. */
+  const asked = new Set(); // cartes dont la fiche est demandée, en cours d'ouverture ou affichée
+  let lastAsked = null;    // dernière carte cliquée : si on clique ailleurs pendant un chargement, c'est elle qui s'ouvre
   WMX.openCardDetail = function openCardDetail(card) {
+    const key = `${card.wikipedia_title}|${card.rarity}`;
+    if (asked.has(key)) return undefined; // clics répétés sur la même carte : une seule ouverture
+    asked.add(key);
+    lastAsked = key;
     return WMX.sheet.exclusive(async () => {
+      if (lastAsked !== key) return undefined; // une autre carte a été cliquée depuis : celle-ci est abandonnée
       // Premier chargement à froid : on l'explique au lieu de laisser croire à un blocage.
       const gen = routeGen;
       const cold = !F.view.frame;
-      const slow = setTimeout(() => toast(cold ? 'Préparation de la fiche… la première ouverture charge la collection du jeu (jusqu’à ~30 s).' : 'Chargement de la fiche…', 90000), cold ? 600 : 1500);
+      const slow = setTimeout(() => toast(cold ? 'Préparation de la fiche… la première ouverture charge la collection du jeu (jusqu’à ~30 s).' : 'Chargement de la fiche…', 90000), cold ? 600 : 500);
       let r;
       try { r = await openInFrame(card, 'view'); } finally { clearTimeout(slow); }
       toast('');
@@ -211,6 +232,6 @@
           if (!open) { clearInterval(iv); F.view.frame?.classList.remove('wmx-on'); window.focus(); lastUse = Date.now(); resolve(); }
         }, 200);
       });
-    }, 'view');
+    }, 'view').finally(() => asked.delete(key));
   };
 })();

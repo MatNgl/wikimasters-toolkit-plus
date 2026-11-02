@@ -16,14 +16,56 @@
   const rarityOf = (a) => WMX.normRarity(a.snapshot_rarity || a.card?.rarity) || 'C';
   const leading = (a) => !!D.me && a.current_bidder_id === D.me;
   const msLeft = (a) => new Date(a.end_at).getTime() - Date.now();
-  const fmtLeft = (ms) => {
-    if (ms <= 0) return 'Terminée';
-    const s = Math.floor(ms / 1000);
-    const h = Math.floor(s / 3600);
-    const m = Math.floor((s % 3600) / 60);
-    return h ? `${h} h ${String(m).padStart(2, '0')} min` : `${m} min ${String(s % 60).padStart(2, '0')} s`;
-  };
-  const LOW_MS = 5 * 60 * 1000; // sous 5 min : chronomètre en rouge
+  const { fmtLeft, timeState } = WMX.logic; // sous 5 min : chronomètre rouge ; sous 2 min : alerte
+  const notified = new Set();               // alertes déjà envoyées (une seule fois chacune)
+
+  // --- Alertes ----------------------------------------------------------------------------
+  /** Message dans la page + notification du navigateur (si autorisée et activée dans les paramètres). */
+  function alertUser(title, body, tag) {
+    WMX.toast?.(`${title} — ${body}`, 9000);
+    try {
+      if (WMX.settings?.auctionNotify !== false && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        new Notification(title, { body, tag });
+      }
+    } catch (_) { /* notification indisponible */ }
+  }
+  /** Nouvelle surenchère d'un autre joueur sur une enchère où je misais (au premier chargement, on ne fait que mémoriser). */
+  function checkOutbid(first) {
+    for (const a of D.bidding) {
+      if (leading(a)) continue;
+      const key = `${a.id}:out:${a.current_bid}`;
+      if (notified.has(key)) continue;
+      notified.add(key);
+      if (!first) alertUser('Vous êtes surenchéri', `« ${cardTitle(a)} » : ${fmt(a.current_bid)} W`, key);
+    }
+  }
+  /** Chaque seconde : une enchère (mise ou vente) qui passe sous 2 minutes déclenche une alerte unique. */
+  function checkUrgent() {
+    for (const [list, who] of [[D.bidding, 'Votre mise'], [D.selling, 'Votre vente']]) {
+      for (const a of list) {
+        if (timeState(msLeft(a)) !== 'urgent') continue;
+        const key = `${a.id}:urgent`;
+        if (notified.has(key)) continue;
+        notified.add(key);
+        alertUser('Enchère bientôt terminée', `${who} « ${cardTitle(a)} » se termine dans moins de 2 minutes.`, key);
+      }
+    }
+  }
+  /** Pastille de la bulle : compteurs, avertissement ⚠ (enchères sous 2 min) et point rouge (surenchéri). */
+  function updatePill() {
+    if (!S.pill) return;
+    const all = [...D.bidding, ...D.selling];
+    const urgent = all.filter((x) => timeState(msLeft(x)) === 'urgent').length;
+    const outbid = D.bidding.filter((x) => !leading(x)).length;
+    const sig = [D.selling.length, D.bidding.length, urgent, outbid].join();
+    if (S.pillSig === sig) return;
+    S.pillSig = sig;
+    S.pill.classList.toggle('alert', urgent > 0 || outbid > 0);
+    S.pill.replaceChildren(
+      el('span', {}, `Enchères · ${D.selling.length} vente${D.selling.length > 1 ? 's' : ''} · ${D.bidding.length} mise${D.bidding.length > 1 ? 's' : ''}`),
+      urgent ? el('i', { class: 'wmx-auc-warn', title: `${urgent} enchère${urgent > 1 ? 's' : ''} se termine${urgent > 1 ? 'nt' : ''} dans moins de 2 minutes` }, `⚠ ${urgent}`) : '',
+      outbid ? el('i', { class: 'wmx-auc-dot', title: `${outbid} enchère${outbid > 1 ? 's' : ''} où vous êtes surenchéri` }, String(outbid)) : '');
+  }
 
   // --- Données ---------------------------------------------------------------------------------
   async function refresh() {
@@ -31,7 +73,11 @@
       const u = new URL('/api/marketplace', location.origin);
       u.searchParams.set('page', '1'); u.searchParams.set('limit', '50'); u.searchParams.set('sort', 'recent'); u.searchParams.set('mine', '1');
       const res = await fetch(u);
-      if (!res.ok) return;
+      if (!res.ok) {
+        S.fails = (S.fails || 0) + 1;
+        if (S.fails === 3) WMX.reportError?.('enchères', res.status);
+        return;
+      }
       const j = await res.json();
       if (!D.me) { // mon identifiant : celui des enchères que j'ai gagnées, ou le vendeur de mes ventes
         const win = {};
@@ -40,10 +86,16 @@
       }
       D.selling = (j.selling || []).filter((a) => a.status === 'active');
       D.bidding = (j.bidding || []).filter((a) => a.status === 'active');
+      const first = !D.loaded;
       D.loaded = true;
+      checkOutbid(first);
       pruneFrames();
       renderAll();
-    } catch (_) { /* réseau : on garde l'affichage précédent */ }
+      S.fails = 0;
+    } catch (err) { // réseau : on garde l'affichage précédent, et on prévient après plusieurs échecs de suite
+      S.fails = (S.fails || 0) + 1;
+      if (S.fails === 3) WMX.reportError?.('enchères', 0, String(err?.message || err));
+    }
   }
 
   /** Cadence : 8 s si la bulle est ouverte, sinon 1 min ; rien quand l'onglet est caché. */
@@ -187,12 +239,8 @@
   }
 
   function renderAll() {
-    const outbid = D.bidding.filter((a) => !leading(a)).length;
     if (S.bubbleBody && S.bubbleOpen) S.bubbleBody.replaceChildren(...content());
-    if (S.bubble) {
-      S.pill.replaceChildren(el('span', {}, `Enchères · ${D.selling.length} vente${D.selling.length > 1 ? 's' : ''} · ${D.bidding.length} mise${D.bidding.length > 1 ? 's' : ''}`),
-        outbid ? el('i', { class: 'wmx-auc-dot', title: `${outbid} enchère${outbid > 1 ? 's' : ''} où vous êtes surenchéri` }, String(outbid)) : '');
-    }
+    S.pillSig = null;
     tick();
   }
 
@@ -201,7 +249,9 @@
     for (const t of document.querySelectorAll('.wmx-auc-time')) {
       const left = new Date(t.dataset.end).getTime() - Date.now();
       t.textContent = fmtLeft(left);
-      t.classList.toggle('low', left < LOW_MS);
+      const st = timeState(left);
+      t.classList.toggle('low', st === 'low' || st === 'urgent');
+      t.closest('.wmx-auc-row')?.classList.toggle('urgent', st === 'urgent');
     }
     for (const b of document.querySelectorAll('.wmx-auc-bid')) {
       const a = D.bidding.find((x) => x.id === b.dataset.id);
@@ -210,12 +260,19 @@
       b.textContent = S.betting === a.id ? 'Mise en cours…' : leading(a) ? 'Vous menez' : (m ? `Surenchérir · ${fmt(m)} W` : 'Surenchérir');
       b.disabled = !!S.betting || leading(a) || msLeft(a) <= 0;
     }
+    if (D.loaded) checkUrgent();
+    updatePill();
     if (S.bubble) S.bubble.hidden = WMX.settings?.auctionBubble === false || !D.loaded;
   }
 
   // --- Bulle flottante -------------------------------------------------------------------------
   function buildBubble() {
-    S.pill = el('button', { class: 'wmx-bubble-pill', onclick: () => toggleBubble() });
+    S.pill = el('button', { class: 'wmx-bubble-pill', onclick: () => {
+      try { // la demande d'autorisation exige un geste de l'utilisateur : le premier clic sur la pastille
+        if (typeof Notification !== 'undefined' && Notification.permission === 'default' && WMX.settings?.auctionNotify !== false) Notification.requestPermission();
+      } catch (_) { /* indisponible */ }
+      toggleBubble();
+    } });
     S.bubbleBody = el('div', { class: 'wmx-bubble-body' });
     const panel = el('div', { class: 'wmx-bubble-panel', hidden: '' },
       S.bubbleHead = el('div', { class: 'wmx-bubble-head', title: 'Maintenez le clic pour déplacer · double-clic pour replacer' }, el('strong', {}, 'Mes enchères'),
@@ -228,6 +285,20 @@
     S.bubble = el('div', { class: 'wmx-bubble', hidden: '' }, panel, S.pill);
     document.body.append(S.bubble);
   }
+  /** Le panneau part de la pastille et y retourne : son point d'origine est le centre de la pastille, où qu'on l'ait déplacé. */
+  function aimAtPill() {
+    const p = S.bubblePanel;
+    const prev = p.style.transition;
+    const was = p.classList.contains('open');
+    p.style.transition = 'none';
+    p.classList.add('open');
+    const r = p.getBoundingClientRect();
+    const b = S.pill.getBoundingClientRect();
+    p.style.transformOrigin = `${Math.round(b.left + b.width / 2 - r.left)}px ${Math.round(b.top + b.height / 2 - r.top)}px`;
+    if (!was) p.classList.remove('open');
+    void p.offsetWidth;
+    p.style.transition = prev;
+  }
   function toggleBubble(open = !S.bubbleOpen) {
     S.bubbleOpen = open;
     const p = S.bubblePanel;
@@ -235,14 +306,16 @@
     if (open) {
       p.hidden = false;
       applyPos();
+      aimAtPill();
       void p.offsetWidth; // force le point de départ de la transition
       p.classList.add('open');
       S.pill.classList.add('on');
       renderAll(); refresh().then(prepareFrames); prepareFrames();
     } else {
+      aimAtPill();
       p.classList.remove('open');
       S.pill.classList.remove('on');
-      S.closeTimer = setTimeout(() => { if (!S.bubbleOpen) p.hidden = true; }, 260);
+      S.closeTimer = setTimeout(() => { if (!S.bubbleOpen) p.hidden = true; }, 340);
     }
     schedulePoll();
   }

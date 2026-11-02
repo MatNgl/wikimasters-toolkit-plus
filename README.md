@@ -25,3 +25,6 @@ Voir [docs/ROADMAP.md](docs/ROADMAP.md) et [docs/API-NOTES.md](docs/API-NOTES.md
 - L'extension agit comme l'utilisateur : elle clique sur les boutons du jeu, elle ne forge pas d'appels.
 - Délais configurables entre actions, pas de rafales.
 - Données stockées localement (`chrome.storage.local`), rien n'est envoyé à un tiers.
+
+## Tests
+Les fonctions pures (`src/lib/logic.js`) sont testées avec Node : `npm test`.

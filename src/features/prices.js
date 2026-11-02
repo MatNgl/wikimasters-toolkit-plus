@@ -7,8 +7,10 @@
 // rapide) servie avant la file « basse » (chargement par lots de Collection+).
 (() => {
   const { sleep } = WMX.dom;
-  const TTL = 48 * 3600 * 1000; // une réponse « sans vente » reste valable 2 jours ; une moyenne connue n'est jamais rechargée par lots
-  const GAP_MS = 450;           // pause entre deux requêtes
+  const L = WMX.logic;          // validité 48 h (96 h si la carte a beaucoup de ventes), pauses et écarts : voir lib/logic.js
+  const BASE_GAP = 600;         // écart de base entre deux requêtes ; il grandit après un refus du jeu et se resserre très lentement
+  let gap = BASE_GAP;
+  let lastStatus = 0;           // dernier code d'échec (pour le message d'erreur)
   let cache = null;             // card_id -> { t, s: { RARETÉ: { average, count, latest } } }
   let saveTimer = null;
   const listeners = new Set();
@@ -42,7 +44,7 @@
     u.searchParams.set('scope', 'summary');
     const res = await fetch(u);
     // Le jeu freine par rafales : 429, mais aussi 403 sur ce point d'accès. On attend puis on réessaie.
-    if (res.status === 429 || res.status === 403) return { limited: true };
+    if (res.status === 429 || res.status === 403) return { limited: true, status: res.status, retryAfter: Number(res.headers.get('retry-after')) || 0 };
     if (!res.ok) return { error: res.status };
     const j = await res.json();
     return { summary: j.summary || {} };
@@ -62,19 +64,23 @@
         if (r.limited) {
           sched.blocks += 1;
           item.tries += 1;
-          if (item.tries > 8) { sched.pending.delete(item.cardId); item.resolve({ limited: true }); continue; }
-          sched.penaltyUntil = Date.now() + Math.min(120, 3 + sched.blocks) * 1000; // 4, 5, 6… s
+          gap = L.nextGap(gap, true, BASE_GAP);
+          lastStatus = r.status || 429;
+          if (item.tries > 12) { sched.pending.delete(item.cardId); item.resolve({ limited: true }); continue; }
+          sched.penaltyUntil = Date.now() + L.limitWait(sched.blocks, r.retryAfter) * 1000; // 6, 12, 18… s (60 s au plus)
           (item.high ? sched.hi : sched.lo).unshift(item);
           ensureTicker();
           emit();
           continue;
         }
         sched.blocks = 0; // un succès : la pause repart de sa valeur de base
+        gap = L.nextGap(gap, false, BASE_GAP);
+        if (r.error != null) lastStatus = r.error;
         if (r.summary) { cache[item.cardId] = { t: Date.now(), s: r.summary }; scheduleSave(); }
         sched.pending.delete(item.cardId);
         item.resolve(r);
         emit();
-        await sleep(GAP_MS);
+        await sleep(gap);
       }
     } finally {
       sched.pumping = false;
@@ -106,6 +112,7 @@
     if (token === job.token) job.running = false;
     emit();
     scheduleSave();
+    if (token === job.token && job.failed) WMX.reportError?.('prices', lastStatus, `${job.failed} prix à réessayer`);
   }
 
   WMX.prices = {
@@ -118,8 +125,7 @@
       return s ? { avg: s.average, last: s.latest, count: s.count, t: e.t } : null;
     },
     fresh(cardId) {
-      const e = cache?.[cardId];
-      return !!e && Date.now() - e.t < TTL;
+      return L.isFresh(cache?.[cardId]);
     },
     /** Prix d'UNE carte tout de suite (enchère rapide), prioritaire sur le chargement par lots. */
     async fetchOne(cardId) {

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WikiMasters Toolkit+",
-  "version": "0.6.3",
+  "version": "0.7.0",
   "description": "Ouverture groupée des paquets, statistiques, valeur des cartes, filtres et enchères rapides pour WikiMasters.",
   "permissions": [
     "storage"
@@ -30,6 +30,7 @@
       ],
       "js": [
         "src/lib/namespace.js",
+        "src/lib/logic.js",
         "src/lib/storage.js",
         "src/lib/dom.js",
         "src/lib/sniffer.js",
@@ -62,5 +63,5 @@
       "world": "MAIN"
     }
   ],
-  "version_name": "0.6.3 · prix par rareté ou par étiquette"
+  "version_name": "0.7.0 · prix 48 h/96 h, alertes, couronnes"
 }

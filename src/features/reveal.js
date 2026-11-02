@@ -89,6 +89,18 @@
     return tile;
   }
 
+  /** Valeur du lot ajoutée aux statistiques (moyenne par paquet) : seulement si tous les prix sont connus, et une seule fois par lot. */
+  async function recordValue(tiles) {
+    const cards = tiles.map((t) => t._card);
+    if (!cards.length || cards.length % 5) return;
+    const prices = cards.map((c) => WMX.prices.get(c.id, WMX.normRarity(c.rarity) || 'C'));
+    if (prices.some((p) => !p)) return;
+    const sig = cards.map((c) => c.id).sort().join(',');
+    if (await WMX.store.get('lastValueSig', '') === sig) return;
+    await WMX.store.set('lastValueSig', sig);
+    WMX.stats.addValue(prices.reduce((s, p) => s + p.avg, 0), cards.length / 5);
+  }
+
   WMX.loadCardInfo = (c) => loadInfo(c); // image + description Wikipédia (cache partagé avec Collection+)
   WMX.revealSession = function revealSession() {
     let skip = false;
@@ -122,7 +134,20 @@
       const done = flipped.length === all.length;
       lot.textContent = `${done ? 'Valeur estimée du lot' : 'Valeur des cartes révélées'} : ${Math.round(v).toLocaleString('fr-FR')} W · prix connus : ${n}/${flipped.length}`;
     };
-    const offPrices = WMX.prices.onProgress(() => { grid.querySelectorAll('.wmx-tile').forEach((t) => t._paint?.()); updateLot(); });
+    let finished = false;
+    /** Couronnes sur les cartes les plus chères du lot (1 à 3 selon le nombre de cartes), une fois la révélation terminée. */
+    const markCrowns = () => {
+      if (!finished) return;
+      const tiles = [...grid.querySelectorAll('.wmx-tile')].filter((t) => t._card);
+      grid.querySelectorAll('.wmx-crown').forEach((c) => c.remove());
+      const values = tiles.map((t) => WMX.prices.get(t._card.id, WMX.normRarity(t._card.rarity) || 'C')?.avg || 0);
+      WMX.logic.crownIndexes(values).forEach((idx, rank) => {
+        const c = el('span', { class: 'wmx-crown', 'data-rank': String(rank + 1), title: rank ? `N°${rank + 1} du lot en valeur` : 'Carte la plus chère du lot' });
+        c.innerHTML = '<svg viewBox="0 0 24 22" width="100%" height="100%" aria-hidden="true"><path d="M2 18 0.8 5.5 7.2 10.8 12 2.5l4.8 8.3 6.4-5.3L22 18z" fill="currentColor"/><rect x="2" y="18.6" width="20" height="2.4" rx="1.2" fill="currentColor" opacity=".8"/></svg>';
+        tiles[idx].append(c);
+      });
+    };
+    const offPrices = WMX.prices.onProgress(() => { grid.querySelectorAll('.wmx-tile').forEach((t) => t._paint?.()); updateLot(); markCrowns(); });
     const repaintBtns = () => grid.querySelectorAll('.wmx-tile').forEach((t) => t._paintBtns?.());
     const offQuick = WMX.quick?.onChange(repaintBtns);
     window.addEventListener('wmx:fav', repaintBtns);
@@ -177,6 +202,9 @@
         cont.removeAttribute('disabled');
         remaining.textContent = 'Cliquez sur une carte pour ouvrir sa fiche (étiquette, enchère…)';
         updateLot();
+        finished = true;
+        markCrowns();
+        recordValue(tiles);
       },
     };
   };

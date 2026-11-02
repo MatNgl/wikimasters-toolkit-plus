@@ -301,7 +301,7 @@
     const selected = byTag
       ? S.items.filter((it) => it.tags.some((t) => S.priceTags.has(t.id)))
       : S.items.filter((it) => S.priceRar.has(it.rarity));
-    const known = (it) => !!price(it) || WMX.prices.fresh(it.card_id);
+    const known = (it) => WMX.prices.fresh(it.card_id); // un prix encore valable (48 h, 96 h si très vendue) n'est pas rechargé
     const todo = selected.filter((it) => !known(it))
       .sort((a, b) => RANK[b.rarity] - RANK[a.rarity] || a.title.localeCompare(b.title, 'fr'));
     if (!todo.length) {

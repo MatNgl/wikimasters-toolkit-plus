@@ -346,7 +346,8 @@
     const place = () => {
       const edges = [...document.querySelectorAll('nav')].map((n) => n.getBoundingClientRect().right).filter((x) => x > 100 && x < 700);
       const x = edges.length ? Math.max(...edges) : 256;
-      panel.style.left = `${Math.round(x + 16)}px`;
+      const w = panel.classList.contains('wmx-collapsed') ? 44 : (panel.offsetWidth || 300);
+      panel.style.left = `${Math.max(8, Math.min(Math.round(x + 16), innerWidth - w - 8))}px`; // reste toujours dans l'écran
       cover.style.left = `${Math.round(x)}px`;
     };
     place();
@@ -354,7 +355,8 @@
     new ResizeObserver(place).observe(document.documentElement);
     setTimeout(place, 600); setTimeout(place, 2500); // après le rendu du jeu (polices, mise en page)
     setBadge(); setAutoBtn();
-    if (await WMX.store.get('panelCollapsed', false)) setCollapsed(true, false);
+    // Petit écran : le menu démarre réduit à sa bulle « W » (visible, jamais masqué) ; on le déplie d'un clic.
+    if ((await WMX.store.get('panelCollapsed', false)) || innerWidth < 1250) setCollapsed(true, false);
 
     // Statistiques : anneau coloré par rareté + légende, avec le nombre de cartes uniquement.
     const render = async () => {
@@ -369,7 +371,12 @@
           el('div', { class: 'wmx-donut', style: `background:conic-gradient(${s.cards ? stops : '#1a2a24 0 100%'})` },
             el('div', { class: 'wmx-donut-c' }, el('b', {}, String(s.cards)), el('small', {}, s.cards > 1 ? 'cartes' : 'carte'))),
           el('div', { class: 'wmx-legend' }, ...WMX.RARITIES.map((r) => el('div', { style: `--rgb:${RGB[r]}` },
-            el('i'), el('b', {}, r), el('span', { class: 'wmx-lp' }, fmt(r)), el('span', { class: 'wmx-ln' }, String(s.rarity[r]))))))));
+            el('i'), el('b', {}, r), el('span', { class: 'wmx-lp' }, fmt(r)), el('span', { class: 'wmx-ln' }, String(s.rarity[r])))))),
+        (() => {
+          const avg = WMX.logic.packAverage(s.value || 0, s.valuedPacks || 0);
+          return avg == null ? '' : el('div', { class: 'wmx-avgpack', title: 'Somme des moyennes du marché des cartes tirées, divisée par le nombre de paquets (lots dont tous les prix étaient connus).' },
+            el('small', {}, 'Valeur moyenne d’un paquet'), el('b', {}, `${avg.toLocaleString('fr-FR')} W`), el('small', {}, `sur ${s.valuedPacks} paquet${s.valuedPacks > 1 ? 's' : ''}`));
+        })()));
     };
     WMX.applySettings = render;
     render();

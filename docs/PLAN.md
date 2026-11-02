@@ -58,3 +58,11 @@ Légende : ✅ fait et vérifié · 🟡 écrit, à tester · ⬜ à faire
 ## Règles
 - Aucun contournement de la vérification humaine du jeu.
 - Aucune action d'achat, d'enchère ou de vente sans clic explicite de l'utilisateur.
+
+## 0.7.0 (à tester)
+- **Fiche** : clics répétés sur une carte = une seule ouverture ; en cliquant une autre carte pendant le chargement, seule la dernière s'ouvre.
+- **Prix** : validité 48 h (96 h si la carte a au moins 10 ventes) ; écart entre requêtes adaptatif (ralenti après un refus du jeu, se resserre lentement) ; pause 6, 12, 18… s (60 s max, `Retry-After` respecté) ; jusqu'à 12 essais par carte.
+- **Enchères** : alerte unique quand une enchère passe sous 2 min ou qu'on est surenchéri (message + notification du navigateur, réglable), pastille ⚠ de la bulle, ligne rouge ; animation d'ouverture/fermeture depuis la pastille.
+- **Paquets** : valeur moyenne d'un paquet dans les statistiques ; couronnes (1 à 3) sur les cartes les plus chères du lot ; le menu ne disparaît plus sur petit écran (réduit en bulle « W ») et s'élargit sur grand écran.
+- **Qualité** : fonctions pures dans `src/lib/logic.js` testées par `npm test` ; `WMX.reportError` (message clair, journal des 30 dernières erreurs).
+- Restent à faire : lots 3 (mise automatique), 4 (marché/échanges), icône.

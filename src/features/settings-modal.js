@@ -7,7 +7,7 @@
   WMX.DEFAULTS = {
     speed: 'normal', order: 'rarity', images: true,
     stopOn: 'off', reserve: 0, fullStockOpen: true, anticipate: true,
-    quickCoef: 0.9, quickDuration: '1h', quickPrudent: false, auctionBubble: true,
+    quickCoef: 0.9, quickDuration: '1h', quickPrudent: false, auctionBubble: true, auctionNotify: true,
   };
 
   const SECTIONS = [
@@ -49,6 +49,7 @@
       desc: 'Bulle flottante : vos mises et vos ventes en cours, avec « Surenchérir » (mise exacte du minimum proposé).',
       items: [
         { key: 'auctionBubble', type: 'toggle', label: 'Bulle flottante des enchères', desc: 'Affichée en bas à droite sur toutes les pages du jeu ; actualisée chaque minute (toutes les 8 s quand elle est ouverte).' },
+        { key: 'auctionNotify', type: 'toggle', label: 'Alertes d’enchères', desc: 'Notification quand vous êtes surenchéri ou qu’une de vos enchères passe sous 2 minutes (le navigateur demande l’autorisation au premier clic sur la bulle).' },
       ],
     },
     {

@@ -9,10 +9,17 @@
   };
 
   const today = () => new Date().toLocaleDateString('sv-SE'); // AAAA-MM-JJ, heure locale
-  const empty = () => ({ packs: 0, cards: 0, rarity: Object.fromEntries(WMX.RARITIES.map((r) => [r, 0])), since: Date.now() });
+  const empty = () => ({ packs: 0, cards: 0, rarity: Object.fromEntries(WMX.RARITIES.map((r) => [r, 0])), since: Date.now(), value: 0, valuedPacks: 0 });
   WMX.stats = {
     async get() { return WMX.store.get('stats', empty()); },
     async reset() { await WMX.store.set('stats', empty()); },
+    /** Valeur (somme des moyennes du marché) d'un lot de `packs` paquets dont TOUS les prix sont connus. */
+    async addValue(value, packs) {
+      const s = await this.get();
+      s.value = (s.value || 0) + value;
+      s.valuedPacks = (s.valuedPacks || 0) + packs;
+      await WMX.store.set('stats', s);
+    },
     async record(cards) {
       const s = await this.get();
       s.packs += 1;
