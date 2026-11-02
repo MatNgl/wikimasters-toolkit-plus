@@ -128,6 +128,8 @@
   function openPanel() {
     if (document.querySelector('.wmx-aspanel')) return;
     const body = el('div', { class: 'wmx-modal-body wmx-as-body' });
+    // Interrupteur : active ou désactive l'assistant sans passer par les Paramètres (n'enregistre que ce réglage).
+    const toggleBtn = el('button', { class: 'wmx-btn wmx-btn--ghost', onclick: () => WMX.updateSettings({ autoSell: !on() }) }, '');
     const rows = (items, fn) => (items.length ? items.map(fn) : [el('p', { class: 'wmx-jempty' }, '—')]);
     const render = () => {
       const st = S.shared;
@@ -143,6 +145,7 @@
           el('small', {}, `${REASONS[c.reason] || c.reason}${c.until ? ` jusqu’à ${fmtAt(c.until)}` : ''}`))));
       }
       body.replaceChildren(...parts);
+      toggleBtn.textContent = on() ? 'Désactiver l’assistant' : 'Activer l’assistant';
     };
     render();
     const timer = setInterval(() => { if (!back.isConnected) clearInterval(timer); else render(); }, 1000);
@@ -153,6 +156,7 @@
         body,
         el('footer', {}, el('span', {}, ''), el('div', {},
           el('button', { class: 'wmx-btn wmx-btn--ghost', title: 'Oublie les cartes écartées et les compteurs du jour', onclick: resetSkips }, 'Réinitialiser les écarts'),
+          toggleBtn,
           el('button', { class: 'wmx-btn', onclick: runNow }, 'Lancer maintenant'),
           el('button', { class: 'wmx-btn wmx-btn--ghost', onclick: close }, 'Fermer')))));
     document.body.append(back);

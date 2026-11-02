@@ -113,8 +113,22 @@
     },
   ];
 
+  /**
+   * Enregistre UNIQUEMENT les réglages donnés, par-dessus ce qui est déjà enregistré : un onglet resté ouvert avec d'anciens réglages
+   * n'écrase plus ceux qu'un autre onglet a changés (l'assistant de vente se retrouvait ainsi désactivé sans que personne ne l'ait demandé).
+   */
+  WMX.updateSettings = async (patch) => {
+    const stored = await WMX.store.get('wmxSettings', {});
+    const next = { ...WMX.settings, ...stored, ...patch };
+    Object.assign(WMX.settings, next);
+    await WMX.store.set('wmxSettings', next);
+    WMX.applySettings?.();
+    window.dispatchEvent(new CustomEvent('wmx:settings')); // les pages se mettent à jour sans rechargement
+  };
+
   WMX.openSettings = function openSettings() {
     if (document.querySelector('.wmx-modal-backdrop')) return;
+    const initial = { ...WMX.settings }; // pour ne sauvegarder que ce que l'utilisateur a réellement modifié
     let draft = { ...WMX.settings };
     const content = el('div', { class: 'wmx-modal-body' });
 
@@ -218,10 +232,8 @@
           el('button', { class: 'wmx-btn wmx-btn--ghost', onclick: () => { draft = { ...WMX.DEFAULTS }; render(); } }, 'Valeurs par défaut'),
           el('button', { class: 'wmx-btn wmx-btn--ghost', onclick: close }, 'Annuler'),
           el('button', { class: 'wmx-btn', onclick: () => {
-            Object.assign(WMX.settings, draft);
-            WMX.store.set('wmxSettings', WMX.settings);
-            WMX.applySettings?.();
-            window.dispatchEvent(new CustomEvent('wmx:settings')); // les pages se mettent à jour sans rechargement
+            const changed = Object.fromEntries(Object.keys(draft).filter((k) => draft[k] !== initial[k]).map((k) => [k, draft[k]]));
+            WMX.updateSettings(changed);
             close();
           } }, 'Appliquer'))));
     const backdrop = el('div', { class: 'wmx-modal-backdrop', onmousedown: (e) => { if (e.target === backdrop) close(); } }, modal);

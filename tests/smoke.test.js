@@ -522,3 +522,22 @@ test('assistant de vente : l\'état publié dit pourquoi rien n\'est mis en vent
   assert.match(box.querySelector('.wmx-as-txt').textContent, /1 carte mise en file/);
   env.close();
 });
+
+test('réglages : « Appliquer » n\'enregistre que les réglages modifiés (n\'écrase pas ceux d\'un autre onglet)', async () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  const { w, WMX } = env;
+  Object.assign(WMX.settings, { autoSell: false, quickCoef: 0.9 });
+  WMX.openSettings(); // cet onglet a une copie ancienne : autoSell = false
+  await WMX.store.set('wmxSettings', { ...WMX.settings, autoSell: true }); // un autre onglet vient d'activer l'assistant
+  const input = w.document.querySelector('input[type=number]');
+  const row = [...w.document.querySelectorAll('.wmx-setrow')].find((r) => /Coefficient du prix/.test(r.textContent));
+  const coef = row.querySelector('input');
+  coef.value = '0.8'; coef.dispatchEvent(new w.Event('change', { bubbles: true }));
+  [...w.document.querySelectorAll('.wmx-modal footer button')].find((b) => b.textContent === 'Appliquer').click();
+  await sleep(100);
+  const saved = await WMX.store.get('wmxSettings', {});
+  assert.equal(saved.quickCoef, 0.8, 'le réglage modifié est enregistré');
+  assert.equal(saved.autoSell, true, 'celui de l\'autre onglet est conservé');
+  assert.ok(input);
+  env.close();
+});
