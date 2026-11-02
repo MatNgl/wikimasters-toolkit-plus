@@ -272,6 +272,12 @@
       const p = WMX.prices.get(item.card_id, item.rarity);
       return p ? `Enchère rapide : ${startPrice(p)} W pendant ${c.dur} (moyenne ${Math.round(p.avg)} W × ${c.coef})` : 'Enchère rapide (le prix sera chargé automatiquement)';
     },
+    /** Annule la vente d'une carte (depuis la page Enchères). Renvoie false si la carte n'est plus en vente. */
+    cancelItem(item) {
+      if (!S.selling.has(item.card_id) || stateOf(item.card_id) === 'cancelling') return false;
+      enqueue({ type: 'cancel', item: slim(item) });
+      return true;
+    },
     /** Un clic met en file ; sur une carte en file il la retire ; sur une carte en vente il annule l'enchère. */
     toggle(item) {
       const id = item.card_id;

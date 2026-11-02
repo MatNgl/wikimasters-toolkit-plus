@@ -244,3 +244,31 @@ html.wmx-opening .wmx-cover { display: block; }
 /* Page de l'extension ouverte : le surlignage « actif » de la page du dessous est neutralisé dans la barre latérale du jeu */
 .wmx-page-open nav a[href]:not(.wmx-nav-item) { background: transparent !important; color: color-mix(in srgb, var(--color-foreground, #fff) 60%, transparent) !important; }
 .wmx-page-open nav a[href]:not(.wmx-nav-item) > div { display: none; }
+
+/* ===== Page « Enchères » et bulle flottante ===== */
+.wmx-auc-body { display: flex; flex-direction: column; gap: 22px; }
+.wmx-auc-sec h3 { margin: 0 0 10px; font-size: 15px; color: var(--acc,#2dd4a0); }
+.wmx-auc-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
+.wmx-auc-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 14px; background: #0d1411; border: 1px solid rgb(var(--rgb, 40 60 50) / .5); }
+.wmx-auc-img { flex: none; width: 54px; height: 76px; border-radius: 10px; object-fit: cover; background: #1a2420; border: 1px solid rgb(var(--rgb, 80 90 85) / .6); }
+.wmx-auc-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.wmx-auc-main strong { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wmx-auc-main small { color: #9db5a8; font-size: 12px; }
+.wmx-auc-time { font: 600 12px Outfit, system-ui, sans-serif; color: #facc15; font-variant-numeric: tabular-nums; }
+.wmx-auc-side { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.wmx-auc-side .wmx-btn { padding: 6px 12px; font-size: 12px; white-space: nowrap; }
+.wmx-auc-badge { font: 700 10px Outfit, system-ui, sans-serif; padding: 2px 8px; border-radius: 999px; text-transform: uppercase; letter-spacing: .04em; }
+.wmx-auc-badge.ok { background: rgb(45 212 160 / .2); color: #2dd4a0; }
+.wmx-auc-badge.ko { background: rgb(239 68 68 / .2); color: #fca5a5; }
+.wmx-bubble { position: fixed; right: 18px; bottom: 72px; z-index: 9400; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; font-family: Outfit, system-ui, sans-serif; }
+.wmx-bubble[hidden] { display: none; }
+.wmx-bubble-pill { display: flex; align-items: center; gap: 8px; padding: 9px 16px; border-radius: 999px; border: 1px solid #27493b; background: #0b1411f2; color: #e6efe9; font: 600 13px Outfit, system-ui, sans-serif; cursor: pointer; box-shadow: 0 10px 30px #000a; }
+.wmx-bubble-pill:hover { border-color: var(--acc,#2dd4a0); }
+.wmx-auc-dot { font-style: normal; min-width: 18px; height: 18px; line-height: 18px; padding: 0 5px; border-radius: 9px; background: #ef4444; color: #fff; font-size: 11px; text-align: center; }
+.wmx-bubble-panel { width: min(380px, 92vw); max-height: 62vh; overflow: auto; padding: 12px; border-radius: 18px; background: #0b1411f7; border: 1px solid #27493b; box-shadow: 0 16px 40px #000b; color: #e6efe9; }
+.wmx-bubble-panel[hidden] { display: none; }
+.wmx-bubble-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.wmx-bubble-head span { display: flex; gap: 6px; }
+.wmx-bubble-body { display: flex; flex-direction: column; gap: 14px; }
+.wmx-bubble-body .wmx-auc-list { grid-template-columns: 1fr; }
+.wmx-bubble-body .wmx-auc-sec h3 { font-size: 13px; }

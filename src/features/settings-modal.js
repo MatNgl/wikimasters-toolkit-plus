@@ -7,7 +7,7 @@
   WMX.DEFAULTS = {
     speed: 'normal', order: 'rarity', images: true,
     stopOn: 'off', reserve: 0, fullStockOpen: true, anticipate: true,
-    quickCoef: 0.9, quickDuration: '1h', quickPrudent: false,
+    quickCoef: 0.9, quickDuration: '1h', quickPrudent: false, auctionBubble: true,
   };
 
   const SECTIONS = [
@@ -42,6 +42,13 @@
         { key: 'quickDuration', type: 'select', label: 'Durée de l\u2019enchère', desc: 'Durée proposée par défaut (celles du jeu).',
           options: [['10min', '10 min'], ['30min', '30 min'], ['1h', '1 h'], ['3h', '3 h'], ['6h', '6 h'], ['12h', '12 h']] },
         { key: 'quickPrudent', type: 'toggle', label: 'Mode prudent', desc: 'Le prix de départ ne dépasse pas 1,2 fois la dernière vente.' },
+      ],
+    },
+    {
+      title: 'Enchères',
+      desc: 'Page « Enchères » et bulle flottante : vos ventes et vos mises en cours, avec « Surenchérir » (mise exacte du minimum proposé).',
+      items: [
+        { key: 'auctionBubble', type: 'toggle', label: 'Bulle flottante des enchères', desc: 'Affichée en bas à droite sur toutes les pages du jeu ; actualisée chaque minute (toutes les 8 s quand elle est ouverte).' },
       ],
     },
     {

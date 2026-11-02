@@ -36,6 +36,7 @@ Légende : ✅ fait et vérifié · 🟡 écrit, à tester · ⬜ à faire
 **Phase 1 (0.2.0, à tester)** : inventaire complet en mémoire (GET /api/my-collection, tri alphabétique stable), grille pleine image, 10/25/50/100 par page, recherche, filtres (rareté, étiquette, sans étiquette, favoris, doublons, valeur min/max), tris (rareté, plus/moins chères, récentes, nom), prix par carte via /api/marketplace/cards/{id}/sales?scope=summary (sans compte Pro) avec progression et pause allongée sur 429, valeur totale, vraie fiche du jeu au clic, onglet tableau de bord (valeur par rareté, top 10, courbe à partir de 2 jours d'historique).
 **0.3.1** : entrées « Collection+ » et « Tableau de bord » dans la barre latérale du jeu (sous Collection, aspect distinct), 250 par page, barre de filtres pleine largeur.
 **Phase 2 (0.3.0, à tester)** : enchère rapide (⚡ sur la carte, formulaire natif piloté, annulation si le jeu le permet ; réglages coefficient/durée/prudent déjà dans les paramètres).
+**0.6.0 (à tester)** : page « Enchères » (mes mises avec Surenchérir au minimum proposé, mes ventes avec annulation) et bulle flottante ; actualisation 1 min / 8 s ; mise via la page de l'enchère préchargée en cadre invisible.
 **Plus tard** : sélection multiple et étiquetage en lot ; analyse (cartes qui montent, stats par étiquette).
 - L'ancienne extension n'est plus conservée en parallèle : on ne s'appuie plus sur ses attributs (`data-wm-card-id`).
 

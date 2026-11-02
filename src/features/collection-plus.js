@@ -384,13 +384,14 @@
     });
   }
 
-  const isOpen = () => !!overlay && (!overlay.hidden || !pageDash.hidden);
+  const isOpen = () => (!!overlay && (!overlay.hidden || !pageDash.hidden)) || !!WMX.auctions?.pageOpen();
 
-  /** Affiche UNE des deux pages (l'autre est masquée) ; pendant ce temps le surlignage « actif » du jeu est neutralisé. */
+  /** Affiche UNE des trois pages (les autres sont masquées) ; pendant ce temps le surlignage « actif » du jeu est neutralisé. */
   function setTab(k) {
     S.tab = k;
     if (overlay) overlay.hidden = k !== 'cards';
     if (pageDash) pageDash.hidden = k !== 'dash';
+    if (k === 'auctions') WMX.auctions?.showPage(); else WMX.auctions?.hidePage();
     document.documentElement.classList.add('wmx-page-open');
     if (k === 'dash') renderDash();
     markNav();
@@ -404,14 +405,14 @@
 
   /** Quitter la page : seulement en allant ailleurs dans le jeu (pas de bouton de fermeture). */
   function close() {
-    if (!overlay) return;
-    overlay.hidden = true;
-    pageDash.hidden = true;
+    WMX.auctions?.hidePage();
+    if (overlay) { overlay.hidden = true; pageDash.hidden = true; }
     document.documentElement.classList.remove('wmx-page-open');
     markNav();
   }
 
   async function open(tab = 'cards') {
+    if (tab === 'auctions') { setTab('auctions'); return; } // page Enchères : ne charge pas l'inventaire
     const first = !overlay;
     if (first) {
       const prefs = await WMX.store.get('cplusPrefs', {});
@@ -459,7 +460,8 @@
       a.classList.add('wmx-nav-item');
       a.dataset.wmxNav = key;
       const svg = a.querySelector('svg');
-      if (svg) svg.innerHTML = ICONS[key];
+      // L'icône de « Enchères » est celle du Marché du jeu (marteau), pour rester cohérent.
+      if (svg) svg.innerHTML = key === 'auctions' ? (nav.querySelector('a[href="/marketplace"] svg')?.innerHTML || '') : ICONS[key];
       // On garde l'icône du gabarit, on remplace son libellé (nœud de texte) et on ajoute l'étiquette « ext ».
       const iconWrap = a.querySelector('span');
       a.replaceChildren(...(iconWrap ? [iconWrap] : []), label, el('i', { class: 'wmx-nav-tag' }, 'ext'));
@@ -469,7 +471,7 @@
       a.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') go(e); });
       return a;
     };
-    coll.after(make('cards', 'Collection+', 'cards'), make('dash', 'Tableau de bord', 'dash'));
+    coll.after(make('cards', 'Collection+', 'cards'), make('dash', 'Tableau de bord', 'dash'), make('auctions', 'Enchères', 'auctions'));
     markNav();
   }
 
