@@ -146,9 +146,13 @@
     let res = await attempt();
     if (!res.ok && !res.fatal) { await sleep(3000); res = await attempt(); } // un nouvel essai (le cadre est remis sur la collection)
     if (!res.ok) return { error: res.error };
-    await sleep(600);
-    await refresh();
-    return S.selling.has(item.card_id) ? { ok: true, price } : { error: 'enchère non confirmée par le jeu' };
+    // Le serveur du jeu peut mettre quelques secondes à enregistrer l'enchère : on vérifie jusqu'à 6 fois avant de conclure à un échec.
+    for (let t = 0; t < 6; t++) {
+      await sleep(t ? 2500 : 600);
+      await refresh();
+      if (S.selling.has(item.card_id)) return { ok: true, price };
+    }
+    return { error: 'enchère non confirmée par le jeu (vérifiez « Mes ventes »)' };
   }
 
   async function doCancel(item) {
