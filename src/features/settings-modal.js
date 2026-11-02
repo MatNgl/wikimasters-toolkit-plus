@@ -46,7 +46,7 @@
     },
     {
       title: 'Enchères',
-      desc: 'Page « Enchères » et bulle flottante : vos ventes et vos mises en cours, avec « Surenchérir » (mise exacte du minimum proposé).',
+      desc: 'Bulle flottante : vos mises et vos ventes en cours, avec « Surenchérir » (mise exacte du minimum proposé).',
       items: [
         { key: 'auctionBubble', type: 'toggle', label: 'Bulle flottante des enchères', desc: 'Affichée en bas à droite sur toutes les pages du jeu ; actualisée chaque minute (toutes les 8 s quand elle est ouverte).' },
       ],

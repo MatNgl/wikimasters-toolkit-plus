@@ -1,8 +1,8 @@
-// Enchères : une page « Enchères » (mes mises, mes ventes) et une bulle flottante, pour suivre ses enchères et
+// Enchères : une bulle flottante (mes mises à gauche, mes ventes à droite), pour suivre ses enchères et
 // surenchérir sans aller sur la page du Marché.
 //
 // Données : le même appel que la page Marché (GET /api/marketplace?mine=1 : `selling`, `bidding`). Actualisation chaque
-// minute ; toutes les 8 s quand la bulle ou la page est ouverte. Les chronomètres tournent chaque seconde.
+// minute ; toutes les 8 s quand la bulle est ouverte. Les chronomètres tournent chaque seconde.
 //
 // Surenchérir : on charge la page de l'enchère dans un cadre invisible (même origine, adresse marquée #wmx-auto pour que
 // la confirmation éventuelle du jeu soit validée), on lit le MINIMUM proposé par le jeu dans le champ « Montant de la
@@ -10,7 +10,7 @@
 (() => {
   const { el, sleep, waitFor } = WMX.dom;
   const D = { selling: [], bidding: [], me: null, loaded: false };
-  const S = { page: null, bubble: null, bubbleOpen: false, betting: null, timer: null, lists: [], frames: new Map() };
+  const S = { bubble: null, bubbleOpen: false, betting: null, timer: null, lists: [], frames: new Map() };
   const fmt = (n) => Math.round(n).toLocaleString('fr-FR');
   const cardTitle = (a) => a.card?.wikipedia_title || '?';
   const rarityOf = (a) => WMX.normRarity(a.snapshot_rarity || a.card?.rarity) || 'C';
@@ -23,7 +23,7 @@
     const m = Math.floor((s % 3600) / 60);
     return h ? `${h} h ${String(m).padStart(2, '0')} min` : `${m} min ${String(s % 60).padStart(2, '0')} s`;
   };
-  const pageOpen = () => !!S.page && !S.page.hidden;
+  const LOW_MS = 5 * 60 * 1000; // sous 5 min : chronomètre en rouge
 
   // --- Données ---------------------------------------------------------------------------------
   async function refresh() {
@@ -46,10 +46,10 @@
     } catch (_) { /* réseau : on garde l'affichage précédent */ }
   }
 
-  /** Cadence : 8 s si la bulle ou la page est ouverte, sinon 1 min ; rien quand l'onglet est caché. */
+  /** Cadence : 8 s si la bulle est ouverte, sinon 1 min ; rien quand l'onglet est caché. */
   function schedulePoll() {
     clearTimeout(S.timer);
-    const ms = S.bubbleOpen || pageOpen() ? 8000 : 60000;
+    const ms = S.bubbleOpen ? 8000 : 60000;
     S.timer = setTimeout(async () => {
       if (!WMX.alive()) return;
       if (!document.hidden) await refresh();
@@ -132,51 +132,57 @@
   }
 
   // --- Affichage -------------------------------------------------------------------------------
+  const timeEl = (a) => el('span', { class: 'wmx-auc-time', 'data-end': a.end_at }, fmtLeft(msLeft(a)));
+  const rarityTag = (r) => el('span', { class: 'wmx-auc-rar', style: `color:rgb(${WMX.RARITY_RGB[r]})` }, r);
+
   function row(a, kind) {
     const r = rarityOf(a);
     const img = a.card?.image_url && !a.card?.hide_image
       ? el('img', { class: 'wmx-auc-img', src: a.card.image_url, alt: '', loading: 'lazy' })
       : el('div', { class: 'wmx-auc-img' });
-    const price = a.current_bid ? `Mise actuelle ${fmt(a.current_bid)} W` : `Départ ${fmt(a.base_amount)} W`;
-    const badge = kind === 'bid'
-      ? el('span', { class: `wmx-auc-badge ${leading(a) ? 'ok' : 'ko'}` }, leading(a) ? 'Vous menez' : 'Surenchéri')
-      : (a.current_bidder_id ? el('span', { class: 'wmx-auc-badge ok' }, 'Mise reçue') : '');
-    let act = '';
+    const title = el('strong', { title: cardTitle(a) }, cardTitle(a));
+    let main, side;
     if (kind === 'bid') {
-      act = el('button', { class: 'wmx-btn wmx-auc-bid', 'data-id': a.id }, 'Surenchérir');
+      const lead = leading(a);
+      const act = el('button', { class: 'wmx-btn wmx-auc-bid', 'data-id': a.id }, 'Surenchérir');
       act.addEventListener('click', () => bid(a));
-    } else if (!a.current_bid) {
-      act = el('button', { class: 'wmx-btn wmx-btn--ghost wmx-auc-cancel', title: 'Annuler la vente et récupérer la carte' }, 'Annuler');
-      act.addEventListener('click', () => cancelSale(a));
+      main = el('div', { class: 'wmx-auc-main' },
+        el('div', { class: 'wmx-auc-name' }, title, rarityTag(r)),
+        el('span', { class: `wmx-auc-state ${lead ? 'ok' : 'ko'}` }, lead ? 'Vous menez' : 'Surenchéri'),
+        timeEl(a));
+      side = el('div', { class: 'wmx-auc-side' },
+        el('div', { class: 'wmx-auc-price' }, el('small', {}, 'Mise actuelle'), el('b', {}, `${fmt(a.current_bid || a.base_amount)} W`)),
+        act);
+    } else {
+      const act = a.current_bid ? '' : el('button', { class: 'wmx-btn wmx-btn--ghost wmx-auc-cancel', title: 'Annuler la vente et récupérer la carte' }, 'Annuler');
+      if (act) act.addEventListener('click', () => cancelSale(a));
+      main = el('div', { class: 'wmx-auc-main' },
+        el('div', { class: 'wmx-auc-name' }, title, rarityTag(r)),
+        a.current_bidder_id ? el('span', { class: 'wmx-auc-state ok' }, 'Mise reçue') : '',
+        timeEl(a));
+      side = el('div', { class: 'wmx-auc-side' },
+        el('div', { class: 'wmx-auc-price' },
+          a.current_bid ? el('small', {}, 'Mise actuelle') : el('small', {}, 'Prix de départ'),
+          el('b', {}, `${fmt(a.current_bid || a.base_amount)} W`),
+          a.current_bid ? el('small', {}, `Départ ${fmt(a.base_amount)} W`) : ''),
+        act);
     }
-    return el('div', { class: 'wmx-auc-row', style: `--rgb:${WMX.RARITY_RGB[r]}` }, img,
-      el('div', { class: 'wmx-auc-main' },
-        el('strong', {}, cardTitle(a)),
-        el('small', {}, `${r} · ${price}`),
-        el('span', { class: 'wmx-auc-time', 'data-end': a.end_at }, fmtLeft(msLeft(a)))),
-      el('div', { class: 'wmx-auc-side' }, badge, act));
+    return el('div', { class: 'wmx-auc-row', style: `--rgb:${WMX.RARITY_RGB[r]}` }, img, main, side);
   }
 
-  const section = (label, rows, empty) => el('div', { class: 'wmx-auc-sec' }, el('h3', {}, `${label} (${rows.length})`),
+  const column = (label, rows, empty) => el('div', { class: 'wmx-auc-col' }, el('h3', {}, `${label} (${rows.length})`),
     rows.length ? el('div', { class: 'wmx-auc-list' }, ...rows) : el('p', { class: 'wmx-cp-empty' }, empty));
 
-  function content(compact) {
+  function content() {
     const bids = [...D.bidding].sort((a, b) => msLeft(a) - msLeft(b)).map((a) => row(a, 'bid'));
     const sells = [...D.selling].sort((a, b) => msLeft(a) - msLeft(b)).map((a) => row(a, 'sell'));
-    return [
-      section('Mes enchères', bids, compact ? 'Aucune mise en cours.' : 'Vous ne misez sur aucune enchère pour le moment. Celles où vous misez apparaîtront ici, avec « Surenchérir ».'),
-      section('Mes ventes', sells, 'Aucune vente en cours.'),
-    ];
+    return [column('Mes mises', bids, 'Aucune mise en cours.'), column('Mes ventes', sells, 'Aucune vente en cours.')];
   }
 
   function renderAll() {
     const outbid = D.bidding.filter((a) => !leading(a)).length;
-    if (S.pageStatus) S.pageStatus.textContent = D.loaded ? `${D.selling.length} vente${D.selling.length > 1 ? 's' : ''} · ${D.bidding.length} mise${D.bidding.length > 1 ? 's' : ''}${outbid ? ` · ${outbid} surenchéri${outbid > 1 ? 'es' : ''}` : ''}` : 'Chargement…';
-    if (S.pageBody && pageOpen()) S.pageBody.replaceChildren(...content(false));
-    if (S.bubbleBody && S.bubbleOpen) S.bubbleBody.replaceChildren(...content(true));
+    if (S.bubbleBody && S.bubbleOpen) S.bubbleBody.replaceChildren(...content());
     if (S.bubble) {
-      const off = WMX.settings?.auctionBubble === false || pageOpen();
-      S.bubble.hidden = off || !D.loaded;
       S.pill.replaceChildren(el('span', {}, `Enchères · ${D.selling.length} vente${D.selling.length > 1 ? 's' : ''} · ${D.bidding.length} mise${D.bidding.length > 1 ? 's' : ''}`),
         outbid ? el('i', { class: 'wmx-auc-dot', title: `${outbid} enchère${outbid > 1 ? 's' : ''} où vous êtes surenchéri` }, String(outbid)) : '');
     }
@@ -185,7 +191,11 @@
 
   /** Chaque seconde : chronomètres, et libellé « Surenchérir · N W » avec le minimum lu sur la page de l'enchère. */
   function tick() {
-    for (const t of document.querySelectorAll('.wmx-auc-time')) t.textContent = fmtLeft(new Date(t.dataset.end).getTime() - Date.now());
+    for (const t of document.querySelectorAll('.wmx-auc-time')) {
+      const left = new Date(t.dataset.end).getTime() - Date.now();
+      t.textContent = fmtLeft(left);
+      t.classList.toggle('low', left < LOW_MS);
+    }
     for (const b of document.querySelectorAll('.wmx-auc-bid')) {
       const a = D.bidding.find((x) => x.id === b.dataset.id);
       if (!a) continue;
@@ -193,36 +203,7 @@
       b.textContent = S.betting === a.id ? 'Mise en cours…' : leading(a) ? 'Vous menez' : (m ? `Surenchérir · ${fmt(m)} W` : 'Surenchérir');
       b.disabled = !!S.betting || leading(a) || msLeft(a) <= 0;
     }
-    if (S.bubble) S.bubble.hidden = WMX.settings?.auctionBubble === false || pageOpen() || !D.loaded;
-  }
-
-  // --- Page « Enchères » -----------------------------------------------------------------------
-  function buildPage() {
-    S.pageStatus = el('span', { class: 'wmx-cp-status' });
-    S.pageBody = el('div', { class: 'wmx-auc-body' });
-    S.page = el('section', { class: 'wmx-cplus', id: 'wmx-auctions', hidden: '' },
-      el('header', { class: 'wmx-cp-head' }, el('h2', {}, 'Enchères'), S.pageStatus,
-        el('button', { class: 'wmx-close', title: 'Actualiser maintenant', onclick: refresh }, '↻'),
-        el('button', { class: 'wmx-close', title: 'Paramètres', onclick: () => WMX.openSettings() }, '⚙')),
-      el('div', { class: 'wmx-cp-scroll' }, S.pageBody));
-    document.body.append(S.page);
-    window.addEventListener('resize', placePage);
-  }
-  const placePage = () => { if (S.page) S.page.style.left = `${Math.round(WMX.dom.sidebarRight())}px`; };
-
-  function showPage() {
-    if (!S.page) buildPage();
-    placePage();
-    S.page.hidden = false;
-    renderAll();
-    refresh().then(prepareFrames);
-    prepareFrames();
-    schedulePoll();
-  }
-  function hidePage() {
-    if (S.page) S.page.hidden = true;
-    renderAll();
-    schedulePoll();
+    if (S.bubble) S.bubble.hidden = WMX.settings?.auctionBubble === false || !D.loaded;
   }
 
   // --- Bulle flottante -------------------------------------------------------------------------
@@ -231,7 +212,7 @@
     S.bubbleBody = el('div', { class: 'wmx-bubble-body' });
     const panel = el('div', { class: 'wmx-bubble-panel', hidden: '' },
       el('div', { class: 'wmx-bubble-head' }, el('strong', {}, 'Mes enchères'),
-        el('span', {}, el('button', { class: 'wmx-qclear', onclick: () => WMX.openAuctionsPage?.() }, 'Ouvrir la page'),
+        el('span', {}, el('button', { class: 'wmx-qclear', title: 'Actualiser maintenant', onclick: refresh }, '↻'),
           el('button', { class: 'wmx-qclear', title: 'Réduire', onclick: () => toggleBubble(false) }, '×'))),
       S.bubbleBody);
     S.bubblePanel = panel;
@@ -245,8 +226,7 @@
     schedulePoll();
   }
 
-  WMX.auctions = { refresh, showPage, hidePage, pageOpen, state: () => D };
-  WMX.openAuctionsPage = () => document.querySelector('[data-wmx-nav="auctions"]')?.click();
+  WMX.auctions = { refresh, state: () => D };
 
   WMX.register({
     name: 'auctions',

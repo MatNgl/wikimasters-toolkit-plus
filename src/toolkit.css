@@ -272,3 +272,23 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-bubble-body { display: flex; flex-direction: column; gap: 14px; }
 .wmx-bubble-body .wmx-auc-list { grid-template-columns: 1fr; }
 .wmx-bubble-body .wmx-auc-sec h3 { font-size: 13px; }
+
+/* ===== Bulle des enchères : deux colonnes (0.6.1) ===== */
+.wmx-bubble-panel { width: min(860px, 94vw); }
+.wmx-bubble-body { flex-direction: row; align-items: flex-start; gap: 14px; }
+.wmx-auc-col { flex: 1 1 0; min-width: 0; }
+.wmx-auc-col h3 { margin: 0 0 8px; font-size: 13px; color: var(--acc,#2dd4a0); }
+.wmx-auc-col .wmx-auc-list { display: flex; flex-direction: column; gap: 8px; }
+@media (max-width: 720px) { .wmx-bubble-body { flex-direction: column; } .wmx-auc-col { width: 100%; } }
+.wmx-auc-row { align-items: stretch; }
+.wmx-auc-name { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.wmx-auc-name strong { min-width: 0; }
+.wmx-auc-rar { flex: none; font: 800 12px Outfit, system-ui, sans-serif; }
+.wmx-auc-state { font: 700 11px Outfit, system-ui, sans-serif; text-transform: uppercase; letter-spacing: .04em; }
+.wmx-auc-state.ok { color: #2dd4a0; }
+.wmx-auc-state.ko { color: #fca5a5; }
+.wmx-auc-time.low { color: #ef4444; }
+.wmx-auc-side { justify-content: space-between; align-items: flex-end; }
+.wmx-auc-price { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.15; }
+.wmx-auc-price small { color: #9db5a8; font-size: 11px; }
+.wmx-auc-price b { font: 800 20px Outfit, system-ui, sans-serif; color: #fff; font-variant-numeric: tabular-nums; }
