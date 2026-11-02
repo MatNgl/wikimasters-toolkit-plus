@@ -100,7 +100,15 @@
     WMX.inventory.renderStatus(); // la barre vient d'être insérée : on affiche tout de suite l'état
   }
 
+  /** Description et attaque/défense : affichées ou masquées selon les Paramètres (classes sur la page, lues par le CSS). */
+  const syncFlags = () => {
+    const s = WMX.settings || {};
+    document.documentElement.classList.toggle('wmx-hide-desc', s.cardShowDesc === false);
+    document.documentElement.classList.toggle('wmx-hide-stats', s.cardShowStats === false);
+  };
+
   function scan() {
+    syncFlags();
     if (!isPage()) return;
     ensureBar();
     for (const h3 of document.querySelectorAll('main h3')) {
@@ -121,6 +129,7 @@
       WMX.inventory.onChange(() => { clearTimeout(window.__wmxNtRepaint); window.__wmxNtRepaint = setTimeout(repaintAll, 150); });
       WMX.quick?.onChange(() => { clearTimeout(window.__wmxNtRepaint); window.__wmxNtRepaint = setTimeout(repaintAll, 150); });
       window.addEventListener('wmx:fav', repaintAll);
+      window.addEventListener('wmx:settings', () => { syncFlags(); scan(); });
       schedule();
     },
   });

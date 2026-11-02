@@ -499,3 +499,9 @@ html:not([data-wmx-route^="/pulls"]) .wmx-panel, html:not([data-wmx-route^="/pul
 /* Reflet : en continu sur les Légendaires, au survol pour les autres raretés (économise le rendu sur 50 cartes) */
 .wmx-sty:not([data-wmx-r="L"]) .wmx-sty-sheen { animation: none; opacity: 0; transition: opacity .3s ease; }
 .wmx-sty:not([data-wmx-r="L"]):hover .wmx-sty-sheen { opacity: 1; animation: wmx-sheen 2.4s ease-in-out infinite; }
+
+/* Description et attaque/défense masquables (Paramètres → Aspect des cartes) */
+.wmx-hide-desc .wmx-sty p { display: none !important; }
+.wmx-hide-desc .wmx-sty h3 { -webkit-line-clamp: 3 !important; }
+.wmx-hide-stats .wmx-sty div[class*="border-t"] { display: none !important; }
+.wmx-hide-stats .wmx-sty > div[class*="top-[45%]"] { padding-bottom: 12px !important; }

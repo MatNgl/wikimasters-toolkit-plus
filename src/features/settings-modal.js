@@ -8,7 +8,7 @@
     speed: 'normal', order: 'rarity', images: true,
     stopOn: 'off', reserve: 0, fullStockOpen: true, anticipate: true,
     quickCoef: 0.9, quickDuration: '1h', quickPrudent: false, auctionBubble: true, auctionNotify: true, autoReload: true,
-    autoDefaultMode: 'time', autoDefaultSecs: 35, autoCapMode: 'avg', autoCapW: 100, autoCapPct: 20, autoDefaultOn: false, cardStyle: true,
+    autoDefaultMode: 'time', autoDefaultSecs: 35, autoCapMode: 'avg', autoCapW: 100, autoCapPct: 20, autoDefaultOn: false, cardStyle: true, cardShowDesc: true, cardShowStats: true,
   };
 
   const SECTIONS = [
@@ -71,6 +71,8 @@
       title: 'Aspect des cartes',
       desc: 'Apparence des cartes dans la page Collection.',
       items: [
+        { key: 'cardShowDesc', type: 'toggle', label: 'Afficher la description', desc: 'Courte description Wikipédia sous le titre de la carte. Masquée, le titre peut tenir sur trois lignes.' },
+        { key: 'cardShowStats', type: 'toggle', label: 'Afficher l’attaque et la défense', desc: 'Les deux valeurs en bas de chaque carte (épées et bouclier).' },
         { key: 'cardStyle', type: 'toggle', label: 'Style de carte plein cadre', desc: 'Illustration sur toute la carte, texte sur dégradé, cadre à la couleur de la rareté, vagues fines et reflet. Désactivez pour revoir les cartes du jeu telles quelles (actualisez la page).' },
       ],
     },
@@ -156,6 +158,7 @@
             Object.assign(WMX.settings, draft);
             WMX.store.set('wmxSettings', WMX.settings);
             WMX.applySettings?.();
+            window.dispatchEvent(new CustomEvent('wmx:settings')); // les pages se mettent à jour sans rechargement
             close();
           } }, 'Appliquer'))));
     const backdrop = el('div', { class: 'wmx-modal-backdrop', onmousedown: (e) => { if (e.target === backdrop) close(); } }, modal);

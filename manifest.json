@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WikiMasters Toolkit+",
-  "version": "0.14.0",
+  "version": "0.14.1",
   "description": "Ouverture groupée des paquets, statistiques, prix du marché, enchères et mises automatiques pour WikiMasters.",
   "permissions": [
     "storage",
@@ -74,7 +74,7 @@
       "world": "MAIN"
     }
   ],
-  "version_name": "0.14.0 · style de carte plein cadre pour toutes les raretés",
+  "version_name": "0.14.1 · description et attaque/défense au choix",
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",
