@@ -144,6 +144,28 @@
       if (ratio >= 0.95) return { kind: 'even', label: 'Prix du marché', pct, low };
       return { kind: 'loss', label: 'À perte', pct, low };
     },
+    /**
+     * Assistant de vente : quelles cartes mettre en vente pour remplir les emplacements libres.
+     * items : cartes de l'inventaire { card_id, title, rarity, starred, count, tags: [{ name }] }.
+     * o : { tags: [noms], free: emplacements à remplir, busy: Set(card_id) déjà en vente/en file, skip: { card_id: jusqu'à (ms) },
+     *       log: { card_id: [dates de mise en vente auto] }, now, perDay: mises en vente max par carte et par 24 h, avg: (carte) => moyenne ou null }.
+     * Jamais une carte favorite, déjà en vente, écartée (annulée à la main, échecs répétés) ou déjà remise en vente trop souvent ;
+     * les cartes les plus chères d'abord.
+     */
+    pickAutoSell(items, o) {
+      const key = (s) => String(s || '').trim().toLowerCase();
+      const keys = new Set((o.tags || []).map(key).filter(Boolean));
+      if (!keys.size || !(o.free > 0)) return [];
+      const day = 24 * L.HOUR;
+      const perDay = o.perDay || 4;
+      const ok = (items || []).filter((it) => !it.starred && it.count > 0 && !(o.busy && o.busy.has(it.card_id))
+        && (it.tags || []).some((t) => keys.has(key(t.name)))
+        && !((o.skip && o.skip[it.card_id]) > o.now)
+        && ((o.log && o.log[it.card_id]) || []).filter((t) => o.now - t < day).length < perDay);
+      const avg = (it) => (o.avg && o.avg(it)) || 0;
+      ok.sort((a, b) => avg(b) - avg(a) || String(a.title).localeCompare(String(b.title)));
+      return ok.slice(0, o.free);
+    },
     /** Message clair pour un échec réseau ou un code HTTP. */
     friendlyError(status) {
       if (status === 0 || status == null) return 'Connexion impossible : vérifiez votre réseau.';

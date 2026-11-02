@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WikiMasters Toolkit+",
-  "version": "0.14.6",
+  "version": "0.15.0",
   "description": "Ouverture groupée des paquets, statistiques, prix du marché, enchères et mises automatiques pour WikiMasters.",
   "permissions": [
     "storage",
@@ -39,6 +39,7 @@
         "src/lib/namespace.js",
         "src/lib/logic.js",
         "src/lib/storage.js",
+        "src/lib/journal.js",
         "src/lib/dom.js",
         "src/lib/sniffer.js",
         "src/features/stats.js",
@@ -48,6 +49,7 @@
         "src/features/boosters.js",
         "src/features/prices.js",
         "src/features/quick-auction.js",
+        "src/features/auto-sell.js",
         "src/features/auctions.js",
         "src/features/inventory.js",
         "src/features/collection-native.js",
@@ -74,7 +76,7 @@
       "world": "MAIN"
     }
   ],
-  "version_name": "0.14.6 · annulation : le cadre reste ouvert jusqu'à confirmation",
+  "version_name": "0.15.0 · assistant de vente, journal d'activité, défausse 100 % native",
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",

@@ -10,6 +10,7 @@
   const MINUTES = { '10 min': 10, '30 min': 30, '1 h': 60, '3 h': 180, '6 h': 360, '12 h': 720 };
   const S = { fav: new Map(), selling: new Map(), max: 10, queue: [], current: null, running: false, batch: { done: 0, total: 0, ok: 0, failed: [] } };
   const listeners = new Set();
+  const resultListeners = new Set(); // (op, résultat) après chaque opération de la file : l'assistant de vente en tire ses écarts
   const notify = () => listeners.forEach((cb) => { try { cb(); } catch (_) { /* écouteur obsolète */ } });
   const slim = (it) => ({ card_id: it.card_id, title: it.title, rarity: it.rarity, starred: !!it.starred, tag: it.tag, add: it.add, want: it.want });
   const isAuctionOp = (o) => o.type === 'launch' || o.type === 'cancel';
@@ -249,29 +250,8 @@
     }
   }
 
-  /** Défausse UNE carte avec le bouton « Défausser » de la fiche (et sa confirmation éventuelle). Une carte favorite est refusée. */
-  async function doDiscard(item) {
-    const r = await WMX.sheet.exclusive(() => WMX.sheet.openInFrame({ id: item.card_id, wikipedia_title: item.title, rarity: item.rarity }, 'work'), 'work');
-    if (r.error) return { error: SHEET_ERRORS[r.error] };
-    const { root, d } = r;
-    try {
-      const star = [...root.querySelectorAll('button')].find((b) => /favoris/i.test(b.getAttribute('aria-label') || ''));
-      if (star && /^retirer/i.test(star.getAttribute('aria-label') || '')) return { error: 'carte favorite : verrouillée, impossible de la défausser' };
-      const btn = [...root.querySelectorAll('button')].find((b) => /^Défausser/i.test(b.textContent.trim()));
-      if (!btn || btn.disabled) return { error: 'bouton « Défausser » indisponible (carte verrouillée ou en vente ?)' };
-      btn.click();
-      const confirm = await waitFor(() => [...d.querySelectorAll('button')].find((b) => b !== btn && /^(Confirmer|Oui|Valider|Défausser( la carte)?)$/i.test(b.textContent.trim())), 2500, 120);
-      confirm?.click();
-      if (!(await waitFor(() => !root.isConnected || !btn.isConnected, 9000, 200))) return { error: 'le jeu n’a pas défaussé la carte' };
-      window.dispatchEvent(new CustomEvent('wmx:discard', { detail: { card_id: item.card_id } }));
-      return { ok: true };
-    } finally {
-      WMX.sheet.closeSheet('work');
-    }
-  }
-
   // --- Pastille de progression (visible sur toutes les pages) -----------------------------------
-  const OP_LABEL = { launch: 'Mise en vente', cancel: 'Annulation', favorite: 'Favori', tag: 'Étiquette', discard: 'Défausse' };
+  const OP_LABEL = { launch: 'Mise en vente', cancel: 'Annulation', favorite: 'Favori', tag: 'Étiquette' };
   const opLabel = (op) => (op.type === 'tag' ? `Étiquette « ${op.item.tag} » ${op.item.add ? '+' : '−'}` : op.type === 'favorite' && op.item.want ? (op.item.want === 'on' ? 'Mise en favori' : 'Retrait du favori') : OP_LABEL[op.type]);
 
   /** Retire UNE opération en attente de la file (celle en cours de traitement ne peut pas être interrompue). */
@@ -315,6 +295,14 @@
     persist(); notify(); updateChip();
   }
 
+  function journalOp(op, res) {
+    const what = `${OP_LABEL[op.type] || op.type} : ${op.item.title}`;
+    if (res.ok) WMX.journal?.add('File', `${what} — réussie${res.price ? ` (${res.price} W)` : ''}`);
+    else if (res.skipped) WMX.journal?.add('File', `${what} — rien à faire (déjà fait)`);
+    else if (res.limit) WMX.journal?.add('File', `${what} — limite d’enchères atteinte`, 'warn');
+    else WMX.journal?.add('File', `${what} — échec : ${res.error || 'inconnu'}`, 'error');
+  }
+
   async function process() {
     if (S.running) return;
     S.running = true;
@@ -332,9 +320,11 @@
         S.current = op;
         updateChip(); notify();
         let res;
-        try { res = op.type === 'launch' ? await doLaunch(op.item) : op.type === 'cancel' ? await doCancel(op.item) : op.type === 'tag' ? await doTag(op.item) : op.type === 'discard' ? await doDiscard(op.item) : await doFavorite(op.item); } catch (e) { console.warn('[WMX] file d’enchères', op.type, op.item.title, e); res = { error: `${e?.name || 'Erreur'} : ${e?.message || e}` }; }
+        try { res = op.type === 'launch' ? await doLaunch(op.item) : op.type === 'cancel' ? await doCancel(op.item) : op.type === 'tag' ? await doTag(op.item) : await doFavorite(op.item); } catch (e) { console.warn('[WMX] file d’enchères', op.type, op.item.title, e); res = { error: `${e?.name || 'Erreur'} : ${e?.message || e}` }; }
         S.queue = S.queue.filter((o) => o !== op);
         S.current = null;
+        journalOp(op, res);
+        resultListeners.forEach((cb) => { try { cb(op, res); } catch (_) { /* écouteur obsolète */ } });
         S.batch.done += 1;
         S.lastOpType = op.type;
         if (res.ok) S.batch.ok += 1;
@@ -350,7 +340,7 @@
       if (b.total > 1 || b.failed.length) {
         WMX.toast(`File terminée : ${b.ok} réussie${b.ok > 1 ? 's' : ''}${b.failed.length ? ` · ${b.failed.length} à vérifier (${b.failed.slice(0, 2).join(' ; ')})` : ''}.`, 9000);
       } else if (b.ok) {
-        WMX.toast({ launch: 'Enchère lancée. Recliquez sur ⚡ pour l’annuler.', cancel: 'Enchère annulée : la carte est de retour dans votre collection.', favorite: 'Favori mis à jour.', tag: 'Étiquette mise à jour.', discard: 'Carte défaussée.' }[S.lastOpType] || 'Terminé.', 5000);
+        WMX.toast({ launch: 'Enchère lancée. Recliquez sur ⚡ pour l’annuler.', cancel: 'Enchère annulée : la carte est de retour dans votre collection.', favorite: 'Favori mis à jour.', tag: 'Étiquette mise à jour.' }[S.lastOpType] || 'Terminé.', 5000);
       }
       const lastLaunched = S.lastLaunched && S.selling.get(S.lastLaunched);
       if (lastLaunched) prewarm(lastLaunched); // prépare l'annulation éventuelle de la dernière enchère lancée
@@ -384,12 +374,13 @@
   WMX.quick = {
     refresh,
     onChange(cb) { listeners.add(cb); return () => listeners.delete(cb); },
+    onResult(cb) { resultListeners.add(cb); return () => resultListeners.delete(cb); },
     isRunning: () => S.running || S.queue.length > 0,
     stateOf,
     favState,
     isStarred,
     /**
-     * Opérations en lot sur des cartes (actions en lot) : 'favorite' (want 'on' | 'off'), 'tag' (tag, add), 'discard'.
+     * Opérations en lot sur des cartes (actions en lot) : 'favorite' (want 'on' | 'off'), 'tag' (tag, add). La défausse en lot est celle, native, du jeu (sélection de la collection).
      * Chaque carte est mise dans la même file que les enchères, traitée en arrière-plan, et reprend après un rechargement.
      */
     bulk(type, items, extra = {}) {
@@ -445,7 +436,7 @@
   // Reprise : une file mémorisée (page rechargée en cours de route) repart toute seule.
   (async () => {
     const stored = await WMX.store.get('quickQueue', []);
-    // Une défausse est définitive : elle ne reprend JAMAIS toute seule après un rechargement (à relancer depuis la sélection).
+    // Une défausse est définitive et n'existe plus dans l'extension (défausse native du jeu) : toute opération de ce type, héritée d'une ancienne version, est abandonnée.
     const q = stored.filter((o) => o.type !== 'discard').map((o) => ({ ...o, id: o.id || newId() }));
     if (q.length !== stored.length || q.some((o, i) => o.id !== stored[i]?.id)) {
       await WMX.store.set('quickQueue', q);

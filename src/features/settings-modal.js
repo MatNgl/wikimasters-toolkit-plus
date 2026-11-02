@@ -8,7 +8,7 @@
     speed: 'normal', order: 'rarity', images: true,
     stopOn: 'off', reserve: 0, fullStockOpen: true, anticipate: true,
     quickCoef: 0.9, quickDuration: '1h', quickPrudent: false, auctionBubble: true, auctionNotify: true, autoReload: true,
-    autoDefaultMode: 'time', autoDefaultSecs: 35, autoCapMode: 'avg', autoCapW: 100, autoCapPct: 20, autoDefaultOn: false, cardStyle: true, cardShowDesc: true, cardShowStats: true,
+    autoDefaultMode: 'time', autoDefaultSecs: 35, autoCapMode: 'avg', autoCapW: 100, autoCapPct: 20, autoDefaultOn: false, autoSell: false, autoSellTags: 'VENTE', autoSellMax: 3, cardStyle: true, cardShowDesc: true, cardShowStats: true,
   };
 
   const SECTIONS = [
@@ -43,6 +43,15 @@
         { key: 'quickDuration', type: 'select', label: 'Durée de l\u2019enchère', desc: 'Durée proposée par défaut (celles du jeu).',
           options: [['10min', '10 min'], ['30min', '30 min'], ['1h', '1 h'], ['3h', '3 h'], ['6h', '6 h'], ['12h', '12 h']] },
         { key: 'quickPrudent', type: 'toggle', label: 'Mode prudent', desc: 'Le prix de départ ne dépasse pas 1,2 fois la dernière vente.' },
+      ],
+    },
+    {
+      title: 'Assistant de vente',
+      desc: 'Garde des enchères actives avec vos cartes portant certaines étiquettes, et remet en vente celles qui n’ont pas trouvé preneur. Même prix de départ et même durée que le bouton ⚡. Pour vendre des cartes précises, donnez-leur l’étiquette (sélection du jeu → étiquette).',
+      items: [
+        { key: 'autoSell', type: 'toggle', label: 'Activer l’assistant de vente', desc: 'Désactivé par défaut : une fois activé, il met de vraies cartes en vente tout seul (jamais une favorite).' },
+        { key: 'autoSellTags', type: 'text', label: 'Étiquettes à vendre', desc: 'Noms séparés par des virgules (ex. VENTE, Doublons). Seules les cartes portant l’une d’elles sont concernées.' },
+        { key: 'autoSellMax', type: 'number', min: 1, max: 10, step: 1, label: 'Enchères actives visées', desc: 'L’assistant complète jusqu’à ce nombre d’enchères en cours (vos ventes manuelles comptent). 10 = limite du jeu.' },
       ],
     },
     {
@@ -84,6 +93,14 @@
       ],
     },
     {
+      title: 'Journal d’activité',
+      desc: 'Les derniers événements de l’extension (file d’attente, assistant de vente, incidents), gardés sur cet ordinateur.',
+      items: [
+        { type: 'action', label: 'Journal', desc: 'Ce que l’extension a fait et ce qui a échoué, avec l’heure.', button: 'Afficher', run: () => WMX.journal.show() },
+        { type: 'action', label: 'Diagnostic', desc: 'Copie le journal pour le transmettre en cas de problème.', button: 'Copier', run: () => WMX.journal.copy() },
+      ],
+    },
+    {
       title: 'Données',
       desc: 'Historique de vos tirages, conservé sur cet ordinateur.',
       items: [
@@ -112,6 +129,11 @@
           if (Number.isFinite(v)) draft[it.key] = Math.min(it.max, Math.max(it.min, v));
           i.value = String(draft[it.key]);
         });
+        return i;
+      }
+      if (it.type === 'text') {
+        const i = el('input', { class: 'wmx-input', type: 'text', value: String(draft[it.key] ?? ''), placeholder: 'VENTE' });
+        i.addEventListener('input', () => { draft[it.key] = i.value; });
         return i;
       }
       if (it.type === 'toggle') {

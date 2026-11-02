@@ -531,3 +531,13 @@ html:not([data-wmx-route^="/pulls"]) .wmx-panel, html:not([data-wmx-route^="/pul
 .wmx-dots i { font-style: normal; animation: wmx-dot 1.2s infinite; opacity: .2; }
 .wmx-dots i:nth-child(2) { animation-delay: .2s; } .wmx-dots i:nth-child(3) { animation-delay: .4s; }
 @keyframes wmx-dot { 0%, 20% { opacity: .2; } 40% { opacity: 1; } 100% { opacity: .2; } }
+
+/* ===== Journal d'activité (0.15.0) ===== */
+.wmx-jlist { display: flex; flex-direction: column; gap: 2px; max-height: 60vh; overflow-y: auto; }
+.wmx-jrow { display: grid; grid-template-columns: 112px 108px minmax(0, 1fr); gap: 10px; padding: 6px 8px; border-radius: 8px; font-size: 12px; align-items: baseline; }
+.wmx-jrow:hover { background: #ffffff0a; }
+.wmx-jrow time { color: #8aa; font-variant-numeric: tabular-nums; }
+.wmx-jrow b { color: #cfe; font-weight: 600; }
+.wmx-jrow.warn span { color: #fbbf24; }
+.wmx-jrow.error span { color: #f87171; }
+.wmx-jempty { color: #9db5a8; padding: 18px 8px; text-align: center; }

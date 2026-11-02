@@ -387,3 +387,32 @@ test('annuler une vente : le bouton indique tout de suite « Annulation… » et
   assert.ok(btn.querySelector('.wmx-dots'));
   env.close();
 });
+
+test('assistant de vente : remplit les emplacements libres avec les cartes étiquetées, jamais sans réglage', async () => {
+  const env = createEnv({ fetchImpl: async () => json({ selling: [auction('x1', { card_id: 'busy' })], bidding: [], won: [{ winner_id: ME }], history: [] }) });
+  const { WMX } = env;
+  const card = (id, tag, over = {}) => ({ card_id: id, title: 'Carte ' + id, rarity: 'R', count: 1, starred: false, tags: [{ name: tag }], ...over });
+  WMX.inventory.items = () => [card('busy', 'VENTE'), card('k1', 'VENTE'), card('k2', 'VENTE'), card('k3', 'VENTE'), card('fav', 'VENTE', { starred: true }), card('autre', 'Animaux')];
+  WMX.inventory.isLoading = () => false;
+  const got = [];
+  WMX.quick.bulk = (type, items) => got.push(type, ...items.map((i) => i.card_id));
+  await WMX.autoSell.tick();
+  assert.deepEqual(got, [], 'désactivé par défaut : aucune mise en vente');
+  Object.assign(WMX.settings, { autoSell: true, autoSellTags: 'vente', autoSellMax: 3 });
+  await WMX.autoSell.tick();
+  assert.deepEqual(got, ['launch', 'k1', 'k2'], '3 enchères visées, 1 déjà en cours : 2 cartes étiquetées, ni la favorite ni l\'autre étiquette');
+  env.close();
+});
+
+test('journal d\'activité : entrées en série, rapport copiable', async () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  const { WMX } = env;
+  await Promise.all([WMX.journal.add('File', 'Mise en vente : A — réussie'), WMX.journal.add('File', 'Annulation : B — échec : lent', 'error')]);
+  const list = await WMX.journal.list();
+  assert.equal(list.length, 2);
+  const rep = await WMX.journal.report();
+  assert.match(rep, /\[error\] File — Annulation : B — échec : lent/);
+  await WMX.journal.clear();
+  assert.equal((await WMX.journal.list()).length, 0);
+  env.close();
+});

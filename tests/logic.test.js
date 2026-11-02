@@ -181,3 +181,19 @@ test('anneau du compte à rebours : part restante et couleur', () => {
   assert.equal(L.ringColor(0), 'hsl(0 85% 52%)');
   assert.equal(L.ringColor(0.5), 'hsl(65 85% 52%)');
 });
+
+test('assistant de vente : cartes éligibles, ordre et garde-fous', () => {
+  const now = 1_000_000_000_000;
+  const card = (id, tags, over = {}) => ({ card_id: id, title: id, rarity: 'R', count: 1, starred: false, tags: tags.map((name) => ({ name })), ...over });
+  const items = [card('a', ['VENTE']), card('b', ['vente ']), card('c', ['Autre']), card('d', ['VENTE'], { starred: true }),
+    card('e', ['VENTE']), card('f', ['VENTE']), card('g', ['VENTE']), card('h', ['VENTE'], { count: 0 })];
+  const avg = { a: 10, b: 50, e: 30, f: 20, g: 40 };
+  const o = { tags: ['VENTE'], free: 10, busy: new Set(['e']), skip: { f: now + 1000 }, log: { g: [now - 1000, now - 2000, now - 3000, now - 4000] }, now, avg: (it) => avg[it.card_id] };
+  assert.deepEqual(L.pickAutoSell(items, o).map((i) => i.card_id), ['b', 'a'],
+    'étiquette (sans tenir compte de la casse), pas de favorite, pas de carte en vente/écartée/déjà trop remise en vente, les plus chères d\'abord');
+  assert.deepEqual(L.pickAutoSell(items, { ...o, free: 1 }).map((i) => i.card_id), ['b'], 'au plus le nombre d\'emplacements libres');
+  assert.deepEqual(L.pickAutoSell(items, { ...o, free: 0 }), []);
+  assert.deepEqual(L.pickAutoSell(items, { ...o, tags: [] }), [], 'sans étiquette choisie : rien');
+  assert.deepEqual(L.pickAutoSell(items, { ...o, now: now + 2 * 24 * 3600_000 }).map((i) => i.card_id), ['b', 'g', 'f', 'a'],
+    'deux jours plus tard : l\'écart de f et le compteur de g ont expiré (e reste en vente)');
+});
