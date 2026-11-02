@@ -8,7 +8,7 @@
   const { el, sleep, waitFor } = WMX.dom;
   const LABELS = { '10min': '10 min', '30min': '30 min', '1h': '1 h', '3h': '3 h', '6h': '6 h', '12h': '12 h' };
   const MINUTES = { '10 min': 10, '30 min': 30, '1 h': 60, '3 h': 180, '6 h': 360, '12 h': 720 };
-  const S = { fav: new Map(), selling: new Map(), max: 10, queue: [], current: null, running: false, batch: { done: 0, total: 0, ok: 0, failed: [] } };
+  const S = { fav: new Map(), selling: new Map(), notOwned: new Set(), max: 10, queue: [], current: null, running: false, batch: { done: 0, total: 0, ok: 0, failed: [] } };
   const listeners = new Set();
   const resultListeners = new Set(); // (op, résultat) après chaque opération de la file : l'assistant de vente en tire ses écarts
   const notify = () => listeners.forEach((cb) => { try { cb(); } catch (_) { /* écouteur obsolète */ } });
@@ -53,6 +53,11 @@
       const j = await res.json();
       S.max = j.maxConcurrentAuctions || 10;
       S.selling = new Map((j.selling || []).filter((a) => a.status === 'active').map((a) => [a.card_id, a]));
+      // Le jeu indique, sur chaque enchère de l'historique, si la carte est TOUJOURS possédée (`owned`) : une carte vendue ne l'est plus.
+      // La liste de l'inventaire en mémoire peut dater d'avant la vente, celle-ci non.
+      const owned = new Map();
+      for (const a of [...(j.selling || []), ...(j.history || [])]) if (typeof a.owned === 'boolean') owned.set(a.card_id, owned.get(a.card_id) || a.owned);
+      S.notOwned = new Set([...owned].filter(([, o]) => !o).map(([id]) => id));
       notify();
     } catch (_) { /* réseau : on garde l'état précédent */ }
   }
@@ -79,7 +84,7 @@
   /** Ouvre la fiche (cachée), le formulaire d'enchère, saisit le prix et la durée, puis lance. */
   async function driveForm(item, price, dur) {
     const r = await WMX.sheet.openInFrame({ id: item.card_id, wikipedia_title: item.title, rarity: item.rarity }, 'work');
-    if (r.error) return { error: SHEET_ERRORS[r.error] };
+    if (r.error) return { error: SHEET_ERRORS[r.error], ...(r.error === 'notfound' ? { gone: true, fatal: true } : {}) }; // introuvable : inutile de réessayer
     const { d, w, root } = r;
     try {
       const open = [...root.querySelectorAll('button')].find((b) => /Mettre aux enchères/i.test(b.textContent));
@@ -157,7 +162,7 @@
     };
     let res = await attempt();
     if (!res.ok && !res.fatal) { await sleep(3000); res = await attempt(); } // un nouvel essai (le cadre est remis sur la collection)
-    if (!res.ok) return { error: res.error };
+    if (!res.ok) return { error: res.error, gone: !!res.gone };
     // Le serveur du jeu peut mettre quelques secondes à enregistrer l'enchère : on vérifie jusqu'à 6 fois avant de conclure à un échec.
     for (let t = 0; t < 6; t++) {
       await sleep(t ? 2500 : 600);
@@ -325,6 +330,7 @@
         S.queue = S.queue.filter((o) => o !== op);
         S.current = null;
         journalOp(op, res);
+        if (res.gone) window.dispatchEvent(new CustomEvent('wmx:discard', { detail: { card_id: op.item.card_id } })); // carte disparue : l'inventaire la retire
         resultListeners.forEach((cb) => { try { cb(op, res); } catch (_) { /* écouteur obsolète */ } });
         S.batch.done += 1;
         S.lastOpType = op.type;
@@ -394,6 +400,8 @@
       enqueue({ type: 'favorite', item: slim({ ...item, starred: isStarred(item) }) });
     },
     selling: (cardId) => S.selling.get(cardId) || null,
+    /** Vrai si le jeu indique que cette carte n'est plus à nous (vendue…), d'après la dernière lecture de « mes ventes ». */
+    notOwned: (cardId) => S.notOwned.has(cardId),
     count: () => S.selling.size,
     queued: () => S.queue.filter((o) => o.type === 'launch').length,
     max: () => S.max,

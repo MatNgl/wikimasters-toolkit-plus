@@ -541,3 +541,22 @@ test('réglages : « Appliquer » n\'enregistre que les réglages modifiés (n\'
   assert.ok(input);
   env.close();
 });
+
+test('assistant de vente : ne remet jamais en vente une carte que le jeu dit ne plus posséder (vendue)', async () => {
+  const env = createEnv({ fetchImpl: async () => json({ selling: [], bidding: [], won: [{ winner_id: ME }],
+    history: [{ id: 'h1', card_id: 'vendue', status: 'settled_sold', owned: false }, { id: 'h2', card_id: 'revenue', status: 'settled_unsold', owned: true }] }) });
+  const { w, WMX } = env;
+  const card = (id) => ({ card_id: id, title: 'Carte ' + id, rarity: 'R', count: 1, starred: false, tags: [{ name: 'VENTE' }] });
+  WMX.inventory.items = () => [card('vendue'), card('revenue'), card('autre')];
+  Object.assign(WMX.settings, { autoSell: true, autoSellTags: 'VENTE', autoSellMax: 5 });
+  const got = [];
+  WMX.quick.bulk = (type, items) => got.push(...items.map((i) => i.card_id));
+  const gone = [];
+  w.addEventListener('wmx:discard', (e) => gone.push(e.detail.card_id));
+  await WMX.autoSell.tick();
+  assert.deepEqual(got.sort(), ['autre', 'revenue'], 'la carte vendue n\'est pas choisie, celle revenue invendue l\'est');
+  assert.deepEqual(gone, ['vendue'], 'elle est retirée de l\'inventaire en mémoire');
+  WMX.autoSell.openPanel();
+  assert.match(w.document.querySelector('.wmx-aspanel').textContent, /plus dans votre collection/);
+  env.close();
+});

@@ -155,7 +155,7 @@
     pickAutoSell(items, o) { return L.autoSellPlan(items, o).eligible.slice(0, Math.max(0, o.free || 0)); },
     /**
      * Mêmes règles que pickAutoSell, détaillées : `tagged` (cartes portant une étiquette choisie), `eligible` (triées, les plus chères d'abord)
-     * et `excluded` : chaque carte étiquetée mise de côté avec sa raison ('favorite' | 'busy' | 'skipped' | 'capped' | 'perDay') et, pour
+     * et `excluded` : chaque carte étiquetée mise de côté avec sa raison ('gone' | 'favorite' | 'busy' | 'skipped' | 'capped' | 'perDay') et, pour
      * 'skipped', la date de fin de l'écart. Sert à expliquer pourquoi telle carte n'est pas (re)mise en vente.
      */
     autoSellPlan(items, o) {
@@ -171,7 +171,8 @@
         plan.tagged += 1;
         let why = null;
         let until = null;
-        if (it.starred) why = 'favorite';
+        if (o.gone && o.gone(it)) why = 'gone';
+        else if (it.starred) why = 'favorite';
         else if (o.busy && o.busy.has(it.card_id)) why = 'busy';
         else if ((o.skip && o.skip[it.card_id]) > o.now) { why = 'skipped'; until = o.skip[it.card_id]; }
         else if (o.cap > 0 && avg(it) > o.cap) why = 'capped';

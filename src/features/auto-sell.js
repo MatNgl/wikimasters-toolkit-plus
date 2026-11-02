@@ -12,12 +12,12 @@
   const { el, sleep } = WMX.dom;
   const H = WMX.logic.HOUR;
   const EVERY = 45000;
-  const S = { skip: {}, log: {}, fails: {}, leader: !navigator.locks?.request, busy: false, wanted: false, release: null, shared: null, painters: new Set() };
+  const S = { skip: {}, log: {}, fails: {}, leader: !navigator.locks?.request, busy: false, wanted: false, purged: new Set(), release: null, shared: null, painters: new Set() };
   const on = () => !!WMX.settings?.autoSell;
   const tags = () => String(WMX.settings?.autoSellTags || '').split(',').map((t) => t.trim()).filter(Boolean);
   const cap = () => Math.max(1, Number(WMX.settings?.autoSellCap) || 500);
   const maxActive = () => Math.max(1, Math.min(10, Number(WMX.settings?.autoSellMax) || 3));
-  const REASONS = { favorite: 'favorite (verrouillée)', busy: 'déjà en vente ou en file', skipped: 'écartée temporairement', capped: 'trop chère pour l’assistant', perDay: 'limite de 4 mises en vente par jour' };
+  const REASONS = { gone: 'plus dans votre collection (vendue ?)', favorite: 'favorite (verrouillée)', busy: 'déjà en vente ou en file', skipped: 'écartée temporairement', capped: 'trop chère pour l’assistant', perDay: 'limite de 4 mises en vente par jour' };
 
   async function skipCard(id, ms) {
     const cur = await WMX.store.get('autoSellSkip', {}); // relu avant d'écrire : un autre onglet a pu écarter d'autres cartes
@@ -61,7 +61,13 @@
       const active = WMX.quick.count();
       const free = Math.min(st.target - active, WMX.quick.max() - active);
       const busy = new Set(items.filter((it) => WMX.quick.stateOf(it.card_id) !== 'idle').map((it) => it.card_id));
-      const plan = WMX.logic.autoSellPlan(items, { tags: st.tags, busy, skip: S.skip, log: S.log, now, perDay: 4, cap: st.cap, avg: (it) => WMX.prices.get(it.card_id, it.rarity)?.avg || 0 });
+      const plan = WMX.logic.autoSellPlan(items, { tags: st.tags, busy, gone: (it) => WMX.quick.notOwned(it.card_id), skip: S.skip, log: S.log, now, perDay: 4, cap: st.cap, avg: (it) => WMX.prices.get(it.card_id, it.rarity)?.avg || 0 });
+      // Les cartes que le jeu dit ne plus être à nous sont retirées de l'inventaire en mémoire (une seule fois).
+      for (const e of plan.excluded) {
+        if (e.reason !== 'gone' || S.purged.has(e.card_id)) continue;
+        S.purged.add(e.card_id);
+        for (let n = items.find((it) => it.card_id === e.card_id)?.count || 1; n > 0; n--) window.dispatchEvent(new CustomEvent('wmx:discard', { detail: { card_id: e.card_id } }));
+      }
       const counts = {};
       for (const e of plan.excluded) counts[e.reason] = (counts[e.reason] || 0) + 1;
       const detail = {
@@ -181,6 +187,7 @@
         if (op.type === 'cancel') skipCard(op.item.card_id, 12 * H); // vente annulée par vous : l'assistant ne la relance pas
         if (op.type !== 'launch') return;
         if (res.ok) { delete S.fails[op.item.card_id]; return; }
+        if (res.gone) { skipCard(op.item.card_id, 24 * H); WMX.journal?.add('Assistant de vente', op.item.title + ' introuvable dans la collection : écartée 24 h', 'warn'); return; } // vendue entre-temps
         if (res.capped) { skipCard(op.item.card_id, 24 * H); return; } // trop chère pour l'assistant : on n'y revient pas avant demain
         if (res.skipped || res.limit) return;
         S.fails[op.item.card_id] = (S.fails[op.item.card_id] || 0) + 1;
