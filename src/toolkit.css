@@ -29,14 +29,6 @@
 .wmx-panel { overflow: hidden; transition: width .3s ease, max-height .35s ease, padding .3s ease, border-radius .3s ease; }
 .wmx-body { display: flex; flex-direction: column; gap: 8px; transition: opacity .2s; }
 /* Menu réduit : uniquement la bulle « W » (avec son compteur), sans fond ni barre. */
-.wmx-panel.wmx-collapsed { width: 44px; padding: 0; background: transparent; border-color: transparent; box-shadow: none; overflow: visible; }
-.wmx-panel.wmx-collapsed .wmx-body, .wmx-panel.wmx-collapsed .wmx-head h3, .wmx-panel.wmx-collapsed .wmx-icon { opacity: 0; pointer-events: none; }
-.wmx-panel.wmx-folded .wmx-body, .wmx-panel.wmx-folded .wmx-head h3, .wmx-panel.wmx-folded .wmx-icon { display: none; }
-.wmx-panel.wmx-collapsed .wmx-head { justify-content: center; }
-.wmx-fab { cursor: default; }
-.wmx-panel.wmx-collapsed .wmx-fab { width: 44px; height: 44px; cursor: pointer; box-shadow: 0 6px 18px #0008; }
-.wmx-fab-hint { position: absolute; right: -4px; bottom: -4px; width: 16px; height: 16px; border-radius: 50%; background: #0f1412; color: var(--acc,#2dd4a0); font: 800 13px/15px system-ui; text-align: center; border: 1px solid var(--acc,#2dd4a0); opacity: 0; transition: opacity .2s; }
-.wmx-panel.wmx-collapsed .wmx-fab-hint { opacity: 1; }
 .wmx-fab-count { top: -6px; right: -6px; min-width: 20px; height: 20px; line-height: 20px; border: 2px solid #0f1412; box-sizing: content-box; animation: wmx-pulse 1.8s infinite; }
 
 /* Fenêtre de paramètres */
@@ -89,11 +81,9 @@
 .wmx-legend b { color: rgb(var(--rgb)); width: 20px; }
 
 /* Menu réduit : toujours sans fond, quelle que soit la variante */
-.wmx-panel.wmx-collapsed { background: transparent; border-color: transparent; box-shadow: none; backdrop-filter: none; }
 @media (max-width: 1450px) { .wmx-panel { width: 250px; } }
 @media (min-width: 1800px) { .wmx-panel { width: 340px; } }
 @media (min-width: 2300px) { .wmx-panel { width: 380px; } }
-.wmx-panel:not(.wmx-collapsed) { max-height: calc(100vh - 104px); overflow-y: auto; }
 html:not([data-wmx-route^="/pulls"]):not(.wmx-auto-on) .wmx-panel { display: none; }
 html:not([data-wmx-route^="/pulls"]) .wmx-panel { top: auto; bottom: 112px; transform: none; }
 
@@ -455,15 +445,6 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-head { gap: 10px; }
 .wmx-head h3 { font-size: 15px; }
 .wmx-fab { width: 42px; height: 42px; }
-.wmx-fab-ring, .wmx-fab-txt { display: none; }
-.wmx-panel.wmx-collapsed { width: 76px; }
-.wmx-panel.wmx-collapsed .wmx-fab { width: 76px; height: 76px; border-radius: 50%; padding: 0; background: radial-gradient(circle at 30% 25%, #14221c, #0a110e); color: #e6efe9; box-shadow: 0 10px 28px #000b, inset 0 1px 0 #ffffff14; transition: transform .18s ease, box-shadow .18s ease; }
-.wmx-panel.wmx-collapsed .wmx-fab:hover { transform: translateY(-2px) scale(1.03); box-shadow: 0 14px 34px #000c, 0 0 0 1px #2dd4a066; }
-.wmx-panel.wmx-collapsed .wmx-fab-w { display: none; }
-.wmx-panel.wmx-collapsed .wmx-fab-ring { display: block; position: absolute; inset: 2px; width: 72px; height: 72px; transform: rotate(-90deg); }
-.wmx-panel.wmx-collapsed .wmx-fab-txt { display: flex; position: absolute; inset: 0; flex-direction: column; align-items: center; justify-content: center; line-height: 1.15; pointer-events: none; }
-.wmx-fab-txt b { font: 800 14px Outfit, system-ui, sans-serif; } .wmx-fab-txt small { font: 500 10px Outfit, system-ui, sans-serif; color: #9db5a8; }
-.wmx-panel.wmx-collapsed .wmx-fab-hint { display: none; }
 
 /* ===== Cartes de la collection : trois styles d'essai (0.13.0) ===== */
 @keyframes wmx-sheen { 0%, 55% { background-position: 170% 0; } 100% { background-position: -70% 0; } }
@@ -473,7 +454,6 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-sty { transition: transform .25s ease, box-shadow .25s ease; }
 .wmx-sty:hover { transform: translateY(-3px); }
 .wmx-sty .wmx-nt-price { background: rgb(8 12 10 / .72); backdrop-filter: blur(6px); border-color: rgb(var(--wmx-rgb) / .6); }
-.wmx-sty-contain > div[class*="h-[45%]"] img { object-fit: contain !important; }
 
 /* A · plein cadre : l'illustration occupe toute la carte, le texte flotte sur un dégradé */
 .wmx-sty-a > div[class*="h-[45%]"] { height: 100% !important; }
@@ -497,18 +477,31 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-sty-b .wmx-sty-waves { opacity: .3; top: 50%; mix-blend-mode: screen; }
 
 /* C · éditorial : plein cadre, bandeau de verre en bas, ruban de rareté sur le côté, effet holographique au survol */
-.wmx-sty-c > div[class*="h-[45%]"] { height: 100% !important; }
-.wmx-sty-c > div[class*="top-[45%]"] { top: auto !important; bottom: 8px !important; left: 8px !important; right: 8px !important; height: auto !important; padding: 8px 10px !important; border-radius: 12px;
   background: rgb(10 14 12 / .5); backdrop-filter: blur(12px) saturate(1.3); border: 1px solid rgb(255 255 255 / .2); }
-.wmx-sty-c h3 { color: #fff !important; font-size: 12px !important; }
-.wmx-sty-c p { display: none !important; }
-.wmx-sty-c span.font-bold { color: #fff !important; }
-.wmx-sty-c div[class*="border-t"] { border: 0 !important; padding-top: 2px !important; }
-.wmx-sty-c::before { content: ''; position: absolute; left: 0; top: 22%; bottom: 22%; width: 4px; z-index: 44; border-radius: 0 4px 4px 0; background: linear-gradient(to bottom, transparent, rgb(var(--wmx-rgb)), transparent); box-shadow: 0 0 12px rgb(var(--wmx-rgb)); }
-.wmx-sty-c .wmx-sty-waves { opacity: .16; }
-.wmx-sty-c:hover .wmx-sty-sheen { animation-duration: 1.8s; mix-blend-mode: overlay; }
 
 /* ===== Bannière « extension mise à jour » (0.13.3) ===== */
 .wmx-stale { position: fixed; left: 50%; top: 14px; transform: translateX(-50%); z-index: 2147483200; display: flex; align-items: center; gap: 12px; padding: 10px 14px 10px 16px;
   border-radius: 999px; background: #1b1405f2; border: 1px solid #f59e0b88; color: #fde68a; font: 600 13px Outfit, system-ui, sans-serif; box-shadow: 0 14px 40px #000b; animation: wmx-pre-pop .3s ease; }
 .wmx-stale .wmx-btn { padding: 7px 14px; border-radius: 999px; }
+
+/* ===== Menu des paquets : il sort d'un cadran et y rentre, comme la bulle des enchères (0.13.4) ===== */
+.wmx-panel { top: 0; bottom: 0; margin-block: auto; height: max-content; max-height: calc(100vh - 40px); overflow-y: auto; transform: none; transform-origin: 38px 50%;
+  transition: transform .46s cubic-bezier(.22,1,.36,1), opacity .18s ease, border-radius .4s ease; }
+.wmx-panel:not(.open) { transform: scale(.06); opacity: 0; border-radius: 999px; pointer-events: none; overflow: hidden;
+  transition: transform .3s cubic-bezier(.5,0,.75,0), opacity .22s ease .08s, border-radius .3s ease; }
+.wmx-panel > * { transition: opacity .16s ease; }
+.wmx-panel:not(.open) > * { opacity: 0; }
+.wmx-panel.open > * { opacity: 1; transition: opacity .26s ease .16s; }
+.wmx-panel[hidden] { display: none; }
+.wmx-pdial { position: fixed; top: 0; bottom: 0; margin-block: auto; left: 272px; width: 76px; height: 76px; padding: 0; border: 0; border-radius: 50%; z-index: 40; cursor: pointer; color: #e6efe9;
+  background: radial-gradient(circle at 30% 25%, #14221c, #0a110e); box-shadow: 0 10px 28px #000b, inset 0 1px 0 #ffffff14; font-family: Outfit, system-ui, sans-serif;
+  transition: transform .25s cubic-bezier(.22,1,.36,1), opacity .2s ease, box-shadow .18s ease; }
+.wmx-pdial:hover { box-shadow: 0 14px 34px #000c, 0 0 0 1px #2dd4a066; transform: translateY(-2px) scale(1.03); }
+.wmx-pdial.gone { opacity: 0; transform: scale(.5); pointer-events: none; }
+.wmx-pdial .wmx-fab-ring { position: absolute; inset: 2px; width: 72px; height: 72px; transform: rotate(-90deg); display: block; }
+.wmx-pdial .wmx-fab-txt { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.15; pointer-events: none; }
+.wmx-pdial .wmx-fab-txt b { font: 800 14px Outfit, system-ui, sans-serif; } .wmx-pdial .wmx-fab-txt small { font: 500 10px Outfit, system-ui, sans-serif; color: #9db5a8; }
+.wmx-pdial .wmx-fab-count { top: -4px; right: -4px; }
+.wmx-fab { display: grid; place-items: center; }
+html:not([data-wmx-route^="/pulls"]):not(.wmx-auto-on) .wmx-panel, html:not([data-wmx-route^="/pulls"]):not(.wmx-auto-on) .wmx-pdial { display: none; }
+html:not([data-wmx-route^="/pulls"]) .wmx-panel, html:not([data-wmx-route^="/pulls"]) .wmx-pdial { top: auto; bottom: 112px; margin: 0; }

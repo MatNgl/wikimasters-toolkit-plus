@@ -59,8 +59,7 @@
   const setStatus = (t) => { if (ui.status) ui.status.textContent = t; };
   /** Compteur rouge sur la bulle « W » : nombre de paquets ouverts pendant l'auto. */
   const setBadge = () => {
-    ui.fabCount.hidden = !state.auto;
-    ui.fabCount.textContent = String(state.opened);
+    for (const c of [ui.fabCount, ui.fabCount2]) { c.hidden = !state.auto; c.textContent = String(state.opened); }
   };
   const setAutoBtn = () => {
     // Boutons côte à côte : libellés courts.
@@ -315,7 +314,8 @@
     clamp();
 
     ui.autoBtn = el('button', { class: 'wmx-btn wmx-btn--wide', onclick: () => (state.auto ? stopAuto() : startAuto()) });
-    ui.fabCount = el('span', { class: 'wmx-fab-count', hidden: '' });
+    ui.fabCount = el('span', { class: 'wmx-fab-count', hidden: '' });  // sur le cadran
+    ui.fabCount2 = el('span', { class: 'wmx-fab-count', hidden: '' }); // sur le logo de l'en-tête
     // Réduit, le menu devient un cadran comme celui des enchères : l'anneau suit la régénération du prochain paquet, le centre affiche le stock.
     const RING = 2 * Math.PI * 30;
     const ringSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -337,9 +337,9 @@
       ui.fabTxt.title = packs >= max ? 'Stock plein : ouvrez vos paquets' : `Prochain paquet dans ${mmss(nextIn ?? 0)}`;
     };
     setInterval(() => { if (WMX.alive()) updateFab(); }, 1000);
-    // Bulle « W » : simple logo quand le menu est ouvert ; en mode réduit c'est le bouton pour l'agrandir.
-    const fab = el('button', { class: 'wmx-fab', title: 'Agrandir le menu', onclick: () => { if (panel.classList.contains('wmx-collapsed')) setCollapsed(false); } },
-      el('span', { class: 'wmx-fab-w' }, 'W'), ui.fabRing, ui.fabTxt, ui.fabCount, el('span', { class: 'wmx-fab-hint' }, '›'));
+    // Logo « W » de l'en-tête. Le bouton réduit est un cadran à part, comme celui des enchères : le menu en sort et y rentre.
+    const fab = el('span', { class: 'wmx-fab', title: 'WikiMasters Toolkit+' }, el('span', { class: 'wmx-fab-w' }, 'W'), ui.fabCount2);
+    const dial = el('button', { class: 'wmx-pdial gone', title: 'Ouvrir le menu des paquets', 'aria-label': 'Menu des paquets', onclick: () => setCollapsed(false) }, ui.fabRing, ui.fabTxt, ui.fabCount);
     const fold = el('button', { class: 'wmx-icon wmx-fold', title: 'Réduire le menu', 'aria-label': 'Réduire le menu', onclick: () => setCollapsed(true) }, '«');
 
     const body = el('div', { class: 'wmx-body' },
@@ -353,27 +353,37 @@
       el('button', { class: 'wmx-settings-btn', onclick: () => WMX.openSettings() }, el('span', {}, '⚙'), 'Paramètres'),
       el('div', { class: 'wmx-ver' }, (() => { try { return `v${chrome.runtime.getManifest().version_name}`; } catch (_) { return ''; } })()));
 
-    const panel = el('aside', { class: 'wmx-panel' },
+    const panel = el('aside', { class: 'wmx-panel', hidden: '' },
       el('div', { class: 'wmx-head' }, fab, el('h3', {}, 'WikiMasters Toolkit+'), fold), body);
 
-    /** Réduit le menu à la seule bulle (avec son compteur) ou le rouvre, avec animation. */
+    /** Le menu part du centre du cadran et y retourne : son point d'origine est calculé d'après la position réelle des deux. */
+    function aim() {
+      const prev = panel.style.transition;
+      const was = panel.classList.contains('open');
+      panel.style.transition = 'none';
+      panel.hidden = false;
+      panel.classList.add('open');
+      const r = panel.getBoundingClientRect();
+      const d = dial.getBoundingClientRect();
+      panel.style.transformOrigin = `${Math.round(d.left + d.width / 2 - r.left)}px ${Math.round(d.top + d.height / 2 - r.top)}px`;
+      if (!was) panel.classList.remove('open');
+      void panel.offsetWidth;
+      panel.style.transition = prev;
+    }
+    /** Réduit le menu dans son cadran (c = true) ou le fait ressortir, avec animation. */
     function setCollapsed(c, animate = true) {
-      if (!animate) panel.style.transition = 'none';
-      if (c) {
-        panel.style.maxHeight = `${panel.offsetHeight}px`;
-        void panel.offsetWidth; // fixe la hauteur de départ avant l'animation
-        panel.classList.add('wmx-collapsed');
-        panel.style.maxHeight = '44px';
-        if (animate) setTimeout(() => panel.classList.add('wmx-folded'), 380);
-        else panel.classList.add('wmx-folded');
+      clearTimeout(panel._t);
+      if (!c) {
+        if (animate) { aim(); void panel.offsetWidth; } else { panel.hidden = false; panel.style.transition = 'none'; }
+        panel.classList.add('open');
+        dial.classList.add('gone');
+        if (!animate) { void panel.offsetWidth; panel.style.transition = ''; }
       } else {
-        panel.classList.remove('wmx-folded');
-        panel.classList.remove('wmx-collapsed');
-        panel.style.maxHeight = `${panel.scrollHeight}px`;
-        setTimeout(() => { panel.style.maxHeight = ''; }, 450);
+        if (animate) aim();
+        panel.classList.remove('open');
+        panel._t = setTimeout(() => { if (!panel.classList.contains('open')) panel.hidden = true; }, animate ? 340 : 0);
+        setTimeout(() => dial.classList.remove('gone'), animate ? 160 : 0);
       }
-      if (!animate) { void panel.offsetWidth; panel.style.transition = ''; }
-      fab.title = c ? 'Agrandir le menu' : 'WikiMasters Toolkit+';
       WMX.store.set('panelCollapsed', c);
     }
 
@@ -382,14 +392,15 @@
       .observe(document.documentElement, { attributes: true, attributeFilter: ['data-wmx-route'] });
 
     const cover = el('div', { class: 'wmx-cover' });
-    document.body.append(panel, cover);
+    document.body.append(panel, dial, cover);
 
     // La barre latérale du jeu s'élargit selon l'écran : le menu se cale à sa droite au lieu d'une position fixe.
     const place = () => {
       const edges = [...document.querySelectorAll('nav')].map((n) => n.getBoundingClientRect().right).filter((x) => x > 100 && x < 700);
       const x = edges.length ? Math.max(...edges) : 256;
-      const w = panel.classList.contains('wmx-collapsed') ? 44 : (panel.offsetWidth || 300);
-      panel.style.left = `${Math.max(8, Math.min(Math.round(x + 16), innerWidth - w - 8))}px`; // reste toujours dans l'écran
+      const left = `${Math.max(8, Math.min(Math.round(x + 16), innerWidth - (panel.offsetWidth || 330) - 8))}px`; // reste toujours dans l'écran
+      panel.style.left = left;
+      dial.style.left = left;
       cover.style.left = `${Math.round(x)}px`;
     };
     place();
@@ -399,7 +410,7 @@
     setBadge(); setAutoBtn();
     setTimeout(() => WMX.prepareCardSheets?.('view'), 3000); // fiche du jeu prête avant le premier clic sur une carte tirée
     // Petit écran : le menu démarre réduit à sa bulle « W » (visible, jamais masqué) ; on le déplie d'un clic.
-    if ((await WMX.store.get('panelCollapsed', false)) || innerWidth < 1250) setCollapsed(true, false);
+    setCollapsed((await WMX.store.get('panelCollapsed', false)) || innerWidth < 1250, false);
 
     // Statistiques : anneau coloré par rareté + légende, avec le nombre de cartes uniquement.
     const render = async () => {
