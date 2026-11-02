@@ -79,3 +79,8 @@ Légende : ✅ fait et vérifié · 🟡 écrit, à tester · ⬜ à faire
 - **Marché** : bouton « Miser le minimum » sous chaque enchère (page d'enchère préchargée au survol, aucune navigation) ; devient « Surenchérir (minimum) » si on est dépassé et « ✓ Vous menez » sinon.
 - **Échanges** : bouton « Valeurs » sur chaque offre (cartes des deux côtés, moyennes, wikibidous, total, écart) — principe repris de l'ancienne extension, données `/api/trades`.
 - **Collection+** : bouton « ☑ Sélectionner » qui ouvre le mode sélection natif du jeu (défausse, étiquettes en lot).
+
+## 0.11.0 — la collection du jeu remplace Collection+
+- **Collection+ supprimée.** La collection du jeu (/collection) reçoit : barre au-dessus de la recherche (valeur estimée, état des prix, « Charger les prix… »), moyenne du marché sur chaque carte et bouton ⚡ à côté de l'étoile ★ native. Sélection, étiquettes, favoris et défausse en lot : fonctions natives du jeu (instantanées).
+- **Tableau de bord** conservé (entrée de la barre latérale) : valeur, valeur par rareté, top 10, courbe.
+- Nouveaux fichiers : `inventory.js` (inventaire + prix), `collection-native.js`, `dashboard.js`. Supprimé : `collection-plus.js`.

@@ -287,3 +287,32 @@ test('mise automatique : jamais de surenchère sur soi-même (état réel de l\'
   assert.deepEqual(clicks, [], 'aucune mise : le contrôle en direct montre que je mène déjà');
   env.close();
 });
+
+test('collection du jeu : prix et bouton ⚡ ajoutés sur les cartes, barre des prix au-dessus de la recherche', async () => {
+  const rows = [
+    { id: 'i1', card_id: 'k1', count: 1, starred: false, tags: [], card: { wikipedia_title: 'Alpha', rarity: 'rare', id: 'k1' } },
+    { id: 'i2', card_id: 'k2', count: 1, starred: true, tags: [], card: { wikipedia_title: 'Beta', rarity: 'commun', id: 'k2' } },
+  ];
+  const env = createEnv({ fetchImpl: async (u) => (String(u).includes('/sales') ? json({ summary: { R: { average: 42, count: 5, latest: 40 }, C: { average: 3, count: 9, latest: 3 } } })
+    : String(u).includes('/api/my-collection') ? json({ collection: rows }) : json({ selling: [], bidding: [], won: [{ winner_id: ME }], history: [] })) });
+  const { w, WMX } = env;
+  w.history.pushState({}, '', '/collection');
+  const tile = (title, r, starLabel) => `<div class="relative isolate group"><div class="cursor-pointer rounded-2xl overflow-hidden relative">
+    <div class="absolute top-2 left-2">${r}</div><div class="absolute top-2 right-2"><button aria-label="${starLabel}"></button></div><h3>${title}</h3></div></div>`;
+  w.document.body.innerHTML = `<main><input placeholder="Rechercher par titre ou catégorie..."><div class="flex flex-wrap justify-center">${tile('Alpha', 'R', 'Ajouter aux favoris (x)')}${tile('Beta', 'C', 'Retirer des favoris (x)')}</div></main>`;
+  for (const f of WMX.features) if (['collection-native', 'quick-auction'].includes(f.name)) await f.init?.();
+  await sleep(600);
+  assert.ok(w.document.querySelector('.wmx-nt-bar'), 'barre des prix présente');
+  assert.ok(w.document.querySelector('.wmx-nt-bar').compareDocumentPosition(w.document.querySelector('input')) & 4, 'barre avant la recherche');
+  // Les prix n'arrivent qu'une fois demandés : on les charge pour vérifier l'affichage.
+  await WMX.prices.fetchOne('k1');
+  await WMX.prices.fetchOne('k2');
+  for (let i = 0; i < 40 && ![...w.document.querySelectorAll('.wmx-nt-price')].every((c) => /\d W$/.test(c.textContent)); i++) await sleep(200);
+  const chips = [...w.document.querySelectorAll('.wmx-nt-price')].map((c) => c.textContent);
+  assert.deepEqual(chips, ['Moy. 42 W', 'Moy. 3 W']);
+  const bolts = [...w.document.querySelectorAll('.wmx-nt-bolt')];
+  assert.equal(bolts.length, 2);
+  assert.equal(bolts[0].disabled, false);
+  assert.equal(bolts[1].disabled, true, 'carte favorite : enchère rapide verrouillée');
+  env.close();
+});

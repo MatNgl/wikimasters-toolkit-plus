@@ -469,3 +469,16 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-pm-sum { margin: 0; color: #9db5a8; font-size: 13px; }
 .wmx-cp-pspacer { flex: 1; }
 .wmx-cp-pickrow, .wmx-cp-pmode { display: none; }
+
+/* ===== Collection du jeu enrichie (0.11.0) ===== */
+.wmx-nt-bar { margin: 0 0 14px; }
+.wmx-pb-value { color: var(--acc,#2dd4a0); font-size: 13px; }
+.wmx-pb-info { color: #9db5a8; }
+.wmx-nt-price { position: absolute; top: 8px; left: 42px; z-index: 30; padding: 2px 8px; border-radius: 999px; background: #0b1411d9; border: 1px solid #2dd4a066; color: #d9f5ea;
+  font: 700 10px Outfit, system-ui, sans-serif; letter-spacing: .01em; pointer-events: none; white-space: nowrap; }
+.wmx-nt-bolt { width: 24px; height: 24px; padding: 0; margin-top: 2px; border-radius: 7px; border: 1px solid #ffffff30; background: #000a; color: #fff; font-size: 13px; line-height: 1; cursor: pointer; transition: background .15s ease, transform .15s ease; }
+.wmx-nt-bolt:hover:not(:disabled) { background: var(--acc,#2dd4a0); color: var(--acc-ink,#04130d); border-color: transparent; transform: scale(1.08); }
+.wmx-nt-bolt.live { background: #facc15; color: #1a1300; border-color: transparent; box-shadow: 0 0 10px #facc1599; }
+.wmx-nt-bolt:disabled { opacity: .35; cursor: default; }
+.wmx-nt-bolt.queued { background: #60a5fa; color: #06111f; border-color: transparent; }
+.wmx-nt-bolt.busy { background: #facc15; color: #1a1300; border-color: transparent; animation: wmx-pulse 1.2s infinite; }
