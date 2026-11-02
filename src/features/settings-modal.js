@@ -8,6 +8,7 @@
     speed: 'normal', order: 'rarity', images: true,
     stopOn: 'off', reserve: 0, fullStockOpen: true, anticipate: true,
     quickCoef: 0.9, quickDuration: '1h', quickPrudent: false, auctionBubble: true, auctionNotify: true, autoReload: true,
+    autoDefaultMode: 'time', autoDefaultSecs: 35, autoCapMode: 'avg', autoCapW: 100, autoCapPct: 20, autoDefaultOn: false,
   };
 
   const SECTIONS = [
@@ -50,6 +51,20 @@
       items: [
         { key: 'auctionBubble', type: 'toggle', label: 'Bulle flottante des enchères', desc: 'Affichée en bas à droite sur toutes les pages du jeu ; actualisée chaque minute (toutes les 8 s quand elle est ouverte).' },
         { key: 'auctionNotify', type: 'toggle', label: 'Alertes d’enchères', desc: 'Notification quand vous êtes surenchéri ou qu’une de vos enchères passe sous 2 minutes (le navigateur demande l’autorisation au premier clic sur la bulle).' },
+      ],
+    },
+    {
+      title: 'Mises automatiques',
+      desc: 'Réglages proposés par défaut quand vous programmez une mise automatique (bouton ⏱ d’une mise). Elle mise toujours le minimum du jeu.',
+      items: [
+        { key: 'autoDefaultMode', type: 'select', label: 'Déclencheur par défaut', desc: 'Quand miser automatiquement.',
+          options: [['time', 'Juste avant la fin de l’enchère'], ['outbid', 'Dès que je suis surenchéri']] },
+        { key: 'autoDefaultSecs', type: 'number', min: 5, max: 3600, step: 5, label: 'Délai avant la fin (secondes)', desc: 'Pour « juste avant la fin ». Gardez une marge : le délai de réponse du jeu dépend de votre connexion (au moins 20 s).' },
+        { key: 'autoCapMode', type: 'select', label: 'Plafond par défaut', desc: 'Limite au-delà de laquelle l’extension ne mise plus.',
+          options: [['avg', 'Selon la moyenne du marché'], ['abs', 'Valeur fixe en W'], ['none', 'Aucun plafond']] },
+        { key: 'autoCapPct', type: 'number', min: -90, max: 500, step: 5, label: 'Écart à la moyenne (%)', desc: 'Pour le plafond « selon la moyenne » : +30 = jusqu’à 30 % au-dessus de la moyenne, 0 = à la moyenne, −10 = en dessous.' },
+        { key: 'autoCapW', type: 'number', min: 1, max: 100000, step: 1, label: 'Plafond fixe (W)', desc: 'Pour le plafond « valeur fixe ».' },
+        { key: 'autoDefaultOn', type: 'toggle', label: 'Appliquer aux nouvelles mises', desc: 'Programme automatiquement ces réglages sur chaque nouvelle mise que vous placez (désactivé par défaut).' },
       ],
     },
     {

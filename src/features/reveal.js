@@ -168,7 +168,8 @@
         title.textContent = `${all.length} cartes tirées…`;
       },
       setRemaining(n, total) {
-        remBase = n > 0 ? `${n} paquet${n > 1 ? 's' : ''} restant${n > 1 ? 's' : ''} sur ${total}` : 'Tous les paquets sont ouverts';
+        // Numéro du paquet ouvert sur le total (1/9, 2/9…) : lisible d'un coup d'œil.
+        remBase = n > 0 ? `Paquet ${total - n}/${total}` : `Tous les paquets sont ouverts (${total}/${total})`;
         remaining.textContent = remBase + remNote;
       },
       setNote(t) {

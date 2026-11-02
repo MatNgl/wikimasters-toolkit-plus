@@ -66,6 +66,7 @@
     // Boutons côte à côte : libellés courts.
     ui.autoBtn.textContent = state.auto ? 'Arrêter' : 'Ouvrir auto';
     ui.autoBtn.classList.toggle('wmx-btn--danger', state.auto);
+    document.documentElement.classList.toggle('wmx-auto-on', state.auto); // le menu reste visible (réduit) sur les autres pages tant que l'auto tourne
   };
 
   // --- Ouverture d'un paquet via l'interface native ------------------------------------------
@@ -202,6 +203,18 @@
     await session.finish();
   }
 
+  /** « Tout ouvrir » depuis une autre page : on revient d'abord sur la page Paquets, puis on ouvre. */
+  async function openAllAnywhere() {
+    if (!/^\/pulls/.test(location.pathname)) {
+      window.dispatchEvent(new CustomEvent('wmx:navigate', { detail: '/pulls' }));
+      setStatus('Retour sur la page Paquets…');
+      const ok = await WMX.dom.waitFor(() => /^\/pulls/.test(location.pathname) && packInfo().max > 0 && document.body.innerText.match(/paquets?/i), 40000, 400);
+      if (!ok) { setStatus('Page Paquets introuvable'); return; }
+      await sleep(1500);
+    }
+    return openAll();
+  }
+
   // --- Ouverture automatique ------------------------------------------------------------------
   /** Ouvre `n` paquets et les met de côté ; s'arrête si une carte atteint le seuil choisi. */
   async function openBatch(n) {
@@ -235,6 +248,10 @@
       }
       if (!state.auto) break;
       if (state.busy) continue;
+      if (!/^\/pulls/.test(location.pathname)) { // hors de la page Paquets, les paquets ne sont pas visibles : l'auto attend le retour
+        setStatus('En pause : revenez sur la page Paquets pour reprendre les ouvertures');
+        continue;
+      }
       const { packs, max } = packInfo();
       const nextIn = nextPackIn();
       trackRegen(nextIn);
@@ -305,7 +322,7 @@
     const fold = el('button', { class: 'wmx-icon wmx-fold', title: 'Réduire le menu', 'aria-label': 'Réduire le menu', onclick: () => setCollapsed(true) }, '«');
 
     const body = el('div', { class: 'wmx-body' },
-      el('div', { class: 'wmx-btnrow' }, el('button', { class: 'wmx-btn wmx-btn--wide', onclick: openAll }, 'Tout ouvrir'), ui.autoBtn),
+      el('div', { class: 'wmx-btnrow' }, el('button', { class: 'wmx-btn wmx-btn--wide', onclick: openAllAnywhere }, 'Tout ouvrir'), ui.autoBtn),
       ui.status,
       el('h4', {}, 'Intervalle de l’ouverture auto'),
       field('Minimum (min)', ui.min, 'Entre 1 et 60 minutes. Un intervalle court = plus de requêtes envoyées au jeu.'),
@@ -338,6 +355,10 @@
       fab.title = c ? 'Agrandir le menu' : 'WikiMasters Toolkit+';
       WMX.store.set('panelCollapsed', c);
     }
+
+    // En quittant la page Paquets avec l'ouverture auto active, le menu se réduit à sa bulle « W » (visible sur toutes les pages).
+    new MutationObserver(() => { if (state.auto && !/^\/pulls/.test(location.pathname)) setCollapsed(true); })
+      .observe(document.documentElement, { attributes: true, attributeFilter: ['data-wmx-route'] });
 
     const cover = el('div', { class: 'wmx-cover' });
     document.body.append(panel, cover);

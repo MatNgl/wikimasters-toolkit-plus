@@ -94,7 +94,8 @@
 @media (min-width: 1800px) { .wmx-panel { width: 340px; } }
 @media (min-width: 2300px) { .wmx-panel { width: 380px; } }
 .wmx-panel:not(.wmx-collapsed) { max-height: calc(100vh - 104px); overflow-y: auto; }
-html:not([data-wmx-route^="/pulls"]) .wmx-panel { display: none; }
+html:not([data-wmx-route^="/pulls"]):not(.wmx-auto-on) .wmx-panel { display: none; }
+html:not([data-wmx-route^="/pulls"]) .wmx-panel { top: auto; bottom: 112px; }
 
 /* Statistiques (barres par rareté) */
 .wmx-sbox { display: flex; flex-direction: column; gap: 5px; padding: 8px 10px; border-radius: 12px; background: #0a0f0d; border: 1px solid #1e2b26; }
@@ -406,3 +407,36 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-nt-bolt:disabled { opacity: .35; cursor: default; }
 .wmx-nt-bolt.queued { background: #60a5fa; color: #06111f; border-color: transparent; }
 .wmx-nt-bolt.busy { background: #facc15; color: #1a1300; border-color: transparent; animation: wmx-pulse 1.2s infinite; }
+
+/* ===== Bulle des enchères : bouton rond à anneau, en-tête fixe, formulaire de mise automatique (0.12.0) ===== */
+.wmx-bubble { right: auto; left: 272px; bottom: 24px; align-items: flex-start; }
+.wmx-dial { position: relative; width: 76px; height: 76px; padding: 0; border: 0; border-radius: 50%; background: radial-gradient(circle at 30% 25%, #14221c, #0a110e); box-shadow: 0 10px 28px #000b, inset 0 1px 0 #ffffff14; cursor: pointer; color: #e6efe9; font-family: Outfit, system-ui, sans-serif; transition: transform .18s ease, box-shadow .18s ease; }
+.wmx-dial:hover { transform: translateY(-2px) scale(1.03); box-shadow: 0 14px 34px #000c, 0 0 0 1px #2dd4a066; }
+.wmx-dial.on { transform: scale(.97); }
+.wmx-dial-svg { position: absolute; inset: 2px; width: 72px; height: 72px; transform: rotate(-90deg); }
+.wmx-dial-bg { fill: none; stroke: #ffffff12; stroke-width: 5; }
+.wmx-dial-ring { fill: none; stroke: #2dd4a0; stroke-width: 5; stroke-linecap: round; transition: stroke-dashoffset .9s linear, stroke .9s linear; }
+.wmx-dial-txt { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.15; pointer-events: none; }
+.wmx-dial-txt b { font-size: 13px; font-weight: 800; } .wmx-dial-txt small { font-size: 10px; color: #9db5a8; }
+.wmx-dial .wmx-auc-dot { position: absolute; top: -2px; right: -2px; }
+.wmx-dial .wmx-auc-warn { position: absolute; bottom: -2px; right: -4px; padding: 1px 6px; font-size: 11px; }
+.wmx-dial.alert { animation: wmx-pill-pulse 1.5s ease-in-out infinite; }
+.wmx-dial [hidden] { display: none; }
+.wmx-bubble-panel { display: flex; flex-direction: column; overflow: hidden; padding: 0; }
+.wmx-bubble-head { flex: none; margin: 0; padding: 12px 14px 10px; border-bottom: 1px solid #ffffff12; background: #0b1411; position: relative; z-index: 2; }
+.wmx-bubble-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 12px 14px 14px; overscroll-behavior: contain; }
+.wmx-auc-auto { gap: 14px; padding: 14px; }
+.wmx-auc-auto-head { display: flex; flex-direction: column; gap: 2px; }
+.wmx-auc-field { display: flex; flex-direction: column; gap: 8px; }
+.wmx-auc-field > label { font: 700 11px Outfit, system-ui, sans-serif; color: #9db5a8; text-transform: uppercase; letter-spacing: .06em; }
+.wmx-seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.wmx-seg-btn { padding: 7px 12px; border-radius: 10px; border: 1px solid #ffffff1c; background: #ffffff08; color: #cfe0d7; font: 600 12px Outfit, system-ui, sans-serif; cursor: pointer; white-space: nowrap; transition: all .15s ease; }
+.wmx-seg-btn:hover { border-color: #2dd4a088; }
+.wmx-seg-btn[aria-pressed=true] { background: rgb(45 212 160 / .2); border-color: var(--acc,#2dd4a0); color: #fff; }
+.wmx-auc-inline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.wmx-auc-num { width: 96px; flex: none; }
+.wmx-auc-unit { color: #9db5a8; font-size: 12px; }
+.wmx-auc-presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.wmx-auc-preview { padding: 8px 10px; border-radius: 10px; background: #ffffff08; color: #cfe0d7; font-size: 12px; line-height: 1.4; }
+.wmx-auc-preview.warn { color: #fbbf24; background: rgb(251 191 36 / .1); }
+.wmx-auc-autorow { flex-wrap: wrap; }

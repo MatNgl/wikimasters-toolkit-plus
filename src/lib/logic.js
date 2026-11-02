@@ -62,27 +62,50 @@
     },
     /**
      * Règle de mise automatique saisie par l'utilisateur → règle normalisée, ou null si invalide.
-     * mode « outbid » : dès qu'on est surenchéri ; mode « time » : quand il reste `amount` secondes (ou minutes) ; plafond facultatif.
+     * mode « outbid » : dès qu'on est surenchéri ; mode « time » : quand il reste `amount` secondes (ou minutes).
+     * Plafond : capMode « abs » (valeur `cap` en W) ou « avg » (moyenne du marché + `capPct` %, négatif = sous la moyenne) ; sinon aucun.
      */
-    parseAutoRule({ mode, amount, unit, cap } = {}) {
-      const c = Math.floor(Number(cap));
+    parseAutoRule({ mode, amount, unit, capMode, cap, capPct } = {}) {
       const rule = {};
-      if (Number.isFinite(c) && c > 0) rule.cap = c;
+      const c = Math.floor(Number(cap));
+      if ((capMode === 'abs' || (capMode === undefined && cap !== undefined)) && Number.isFinite(c) && c > 0) { rule.capMode = 'abs'; rule.cap = c; }
+      else if (capMode === 'avg' && Number.isFinite(Number(capPct)) && capPct !== '' && capPct !== null) { rule.capMode = 'avg'; rule.capPct = Math.min(500, Math.max(-90, Math.round(Number(capPct)))); }
       if (mode === 'outbid') return { mode, ...rule };
       if (mode !== 'time') return null;
       const n = Number(amount) * (unit === 'min' ? 60 : 1);
       if (!Number.isFinite(n) || n <= 0) return null;
       return { mode, secs: Math.min(6 * 3600, Math.max(5, Math.round(n))), ...rule };
     },
+    /** Plafond en W d'une règle (selon la moyenne du marché si besoin), ou null : pas de plafond, ou moyenne inconnue (à demander). */
+    resolveCap(rule, avg) {
+      if (!rule) return null;
+      if (rule.capMode === 'avg') return avg > 0 ? Math.max(1, Math.round(avg * (1 + (Number(rule.capPct) || 0) / 100))) : null;
+      return rule.cap > 0 ? rule.cap : null; // « abs » ou règle ancienne (plafond seul)
+    },
+    capLabel(rule) {
+      if (!rule) return '';
+      if (rule.capMode === 'avg') return rule.capPct ? `max moy. ${rule.capPct > 0 ? '+' : ''}${rule.capPct} %` : 'max moyenne';
+      return rule.cap ? `max ${rule.cap} W` : '';
+    },
     autoLabel(rule) {
       if (!rule) return '';
       const when = rule.mode === 'outbid' ? 'dès surenchère' : rule.secs < 120 ? `à ${rule.secs} s` : `à ${Math.round(rule.secs / 60)} min`;
-      return `Auto · ${when}${rule.cap ? ` · max ${rule.cap} W` : ''}`;
+      const cap = L.capLabel(rule);
+      return `Auto · ${when}${cap ? ` · ${cap}` : ''}`;
+    },
+    /** Part de la fenêtre restante (1 = au moins `windowMs` restantes, 0 = terminée). */
+    ringFraction(ms, windowMs = 3600000) {
+      return Math.min(1, Math.max(0, ms / windowMs));
+    },
+    /** Couleur de l'anneau : vert (loin) → jaune → rouge (proche de la fin). */
+    ringColor(fraction) {
+      return `hsl(${Math.round(130 * Math.min(1, Math.max(0, fraction)))} 85% 52%)`;
     },
     /** Faut-il miser maintenant ? st = { leading, msLeft, minBid (ou null), cooldownOk }. */
     autoBidDue(rule, st) {
       if (!rule || st.leading || st.msLeft <= 0 || !st.cooldownOk) return false;
-      if (rule.cap && st.minBid && st.minBid > rule.cap) return false;
+      const capW = st.capW !== undefined ? st.capW : (rule.cap > 0 ? rule.cap : null);
+      if (capW != null && st.minBid && st.minBid > capW) return false;
       return rule.mode === 'outbid' ? true : st.msLeft <= rule.secs * 1000;
     },
     /** Cadence d'actualisation (ms) quand des mises automatiques existent : rapide près de l'échéance, 0 s'il n'y en a pas. */

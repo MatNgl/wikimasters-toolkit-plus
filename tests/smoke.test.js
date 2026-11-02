@@ -50,10 +50,12 @@ test('bulle des enchères : lignes, urgence, mise automatique et alerte', async 
   for (const f of WMX.features) await f.init?.();
   await sleep(3400); // premier chargement (3 s)
   assert.equal(w.document.querySelector('.wmx-bubble').hidden, false);
-  const pill = w.document.querySelector('.wmx-bubble-pill');
-  assert.match(pill.textContent, /2 ventes · 2 mises/);
-  assert.ok(pill.querySelector('.wmx-auc-warn'), 'pastille ⚠ pour l\'enchère sous 2 min');
+  const pill = w.document.querySelector('.wmx-dial');
+  assert.match(pill.textContent, /2 mises/);
+  assert.match(pill.textContent, /2 ventes/);
+  assert.equal(pill.querySelector('.wmx-auc-warn').hidden, false, 'pastille ⚠ pour l\'enchère sous 2 min');
   assert.ok(pill.classList.contains('alert'));
+  assert.notEqual(pill.querySelector('.wmx-dial-ring').style.stroke, '', 'anneau coloré selon le temps restant');
   pill.click();
   await sleep(100);
   const rows = [...w.document.querySelectorAll('.wmx-auc-row')];
@@ -66,14 +68,18 @@ test('bulle des enchères : lignes, urgence, mise automatique et alerte', async 
   row.querySelector('.wmx-auc-autobtn').click();
   const form = w.document.querySelector('.wmx-auc-auto');
   assert.ok(form, 'formulaire ouvert');
-  const sel = form.querySelector('select');
-  sel.value = 'time';
-  const amount = form.querySelector('input[type=number]');
+  const pick = (label) => [...w.document.querySelectorAll('.wmx-auc-auto .wmx-seg-btn')].find((b) => b.textContent.trim() === label);
+  pick('Juste avant la fin').click();
+  const amount = w.document.querySelector('.wmx-auc-auto .wmx-auc-num');
   amount.value = '45';
-  form.querySelector('.wmx-btn:not(.wmx-btn--ghost)').click();
+  amount.dispatchEvent(new w.Event('input', { bubbles: true }));
+  pick('Selon la moyenne').click();
+  pick('+30 %').click();
+  assert.match(w.document.querySelector('.wmx-auc-preview').textContent, /[Mm]oyenne|Plafond/);
+  w.document.querySelector('.wmx-auc-auto .wmx-btn:not(.wmx-btn--ghost)').click();
   await sleep(50);
-  assert.match(w.document.querySelector('.wmx-auc-autotag').textContent, /Auto · à 45 s/);
-  assert.deepEqual(Object.values(env.mem.autoBids)[0], { mode: 'time', secs: 45 });
+  assert.match(w.document.querySelector('.wmx-auc-autotag').textContent, /Auto · à 45 s · max moy\. \+30 %/);
+  assert.deepEqual(Object.values(env.mem.autoBids)[0], { mode: 'time', secs: 45, capMode: 'avg', capPct: 30 });
   env.close();
 });
 

@@ -88,9 +88,9 @@ test('friendlyError : messages lisibles', () => {
 
 test('parseAutoRule : normalise et refuse les valeurs invalides', () => {
   assert.deepEqual(L.parseAutoRule({ mode: 'outbid' }), { mode: 'outbid' });
-  assert.deepEqual(L.parseAutoRule({ mode: 'outbid', cap: '120' }), { mode: 'outbid', cap: 120 });
+  assert.deepEqual(L.parseAutoRule({ mode: 'outbid', cap: '120' }), { mode: 'outbid', capMode: 'abs', cap: 120 });
   assert.deepEqual(L.parseAutoRule({ mode: 'time', amount: 30, unit: 's' }), { mode: 'time', secs: 30 });
-  assert.deepEqual(L.parseAutoRule({ mode: 'time', amount: 2, unit: 'min', cap: 50 }), { mode: 'time', secs: 120, cap: 50 });
+  assert.deepEqual(L.parseAutoRule({ mode: 'time', amount: 2, unit: 'min', cap: 50 }), { mode: 'time', secs: 120, capMode: 'abs', cap: 50 });
   assert.equal(L.parseAutoRule({ mode: 'time', amount: 1, unit: 's' }).secs, 5); // plancher 5 s
   assert.equal(L.parseAutoRule({ mode: 'time', amount: 99999, unit: 'min' }).secs, 6 * 3600);
   assert.equal(L.parseAutoRule({ mode: 'time', amount: 0 }), null);
@@ -148,4 +148,36 @@ test('saleVerdict : bénéfice / prix du marché / à perte', () => {
   assert.equal(L.saleVerdict(94, 100, 10).kind, 'loss');
   assert.equal(L.saleVerdict(60, 100, 1).low, true);
   assert.equal(L.saleVerdict(60, null, 0).kind, 'unknown');
+});
+
+test('plafond selon la moyenne : parseAutoRule, resolveCap, capLabel', () => {
+  assert.deepEqual(L.parseAutoRule({ mode: 'outbid', capMode: 'avg', capPct: 30 }), { mode: 'outbid', capMode: 'avg', capPct: 30 });
+  assert.deepEqual(L.parseAutoRule({ mode: 'outbid', capMode: 'avg', capPct: 0 }), { mode: 'outbid', capMode: 'avg', capPct: 0 });
+  assert.equal(L.parseAutoRule({ mode: 'outbid', capMode: 'avg', capPct: -500 }).capPct, -90);
+  assert.equal(L.parseAutoRule({ mode: 'outbid', capMode: 'avg', capPct: 'x' }).capMode, undefined);
+  assert.equal(L.parseAutoRule({ mode: 'outbid', capMode: 'none', cap: 10 }).capMode, undefined);
+  assert.equal(L.resolveCap({ capMode: 'avg', capPct: 30 }, 100), 130);
+  assert.equal(L.resolveCap({ capMode: 'avg', capPct: 0 }, 42), 42);
+  assert.equal(L.resolveCap({ capMode: 'avg', capPct: -20 }, 50), 40);
+  assert.equal(L.resolveCap({ capMode: 'avg', capPct: 30 }, null), null, 'moyenne inconnue');
+  assert.equal(L.resolveCap({ capMode: 'abs', cap: 80 }, 10), 80);
+  assert.equal(L.resolveCap({ cap: 80 }, 10), 80, 'règle ancienne');
+  assert.equal(L.resolveCap({ mode: 'outbid' }, 10), null);
+  assert.equal(L.capLabel({ capMode: 'avg', capPct: 30 }), 'max moy. +30 %');
+  assert.equal(L.capLabel({ capMode: 'avg', capPct: -10 }), 'max moy. -10 %');
+  assert.equal(L.capLabel({ capMode: 'avg', capPct: 0 }), 'max moyenne');
+  assert.equal(L.autoLabel({ mode: 'outbid', capMode: 'avg', capPct: 20 }), 'Auto · dès surenchère · max moy. +20 %');
+  const ok = { leading: false, msLeft: 20_000, cooldownOk: true, minBid: 60 };
+  assert.equal(L.autoBidDue({ mode: 'outbid' }, { ...ok, capW: 54 }), false);
+  assert.equal(L.autoBidDue({ mode: 'outbid' }, { ...ok, capW: 60 }), true);
+  assert.equal(L.autoBidDue({ mode: 'outbid' }, { ...ok, capW: null }), true);
+});
+
+test('anneau du compte à rebours : part restante et couleur', () => {
+  assert.equal(L.ringFraction(0), 0);
+  assert.equal(L.ringFraction(1_800_000), 0.5);
+  assert.equal(L.ringFraction(9e9), 1);
+  assert.equal(L.ringColor(1), 'hsl(130 85% 52%)');
+  assert.equal(L.ringColor(0), 'hsl(0 85% 52%)');
+  assert.equal(L.ringColor(0.5), 'hsl(65 85% 52%)');
 });

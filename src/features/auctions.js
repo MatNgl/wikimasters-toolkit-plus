@@ -23,6 +23,8 @@
   S.autoFails = {};
   S.autoLast = {};                          // dernière mise par enchère : { bid: mise avant la mienne, t }
   S.bidQueue = [];
+  S.draft = {};      // réglages de mise automatique en cours de saisie (gardés si la liste se redessine)
+  S.autoSeen = null; // identifiants des mises déjà vues (les réglages par défaut ne s'appliquent qu'aux NOUVELLES mises)
   S.autoOpen = null;                        // enchère dont le formulaire de mise automatique est ouvert
   const saveAuto = () => WMX.store.set('autoBids', S.auto);
   const notified = new Set();               // alertes déjà envoyées (une seule fois chacune)
@@ -59,20 +61,51 @@
       }
     }
   }
-  /** Pastille de la bulle : compteurs, avertissement ⚠ (enchères sous 2 min) et point rouge (surenchéri). */
+  /**
+   * Bouton rond à côté de la barre latérale : l'anneau montre le temps restant de l'enchère (mise ou vente) qui se termine
+   * le plus tôt, du vert (au moins 1 h) au rouge (fin imminente) ; au centre le nombre de mises et de ventes ; un point rouge
+   * signale les enchères où l'on est surenchéri, ⚠ celles qui finissent dans moins de 2 minutes.
+   */
+  const RING = 2 * Math.PI * 30;
   function updatePill() {
     if (!S.pill) return;
     const all = [...D.bidding, ...D.selling];
+    const lefts = all.map(msLeft).filter((x) => x > 0);
+    const nearest = lefts.length ? Math.min(...lefts) : null;
+    const frac = nearest == null ? 0 : WMX.logic.ringFraction(nearest);
+    S.dialRing.style.strokeDashoffset = String(RING * (1 - frac));
+    S.dialRing.style.stroke = nearest == null ? '#3a4a43' : WMX.logic.ringColor(frac);
     const urgent = all.filter((x) => timeState(msLeft(x)) === 'urgent').length;
     const outbid = D.bidding.filter((x) => !leading(x)).length;
-    const sig = [D.selling.length, D.bidding.length, urgent, outbid].join();
-    if (S.pillSig === sig) return;
-    S.pillSig = sig;
+    S.dialBids.textContent = `${D.bidding.length} mise${D.bidding.length > 1 ? 's' : ''}`;
+    S.dialSales.textContent = `${D.selling.length} vente${D.selling.length > 1 ? 's' : ''}`;
+    S.dialOut.hidden = !outbid; S.dialOut.textContent = String(outbid);
+    S.dialOut.title = `${outbid} enchère${outbid > 1 ? 's' : ''} où vous êtes surenchéri`;
+    S.dialWarn.hidden = !urgent; S.dialWarn.textContent = '⚠';
+    S.dialWarn.title = `${urgent} enchère${urgent > 1 ? 's' : ''} se termine${urgent > 1 ? 'nt' : ''} dans moins de 2 minutes`;
     S.pill.classList.toggle('alert', urgent > 0 || outbid > 0);
-    S.pill.replaceChildren(
-      el('span', {}, `Enchères · ${D.selling.length} vente${D.selling.length > 1 ? 's' : ''} · ${D.bidding.length} mise${D.bidding.length > 1 ? 's' : ''}`),
-      urgent ? el('i', { class: 'wmx-auc-warn', title: `${urgent} enchère${urgent > 1 ? 's' : ''} se termine${urgent > 1 ? 'nt' : ''} dans moins de 2 minutes` }, `⚠ ${urgent}`) : '',
-      outbid ? el('i', { class: 'wmx-auc-dot', title: `${outbid} enchère${outbid > 1 ? 's' : ''} où vous êtes surenchéri` }, String(outbid)) : '');
+    S.pill.title = nearest == null ? 'Mes enchères' : `Mes enchères · la plus proche se termine dans ${fmtLeft(nearest)}`;
+  }
+
+  /** Réglages par défaut (Paramètres → Mises automatiques) sous forme de saisie pour parseAutoRule. */
+  const defaultInput = () => {
+    const s = WMX.settings || {};
+    return { mode: s.autoDefaultMode === 'outbid' ? 'outbid' : 'time', amount: Number(s.autoDefaultSecs) || 35, unit: 's',
+      capMode: ['abs', 'none', 'avg'].includes(s.autoCapMode) ? s.autoCapMode : 'avg', cap: Number(s.autoCapW) || 100,
+      capPct: Number.isFinite(Number(s.autoCapPct)) ? Number(s.autoCapPct) : 20 };
+  };
+  /** « Appliquer aux nouvelles mises » : une mise qu'on n'avait jamais vue reçoit la règle par défaut (jamais celles déjà présentes). */
+  function applyDefaults(first) {
+    const ids = D.bidding.map((x) => x.id);
+    if (!S.autoSeen) S.autoSeen = new Set(ids); // première lecture : tout ce qui existe déjà est « déjà vu »
+    if (WMX.settings?.autoDefaultOn && !first) {
+      for (const x of D.bidding) {
+        if (S.autoSeen.has(x.id) || S.auto[x.id]) continue;
+        const rule = WMX.logic.parseAutoRule(defaultInput());
+        if (rule) { S.auto[x.id] = rule; S.autoFails[x.id] = 0; saveAuto(); }
+      }
+    }
+    ids.forEach((id) => S.autoSeen.add(id));
   }
 
   // --- Données ---------------------------------------------------------------------------------
@@ -97,6 +130,7 @@
       const first = !D.loaded;
       D.loaded = true;
       checkOutbid(first);
+      applyDefaults(first);
       let dirty = false;
       for (const id of Object.keys(S.auto)) if (!D.bidding.some((x) => x.id === id)) { delete S.auto[id]; delete S.autoTry[id]; dirty = true; } // enchère terminée
       if (dirty) saveAuto();
@@ -267,32 +301,85 @@
     renderAll();
     schedulePoll();
   }
+  /** Groupe de boutons à choix unique (plus lisible qu'un menu déroulant : aucun texte coupé). */
+  const seg = (options, current, onPick) => el('div', { class: 'wmx-seg' }, ...options.map(([v, label]) => {
+    const b = el('button', { type: 'button', class: 'wmx-seg-btn', 'aria-pressed': String(v === current) }, label);
+    b.addEventListener('click', () => onPick(v));
+    return b;
+  }));
+  const avgOf = (a) => WMX.prices.get(a.card_id, rarityOf(a))?.avg ?? null;
+
   function autoForm(a) {
     const cur = S.auto[a.id];
-    const mode = el('select', { class: 'wmx-input wmx-select' },
-      el('option', { value: 'time' }, 'Quand il reste…'), el('option', { value: 'outbid' }, 'Dès que je suis surenchéri'));
-    mode.value = cur?.mode || 'time';
-    const secs = cur?.secs || 30;
-    const useMin = secs >= 120 && secs % 60 === 0;
-    const amount = el('input', { class: 'wmx-input', type: 'number', min: '1', step: '1', value: String(useMin ? secs / 60 : secs) });
-    const unit = el('select', { class: 'wmx-input wmx-select' }, el('option', { value: 's' }, 'secondes'), el('option', { value: 'min' }, 'minutes'));
-    unit.value = useMin ? 'min' : 's';
-    const cap = el('input', { class: 'wmx-input', type: 'number', min: '1', step: '1', placeholder: 'Plafond en W (facultatif)', value: cur?.cap ? String(cur.cap) : '' });
-    const when = el('div', { class: 'wmx-auc-autorow' }, amount, unit);
-    const sync = () => { when.hidden = mode.value !== 'time'; };
-    mode.addEventListener('change', sync); sync();
-    const save = el('button', { class: 'wmx-btn' }, cur ? 'Enregistrer' : 'Activer');
-    save.addEventListener('click', () => {
-      const rule = WMX.logic.parseAutoRule({ mode: mode.value, amount: amount.value, unit: unit.value, cap: cap.value });
-      if (!rule) return WMX.toast('Durée invalide.');
-      setAuto(a, rule);
-    });
-    const off = cur ? el('button', { class: 'wmx-btn wmx-btn--ghost' }, 'Désactiver') : '';
-    if (off) off.addEventListener('click', () => setAuto(a, null));
-    return el('div', { class: 'wmx-auc-auto' },
-      el('strong', {}, 'Mise automatique'), mode, when, cap,
-      el('small', {}, 'Mise exactement le minimum proposé par le jeu. L’onglet du jeu doit rester ouvert. Le délai de réponse du jeu dépend de votre connexion : gardez une marge (au moins 20 s).'),
-      el('div', { class: 'wmx-auc-autorow' }, save, off));
+    const d = S.draft[a.id] || (S.draft[a.id] = (() => {
+      const base = cur || WMX.logic.parseAutoRule(defaultInput()) || { mode: 'time', secs: 35 };
+      const secs = base.secs || 35;
+      const useMin = secs >= 120 && secs % 60 === 0;
+      return { mode: base.mode, amount: useMin ? secs / 60 : secs, unit: useMin ? 'min' : 's',
+        capMode: base.capMode || (base.cap ? 'abs' : 'none'), cap: base.cap || Number(WMX.settings?.autoCapW) || 100, capPct: base.capPct ?? 20 };
+    })());
+    const root = el('div', { class: 'wmx-auc-auto' });
+    const draw = () => {
+      const avg = avgOf(a);
+      const num = (key, props, onInput) => {
+        const i = el('input', { class: 'wmx-input wmx-auc-num', type: 'number', value: String(d[key]), ...props });
+        i.addEventListener('input', () => { d[key] = i.value === '' ? '' : Number(i.value); onInput?.(); });
+        return i;
+      };
+      const preview = el('div', { class: 'wmx-auc-preview' });
+      const drawPreview = () => {
+        if (d.capMode === 'abs') preview.textContent = d.cap > 0 ? `Je ne mise plus au-dessus de ${fmt(d.cap)} W.` : 'Indiquez un plafond en W.';
+        else if (d.capMode === 'avg') {
+          const capW = WMX.logic.resolveCap({ capMode: 'avg', capPct: Number(d.capPct) || 0 }, avgOf(a));
+          preview.textContent = capW != null ? `Plafond : ${fmt(capW)} W (moyenne du marché ${fmt(avgOf(a))} W${Number(d.capPct) ? ` ${d.capPct > 0 ? '+' : '−'} ${Math.abs(d.capPct)} %` : ''}).`
+            : 'Moyenne du marché en cours de chargement…';
+        } else preview.textContent = 'Aucun plafond : l’extension mise jusqu’à épuisement de votre solde.';
+        preview.classList.toggle('warn', d.capMode === 'none');
+      };
+      const kids = [
+        el('div', { class: 'wmx-auc-auto-head' }, el('strong', {}, 'Mise automatique'), el('small', {}, 'Mise toujours le minimum proposé par le jeu')),
+        el('div', { class: 'wmx-auc-field' }, el('label', {}, 'Quand miser'), seg([['outbid', 'Dès que je suis surenchéri'], ['time', 'Juste avant la fin']], d.mode, (v) => { d.mode = v; draw(); })),
+      ];
+      if (d.mode === 'time') {
+        kids.push(el('div', { class: 'wmx-auc-field' }, el('label', {}, 'Quand il reste'),
+          el('div', { class: 'wmx-auc-inline' }, num('amount', { min: '1', step: '1' }), seg([['s', 'secondes'], ['min', 'minutes']], d.unit, (v) => { d.unit = v; draw(); })),
+          el('div', { class: 'wmx-auc-presets' }, ...[[20, 's', '20 s'], [35, 's', '35 s'], [1, 'min', '1 min'], [2, 'min', '2 min'], [5, 'min', '5 min']].map(([n, u, label]) => {
+            const b = el('button', { type: 'button', class: 'wmx-seg-btn', 'aria-pressed': String(d.amount === n && d.unit === u) }, label);
+            b.addEventListener('click', () => { d.amount = n; d.unit = u; draw(); });
+            return b;
+          })),
+          el('small', {}, 'Gardez une marge d’au moins 20 s : le délai de réponse du jeu dépend de votre connexion.')));
+      }
+      const capKids = [el('label', {}, 'Plafond (je ne dépasse jamais)'), seg([['none', 'Aucun'], ['abs', 'Valeur fixe'], ['avg', 'Selon la moyenne']], d.capMode, (v) => { d.capMode = v; draw(); })];
+      if (d.capMode === 'abs') capKids.push(el('div', { class: 'wmx-auc-inline' }, num('cap', { min: '1', step: '1' }, drawPreview), el('span', { class: 'wmx-auc-unit' }, 'W')));
+      if (d.capMode === 'avg') {
+        capKids.push(el('div', { class: 'wmx-auc-presets' }, ...[[-20, '−20 %'], [0, 'À la moyenne'], [20, '+20 %'], [30, '+30 %'], [50, '+50 %']].map(([n, label]) => {
+          const b = el('button', { type: 'button', class: 'wmx-seg-btn', 'aria-pressed': String(Number(d.capPct) === n) }, label);
+          b.addEventListener('click', () => { d.capPct = n; draw(); });
+          return b;
+        })), el('div', { class: 'wmx-auc-inline' }, el('span', { class: 'wmx-auc-unit' }, 'Écart :'), num('capPct', { step: '5' }, drawPreview), el('span', { class: 'wmx-auc-unit' }, '% de la moyenne')));
+      }
+      capKids.push(preview);
+      kids.push(el('div', { class: 'wmx-auc-field' }, ...capKids));
+      drawPreview();
+      if (d.capMode === 'avg' && avg == null) WMX.prices.fetchOne(a.card_id).then(() => { if (root.isConnected) drawPreview(); }); // la moyenne arrive : l'aperçu se met à jour
+      const save = el('button', { class: 'wmx-btn' }, cur ? 'Enregistrer' : 'Activer');
+      save.addEventListener('click', () => {
+        const rule = WMX.logic.parseAutoRule({ mode: d.mode, amount: d.amount, unit: d.unit, capMode: d.capMode, cap: d.cap, capPct: d.capPct });
+        if (!rule) return WMX.toast('Durée invalide.');
+        if (d.capMode === 'abs' && !rule.cap) return WMX.toast('Plafond invalide.');
+        delete S.draft[a.id];
+        setAuto(a, rule);
+      });
+      const off = cur ? el('button', { class: 'wmx-btn wmx-btn--ghost' }, 'Désactiver') : '';
+      if (off) off.addEventListener('click', () => { delete S.draft[a.id]; setAuto(a, null); });
+      const cancel = el('button', { class: 'wmx-btn wmx-btn--ghost' }, 'Fermer');
+      cancel.addEventListener('click', () => { delete S.draft[a.id]; S.autoOpen = null; renderAll(); });
+      kids.push(el('div', { class: 'wmx-auc-autorow' }, save, off, cancel));
+      root.replaceChildren(...kids);
+    };
+    draw();
+    return root;
   }
   /** Chaque seconde : une règle est-elle à déclencher ? (une seule mise à la fois, 6 s minimum entre deux essais) */
   function runAuto() {
@@ -301,19 +388,26 @@
       const rule = S.auto[a.id];
       if (!rule) continue;
       const m = minOf(a);
-      if (rule.cap && m && m > rule.cap && !leading(a)) { // le minimum dépasse le plafond : la règle s'arrête (et on prévient)
+      // Plafond en W : valeur fixe, ou moyenne du marché de la carte (+/− un pourcentage). Moyenne inconnue : on la demande et on attend.
+      const capW = WMX.logic.resolveCap(rule, avgOf(a));
+      if (rule.capMode === 'avg' && capW == null) {
+        if (!WMX.prices.has(a.card_id)) WMX.prices.fetchOne(a.card_id);
+        else if (!S.noAvgAlert?.[a.id]) { (S.noAvgAlert ||= {})[a.id] = 1; alertUser('Mise automatique en attente', `« ${cardTitle(a)} » : pas de moyenne du marché pour fixer le plafond.`, `${a.id}:noavg`); }
+        continue;
+      }
+      if (capW != null && m && m > capW && !leading(a)) { // le minimum dépasse le plafond : la règle s'arrête (et on prévient)
         delete S.auto[a.id]; saveAuto(); renderAll();
-        alertUser('Mise automatique arrêtée', `« ${cardTitle(a)} » : le minimum (${fmt(m)} W) dépasse votre plafond de ${fmt(rule.cap)} W.`, `${a.id}:cap`);
+        alertUser('Mise automatique arrêtée', `« ${cardTitle(a)} » : le minimum (${fmt(m)} W) dépasse votre plafond de ${fmt(capW)} W.`, `${a.id}:cap`);
         continue;
       }
       // Ma dernière mise automatique n'est pas encore visible (serveur lent) : on attend qu'une mise PLUS HAUTE apparaisse (vraie
       // surenchère d'un autre joueur) ou 90 s, au lieu de remiser par-dessus soi-même.
       const last = S.autoLast[a.id];
       if (last && Date.now() - last.t < 90000 && (a.current_bid || 0) <= last.bid) continue;
-      const due = WMX.logic.autoBidDue(rule, { leading: leading(a), msLeft: msLeft(a), minBid: m, cooldownOk: Date.now() - (S.autoTry[a.id] || 0) > 6000 });
+      const due = WMX.logic.autoBidDue(rule, { leading: leading(a), msLeft: msLeft(a), minBid: m, capW, cooldownOk: Date.now() - (S.autoTry[a.id] || 0) > 6000 });
       if (!due) continue;
       S.autoTry[a.id] = Date.now();
-      bid(a, { auto: true, cap: rule.cap });
+      bid(a, { auto: true, cap: capW });
       return;
     }
   }
@@ -408,17 +502,31 @@
   }
 
   // --- Bulle flottante -------------------------------------------------------------------------
+  const placeBubble = () => {
+    if (!S.bubble) return;
+    const x = Math.round(WMX.dom.sidebarRight()) + 16;
+    S.bubble.style.left = `${x}px`;
+    S.bubblePanel.style.maxWidth = `calc(100vw - ${x + 16}px)`;
+  };
   function buildBubble() {
-    S.pill = el('button', { class: 'wmx-bubble-pill', onclick: () => {
-      try { // la demande d'autorisation exige un geste de l'utilisateur : le premier clic sur la pastille
+    const svg = (html) => { const n = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); n.setAttribute('viewBox', '0 0 72 72'); n.setAttribute('class', 'wmx-dial-svg'); n.innerHTML = html; return n; };
+    const ring = svg(`<circle cx="36" cy="36" r="30" class="wmx-dial-bg"/><circle cx="36" cy="36" r="30" class="wmx-dial-ring" stroke-dasharray="${RING}" stroke-dashoffset="0"/>`);
+    S.dialRing = ring.querySelector('.wmx-dial-ring');
+    S.dialBids = el('b'); S.dialSales = el('small');
+    S.dialOut = el('i', { class: 'wmx-auc-dot', hidden: '' });
+    S.dialWarn = el('i', { class: 'wmx-auc-warn', hidden: '' });
+    S.pill = el('button', { class: 'wmx-dial', 'aria-label': 'Mes enchères', onclick: () => {
+      try { // la demande d'autorisation exige un geste de l'utilisateur : le premier clic
         if (typeof Notification !== 'undefined' && Notification.permission === 'default' && WMX.settings?.auctionNotify !== false) Notification.requestPermission();
       } catch (_) { /* indisponible */ }
       toggleBubble();
-    } });
+    } }, ring, el('span', { class: 'wmx-dial-txt' }, S.dialBids, S.dialSales), S.dialOut, S.dialWarn);
     S.bubbleBody = el('div', { class: 'wmx-bubble-body' });
     const panel = el('div', { class: 'wmx-bubble-panel', hidden: '' },
       S.bubbleHead = el('div', { class: 'wmx-bubble-head', title: 'Maintenez le clic pour déplacer · double-clic pour replacer' }, el('strong', {}, 'Mes enchères'),
-        el('span', {}, el('button', { class: 'wmx-qclear', title: 'Actualiser maintenant', onclick: refresh }, '↻'),
+        el('span', {},
+          el('button', { class: 'wmx-qclear', title: 'Paramètres des enchères', onclick: () => WMX.openSettings() }, '⚙'),
+          el('button', { class: 'wmx-qclear', title: 'Actualiser maintenant', onclick: refresh }, '↻'),
           el('button', { class: 'wmx-qclear', title: 'Réduire', onclick: () => toggleBubble(false) }, '×'))),
       S.bubbleBody);
     S.bubblePanel = panel;
@@ -426,6 +534,10 @@
     WMX.store.get('auctionBubblePos').then((p) => { if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) S.pos = p; }).catch(() => {});
     S.bubble = el('div', { class: 'wmx-bubble', hidden: '' }, panel, S.pill);
     document.body.append(S.bubble);
+    placeBubble();
+    window.addEventListener('resize', placeBubble);
+    new ResizeObserver(placeBubble).observe(document.documentElement);
+    setTimeout(placeBubble, 600); setTimeout(placeBubble, 2500); // après le rendu du jeu
   }
   /** Le panneau part de la pastille et y retourne : son point d'origine est le centre de la pastille, où qu'on l'ait déplacé. */
   function aimAtPill() {
