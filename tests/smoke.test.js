@@ -189,7 +189,7 @@ test('marché : badge de moyenne et verdict sous chaque enchère visible', async
 
 test('marché : « Miser le minimum » pose le minimum de la page d\'enchère, sans navigation', async () => {
   const list = [{ id: 'q1', card_id: 'k1', snapshot_rarity: 'R', base_amount: 10, current_bid: null, card: { wikipedia_title: 'Carte Q1', rarity: 'R' } }];
-  const env = createEnv({ fetchImpl: async (u) => (String(u).includes('/sales') ? json({ summary: { R: { average: 12, count: 5, latest: 11 } } }) : json({ auctions: list, selling: [], bidding: [], won: [], history: [] })) });
+  const env = createEnv({ fetchImpl: async (u) => (String(u).includes('/sales') ? json({ summary: { R: { average: 12, count: 5, latest: 11 } } }) : json({ auctions: list, selling: [], bidding: [], won: [{ winner_id: ME }], history: [] })) });
   const { w, WMX } = env;
   const clicks = fakeBidPages(w, 11);
   w.history.pushState({}, '', '/marketplace');
@@ -237,7 +237,7 @@ test('échanges : valeurs des deux côtés, wikibidous et écart', async () => {
 test('marché : plusieurs « Miser le minimum » de suite se mettent en file et sont misés l\'un après l\'autre', async () => {
   const mk = (id, cid) => ({ id, card_id: cid, snapshot_rarity: 'R', base_amount: 10, current_bid: null, card: { wikipedia_title: `Carte ${id}`, rarity: 'R' } });
   const list = [mk('f1', 'k1'), mk('f2', 'k2'), mk('f3', 'k3')];
-  const env = createEnv({ fetchImpl: async (u) => (String(u).includes('/sales') ? json({ summary: { R: { average: 12, count: 5, latest: 11 } } }) : json({ auctions: list, selling: [], bidding: [], won: [], history: [] })) });
+  const env = createEnv({ fetchImpl: async (u) => (String(u).includes('/sales') ? json({ summary: { R: { average: 12, count: 5, latest: 11 } } }) : json({ auctions: list, selling: [], bidding: [], won: [{ winner_id: ME }], history: [] })) });
   const { w, WMX } = env;
   const clicks = fakeBidPages(w, 11);
   w.history.pushState({}, '', '/marketplace');
@@ -271,5 +271,19 @@ test('marché : mes ventes n\'ont pas de bouton de mise et affichent bénéfice 
   assert.equal(q('v2').querySelector('.wmx-mk-bid'), null);
   assert.ok(q('b1').querySelector('.wmx-mk-bid'), 'bouton présent sur une enchère des autres');
   assert.match(q('b1').querySelector('.wmx-mk').textContent, /Bonne affaire/);
+  env.close();
+});
+
+test('mise automatique : jamais de surenchère sur soi-même (état réel de l\'enchère contrôlé avant de miser)', async () => {
+  // La liste (en retard) dit qu'un rival mène, mais l'état réel de l'enchère dit que c'est moi.
+  const stale = auction('z1', { seller_id: 'other', current_bid: 8, current_bidder_id: 'rival', end_at: inMin(60) });
+  const payload = { selling: [], bidding: [stale], won: [{ winner_id: ME }], history: [] };
+  const env = createEnv({ fetchImpl: async (u) => (/\/api\/marketplace\/z1/.test(String(u)) ? json({ auction: { current_bidder_id: ME, current_bid: 9, status: 'active' } }) : json(payload)) });
+  const { w, WMX } = env;
+  const clicks = fakeBidPages(w, 10);
+  env.mem.autoBids = { z1: { mode: 'outbid' } };
+  for (const f of WMX.features) await f.init?.();
+  await sleep(6500);
+  assert.deepEqual(clicks, [], 'aucune mise : le contrôle en direct montre que je mène déjà');
   env.close();
 });

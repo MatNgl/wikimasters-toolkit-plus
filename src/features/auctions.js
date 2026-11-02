@@ -21,6 +21,7 @@
   S.auto = {};                              // mises automatiques : { idEnchère: règle } (mémorisées)
   S.autoTry = {};                           // dernier essai de mise automatique par enchère
   S.autoFails = {};
+  S.autoLast = {};                          // dernière mise par enchère : { bid: mise avant la mienne, t }
   S.bidQueue = [];
   S.autoOpen = null;                        // enchère dont le formulaire de mise automatique est ouvert
   const saveAuto = () => WMX.store.set('autoBids', S.auto);
@@ -160,7 +161,19 @@
     input.dispatchEvent(new w.Event('change', { bubbles: true }));
   }
 
+  /** État réel d'une enchère (GET /api/marketplace/{id}) : meneur actuel, mise, statut. null si illisible. */
+  async function liveState(id) {
+    try {
+      const res = await fetch(`/api/marketplace/${id}`, { cache: 'no-store' });
+      if (!res.ok) return null;
+      const j = (await res.json())?.auction;
+      return j ? { bidder: j.current_bidder_id || null, bid: j.current_bid || 0, status: j.status } : null;
+    } catch (_) { return null; }
+  }
+
   async function bid(a, opts = {}) {
+    if (!D.me) await refresh(); // sans mon identifiant, on ne sait pas qui mène : pas de mise
+    if (!D.me) return opts.auto ? undefined : WMX.toast('Identifiant introuvable : actualisez la page puis réessayez.', 5000);
     if (S.betting) return opts.auto ? undefined : WMX.toast('Une mise est déjà en cours…');
     if (leading(a)) return opts.auto ? undefined : WMX.toast('Vous menez déjà cette enchère.');
     S.betting = a.id;
@@ -179,9 +192,14 @@
         alertUser('Mise automatique arrêtée', `« ${cardTitle(a)} » : le minimum (${fmt(min)} W) dépasse votre plafond de ${fmt(opts.cap)} W.`, `${a.id}:cap`);
         return;
       }
+      // Dernier contrôle, sur l'état RÉEL de l'enchère (pas sur la liste, parfois en retard) : jamais de surenchère sur soi-même.
+      const live = await liveState(a.id);
+      if (live && live.status && live.status !== 'active') return opts.auto ? undefined : WMX.toast('Cette enchère est terminée.', 5000);
+      if (live && D.me && live.bidder === D.me) return opts.auto ? undefined : WMX.toast('Vous menez déjà cette enchère.', 4000);
       setNumber(input, min); // exactement le minimum proposé par le jeu
       await sleep(250);
       if (Number(input.value) !== min) return WMX.toast('Le montant saisi n’a pas été pris en compte : rien n’a été misé.', 6000);
+      S.autoLast[a.id] = { bid: Number(live?.bid) || 0, t: Date.now() };
       btn.click();
       // Le serveur du jeu peut mettre quelques secondes à enregistrer la mise : on vérifie jusqu'à 6 fois avant de conclure à un échec.
       let now;
@@ -282,6 +300,10 @@
         alertUser('Mise automatique arrêtée', `« ${cardTitle(a)} » : le minimum (${fmt(m)} W) dépasse votre plafond de ${fmt(rule.cap)} W.`, `${a.id}:cap`);
         continue;
       }
+      // Ma dernière mise automatique n'est pas encore visible (serveur lent) : on attend qu'une mise PLUS HAUTE apparaisse (vraie
+      // surenchère d'un autre joueur) ou 90 s, au lieu de remiser par-dessus soi-même.
+      const last = S.autoLast[a.id];
+      if (last && Date.now() - last.t < 90000 && (a.current_bid || 0) <= last.bid) continue;
       const due = WMX.logic.autoBidDue(rule, { leading: leading(a), msLeft: msLeft(a), minBid: m, cooldownOk: Date.now() - (S.autoTry[a.id] || 0) > 6000 });
       if (!due) continue;
       S.autoTry[a.id] = Date.now();
