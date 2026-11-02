@@ -44,7 +44,7 @@ Essai avant envoi : `chrome://extensions` → mode développeur → « Charger l
 **Catégorie** : Jeux (ou Outils). **Langue** : français.
 
 ## 5. Politique de confidentialité
-Texte prêt dans [PRIVACY.md](PRIVACY.md). Le store exige une **URL publique** : le dépôt GitHub étant privé, il faut soit le rendre public (puis URL `…/blob/main/docs/PRIVACY.md`), soit publier ce texte sur une page publique (GitHub Pages, Gist public). Remplacer `[nom]`, `[adresse e-mail]`, `[date]` avant envoi.
+Texte prêt et rempli dans [PRIVACY.md](PRIVACY.md) (éditeur MatNgl, mise à jour du 3 novembre 2026). Le dépôt est public : adresse à donner au store = https://github.com/MatNgl/wikimasters-toolkit-plus/blob/main/docs/PRIVACY.md
 
 ## 6. À fournir par l'éditeur
 - Compte développeur Chrome Web Store (frais uniques de 5 $) et l'envoi du ZIP.

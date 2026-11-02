@@ -1,8 +1,8 @@
 # WikiMasters Toolkit+ — politique de confidentialité
 
-Dernière mise à jour : [date de publication]
+Dernière mise à jour : 3 novembre 2026
 
-**Éditeur** : [nom ou pseudo], contact : [adresse e-mail]
+**Éditeur** : MatNgl, contact : mattheo.naegellen@gmail.com
 
 ## Extension non officielle
 WikiMasters Toolkit+ est développée indépendamment de WikiMasters et n'est affiliée ni à WikiMasters ni à Wikipédia. Certaines de ses fonctions (ouverture automatique des paquets, mises automatiques, enchères rapides, assistant de vente) ne sont pas approuvées par WikiMasters, dont les règles de la communauté interdisent les outils qui jouent ou interagissent à votre place. Leur usage relève de votre responsabilité.
@@ -20,4 +20,4 @@ WikiMasters Toolkit+ est développée indépendamment de WikiMasters et n'est af
 Aucun cookie, aucune publicité, aucun suivi, aucune revente de données, aucun code téléchargé depuis un serveur.
 
 ## Vos droits
-L'éditeur ne détient aucune donnée vous concernant : il n'y a rien à exporter ni à supprimer de son côté. Pour toute question : [adresse e-mail].
+L'éditeur ne détient aucune donnée vous concernant : il n'y a rien à exporter ni à supprimer de son côté. Pour toute question : mattheo.naegellen@gmail.com.
