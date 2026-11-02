@@ -54,8 +54,12 @@
     const done = (state, reason, extra = {}) => publish({ ...st, state, reason, ...extra });
     try {
       if (!st.tags.length) return done('no-tags', 'aucune étiquette choisie (Paramètres)');
+      // L'inventaire n'est chargé que sur la Collection et le tableau de bord : l'assistant le charge lui-même (cache, puis lecture à jour),
+      // pour fonctionner depuis n'importe quelle page du jeu. Les cartes revenues invendues y reviennent : relecture complète toutes les 30 min.
+      await WMX.inventory.ensure();
+      if (WMX.inventory.age() > 30 * 60000 && !WMX.inventory.isLoading()) WMX.inventory.reload();
       const items = WMX.inventory.items(); // la liste en cache suffit : l'inventaire se recharge parfois pendant des minutes (jeu lent)
-      if (!items.length) return done('no-inventory', 'inventaire pas encore chargé : ouvrez la Collection');
+      if (!items.length) return done('no-inventory', WMX.inventory.isLoading() ? 'chargement de la collection en cours, reprise à la prochaine passe' : 'collection indisponible pour le moment, nouvelle tentative à la prochaine passe');
       if (WMX.quick.isRunning()) return done('queue-busy', 'file d’attente occupée, reprise à la fin', { queued: WMX.quick.queued() });
       await WMX.quick.refresh();
       const active = WMX.quick.count();

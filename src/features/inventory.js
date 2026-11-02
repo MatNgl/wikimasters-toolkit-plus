@@ -8,7 +8,7 @@
   const INV_TTL = 10 * 60 * 1000; // inventaire en cache : actualisé en arrière-plan au-delà de 10 min
 
   const S = {
-    items: [], loading: false, loadedCount: 0, started: false, gone: new Map(),
+    items: [], loading: false, loadedCount: 0, loadedAt: 0, started: false, gone: new Map(),
     priceRar: new Set(['L', 'UR', 'SR', 'R']), priceMode: 'rar', priceTags: new Set(), tagsTouched: false,
   };
   const listeners = new Set();
@@ -75,6 +75,7 @@
       await sleep(300);
     }
     S.loading = false;
+    if (complete) S.loadedAt = Date.now();
     if (complete || !S.items.length) setItems(withoutDiscarded([...byId.values()]));
     // Un chargement interrompu ne remplace pas un inventaire plus complet, et son cache est marqué incomplet (rechargé la prochaine fois).
     WMX.store.set('invCacheV2', { t: Date.now(), items: S.items, complete });
@@ -91,7 +92,7 @@
     S.tagsTouched = !!prefs.tagsTouched;
     await WMX.prices.load();
     const cached = await WMX.store.get('invCacheV2', null);
-    if (cached?.items?.length) setItems(withoutDiscarded(cached.items));
+    if (cached?.items?.length) { setItems(withoutDiscarded(cached.items)); if (cached.complete) S.loadedAt = cached.t || 0; }
     if (!cached || !cached.complete || Date.now() - cached.t > INV_TTL) loadInventory(); // un cache sans « complete » est partiel : on recharge
   }
 
@@ -271,5 +272,8 @@
     ensure, renderStatus, items: () => S.items, find: findAny, learn, totals, price, priceText, fmt, makePriceBar, openPriceModal,
     onChange(cb) { listeners.add(cb); return () => listeners.delete(cb); },
     isLoading: () => S.loading,
+    /** Âge (ms) de la dernière lecture complète de la collection ; `reload` la relit en arrière-plan (sans vider l'affichage). */
+    age: () => (S.loadedAt ? Date.now() - S.loadedAt : Infinity),
+    reload: () => loadInventory(),
   };
 })();

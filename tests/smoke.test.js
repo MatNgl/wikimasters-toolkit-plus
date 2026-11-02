@@ -560,3 +560,23 @@ test('assistant de vente : ne remet jamais en vente une carte que le jeu dit ne 
   assert.match(w.document.querySelector('.wmx-aspanel').textContent, /plus dans votre collection/);
   env.close();
 });
+
+test('assistant de vente : charge lui-même la collection (hors page Collection) et affiche le prix par défaut des cartes sans vente', async () => {
+  const env = createEnv({ fetchImpl: async () => json({ selling: [], bidding: [], won: [{ winner_id: ME }], history: [] }) });
+  const { WMX } = env;
+  const card = (id) => ({ card_id: id, title: 'Carte ' + id, rarity: 'R', count: 1, starred: false, tags: [{ name: 'VENTE' }] });
+  let list = [];
+  let ensured = 0;
+  WMX.inventory.ensure = async () => { ensured += 1; list = [card('x1')]; };
+  WMX.inventory.items = () => list;
+  Object.assign(WMX.settings, { autoSell: true, autoSellTags: 'VENTE', autoSellMax: 3 });
+  const got = [];
+  WMX.quick.bulk = (type, items) => got.push(...items.map((i) => i.card_id));
+  await WMX.autoSell.tick();
+  assert.equal(ensured, 1, 'la passe charge la collection si la page ne l\'a pas fait');
+  assert.deepEqual(got, ['x1'], 'et choisit ses cartes dedans');
+  WMX.prices.has = () => true;
+  WMX.prices.get = () => null;
+  assert.match(WMX.quick.hint({ card_id: 'x1', rarity: 'R' }), /10 W .*aucune vente/, 'prix par défaut annoncé dans l\'infobulle du ⚡');
+  env.close();
+});

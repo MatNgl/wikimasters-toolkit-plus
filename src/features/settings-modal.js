@@ -8,7 +8,7 @@
     speed: 'normal', order: 'rarity', images: true,
     stopOn: 'off', reserve: 0, fullStockOpen: true, anticipate: true,
     quickCoef: 0.9, quickDuration: '1h', quickPrudent: false, auctionBubble: true, auctionNotify: true, autoReload: true,
-    autoDefaultMode: 'time', autoDefaultSecs: 35, autoCapMode: 'avg', autoCapW: 100, autoCapPct: 20, autoDefaultOn: false, autoSell: false, autoSellTags: 'VENTE', autoSellMax: 3, autoSellCap: 500, cardStyle: true, cardShowDesc: true, cardShowStats: true,
+    autoDefaultMode: 'time', autoDefaultSecs: 35, autoCapMode: 'avg', autoCapW: 100, autoCapPct: 20, autoDefaultOn: false, autoSell: false, autoSellTags: 'VENTE', autoSellMax: 3, autoSellCap: 500, quickNoSalePrice: 10, cardStyle: true, cardShowDesc: true, cardShowStats: true,
   };
 
   const SECTIONS = [
@@ -40,6 +40,7 @@
       desc: 'Réglages du bouton ⚡ de la collection : prix de départ = moyenne du marché × coefficient.',
       items: [
         { key: 'quickCoef', type: 'number', min: 0.1, max: 3, step: 0.05, label: 'Coefficient du prix de départ', desc: 'Appliqué à la moyenne du marché, arrondi à l\u2019entier (1 W minimum). 0,9 = 10 % sous la moyenne.' },
+        { key: 'quickNoSalePrice', type: 'number', min: 1, max: 1000000, step: 1, label: 'Prix de départ sans moyenne (W)', desc: 'Pour une carte sans aucune vente sur le marché (« Sans vente ») : prix de départ utilisé à la place de la moyenne. 10 W par défaut.' },
         { key: 'quickDuration', type: 'select', label: 'Durée de l\u2019enchère', desc: 'Durée proposée par défaut (celles du jeu).',
           options: [['10min', '10 min'], ['30min', '30 min'], ['1h', '1 h'], ['3h', '3 h'], ['6h', '6 h'], ['12h', '12 h']] },
         { key: 'quickPrudent', type: 'toggle', label: 'Mode prudent', desc: 'Le prix de départ ne dépasse pas 1,2 fois la dernière vente.' },

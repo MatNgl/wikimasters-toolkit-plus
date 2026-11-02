@@ -1,36 +1,34 @@
-# Bilan — WikiMasters Toolkit+ (v0.16.0)
+# Bilan — WikiMasters Toolkit+ (v0.18.0)
 
 ## Fait
-**Paquets** — « Tout ouvrir » et ouverture automatique (intervalle min/max, arrêt sur belle carte), écran de révélation façon gacha trié par rareté (prix, ★, ⚡, couronnes sur les cartes les plus chères, « Paquet n/N »), statistiques (répartition, valeur moyenne d'un paquet), menu centré qui sort d'un cadran, visible partout tant que l'auto tourne.
-**Collection** (page native enrichie) — barre au-dessus de la recherche (valeur estimée, état des prix, « Charger les prix… » par rareté ou étiquette), moyenne du marché et ⚡ sur chaque carte, style de carte plein cadre pour toutes les raretés (description et attaque/défense au choix), sélection / étiquettes / favoris / défausse = fonctions natives.
+**Paquets** — « Tout ouvrir » et ouverture automatique (intervalle min/max, arrêt sur belle carte), écran de révélation façon gacha trié par rareté (prix, ★, ⚡, couronnes sur les cartes les plus chères, « Paquet n/N », valeur estimée du lot), statistiques (répartition, valeur moyenne d'un paquet), menu centré qui sort d'un cadran, visible partout tant que l'auto tourne. Les prix des cartes tirées passent devant tous les autres ; la carte sur laquelle on clique ⚡ passe en tête.
+**Collection** (page native enrichie) — barre au-dessus de la recherche (valeur estimée, état des prix, « Charger les prix… » par rareté ou étiquette), moyenne du marché (« Sans vente » quand le marché n'a aucune vente pour la rareté) et ⚡ sur chaque carte, sélection / étiquettes / favoris / défausse = fonctions natives du jeu.
+**Style de carte global** — style « plein cadre » (anneau de la couleur de rareté, vagues, reflet) appliqué à toute carte affichée par le jeu, reconnue à sa structure : collection, marché et fiche d'enchère, « Toutes les cartes », fenêtre d'échange, profil, et écran de révélation. Description et attaque/défense au choix, désactivable.
 **Tableau de bord** — valeur, valeur par rareté, top 10, courbe dans le temps.
 **Marché** — moyenne et verdict (bonne affaire / correct / trop cher), « Miser le minimum » avec file d'attente, bénéfice/perte sur mes ventes, pas de bouton sur mes ventes.
 **Échanges** — bouton « Valeurs » (cartes, wikibidous, total, écart) : testé sur une fausse offre seulement.
-**Enchères** — bouton rond à anneau (temps restant, surenchéri, fin imminente), bulle (mes mises | mes ventes, déplaçable, en-tête fixe, ⚙, ↻), clic sur le nom → l'enchère, annulation (« Annulation… »), alertes (surenchéri, < 2 min), mises automatiques (dès surenchère / X s avant la fin) avec plafond fixe ou selon la moyenne du marché (± %), réglages par défaut, un seul onglet exécute les mises, contrôle de l'état réel avant chaque mise (jamais de surenchère sur soi-même), file d'attente survolable.
-**Prix** — valables 4 jours, jamais rechargés tout seuls, prix jamais chargés d'abord ; une requête à la fois (2 si le jeu est lent), pauses adaptatives.
-**Qualité** — 35 tests automatiques (fonctions pures + essais jsdom), mise à jour automatique de l'extension (développement), bannière « actualiser » après mise à jour, messages d'erreur clairs, README et docs à jour.
+**Enchères** — bouton rond à anneau (temps restant, surenchéri, fin imminente), bulle (mes mises | mes ventes, déplaçable, ⚙, ↻), clic sur le nom → l'enchère, annulation (« Annulation… »), alertes (surenchéri, < 2 min), mises automatiques (dès surenchère / X s avant la fin) avec plafond fixe ou selon la moyenne du marché, un seul onglet exécute les mises, contrôle de l'état réel avant chaque mise (jamais de surenchère sur soi-même), file d'attente survolable.
+**Enchère rapide ⚡** — un clic met la carte dans une file traitée en arrière-plan (cadres invisibles qui pilotent l'interface du jeu) : prix de départ = moyenne × coefficient (mode prudent en option), durée au choix ; **10 W par défaut pour une carte sans aucune vente sur le marché** (réglable). Recliquer annule l'enchère (validée en réel ; le cadre reste ouvert jusqu'à la confirmation du serveur). Une carte que le jeu ne retrouve plus (vendue) est abandonnée tout de suite.
+**Assistant de vente** (0.15 → 0.18) — désactivé par défaut. Garde N enchères actives (3 par défaut, 10 max) avec les cartes portant les étiquettes choisies (menu des étiquettes du compte) et remet en vente les invendues. Garde-fous : jamais une favorite, prix de départ plafonné (500 W par défaut), une vente annulée à la main écarte la carte 12 h, deux échecs 6 h, 4 mises en vente auto par carte et par jour. Ne retente jamais une carte que le jeu dit ne plus posséder (vendue). Fonctionne depuis n'importe quelle page du jeu : il charge sa collection lui-même (cache puis lecture à jour, relue toutes les 30 min). État visible (ligne dans la bulle des enchères, fenêtre « Détails » : cartes éligibles, cartes écartées et pourquoi), bouton « Lancer maintenant », interrupteur dans la fenêtre de détails, réglages partagés entre onglets, verrou pris seulement quand l'assistant est activé.
+**Journal d'activité** — Paramètres → Journal : actions de la file, de l'assistant, incidents du jeu (page de collection modifiée, prix qui n'arrivent pas) ; « Copier le diagnostic ».
+**Prix** — valables 4 jours, jamais rechargés tout seuls, prix jamais chargés d'abord ; plusieurs requêtes en parallèle qui s'adaptent à la lenteur du jeu, délai de 30 s, nouvelles tentatives sur les erreurs 503/429.
+**Défausse** — uniquement celle, native, du jeu (sélection) ; l'extension n'en fait plus.
+**Qualité** — 49 tests automatiques (fonctions pures + essais jsdom), bannière « actualiser » après mise à jour, messages d'erreur clairs.
 
-**Assistant de vente** (0.15) — désactivé par défaut. Garde N enchères actives (3 par défaut) avec les cartes portant les étiquettes choisies (ex. VENTE) et remet en vente les invendues. Garde-fous : jamais une favorite, prix de départ plafonné (500 W), une vente annulée à la main écarte la carte 12 h, deux échecs la mettent de côté 6 h, 4 mises en vente auto par carte et par jour. Testé en réel : sélection, plafond, annulation.
-**Journal d'activité** (0.15) — Paramètres → Journal : actions de la file, de l'assistant et incidents ; « Copier le diagnostic ». Détection d'une page de collection modifiée par le jeu.
-**Défausse** — uniquement celle, native, du jeu (sélection) ; l'ancienne défausse carte par carte de l'extension est supprimée.
-**Annulation de vente** — validée en réel : le cadre invisible reste ouvert jusqu'à la confirmation du serveur (0.14.6), bouton « Annulation… ».
-
-## À surveiller / ne fonctionne pas encore
+## À surveiller / limites
 - Valeurs d'échange : jamais vues sur une vraie offre.
-- Notifications du navigateur : autorisation jamais accordée en test.
-- Écrans étroits / mobile : non testés (la fenêtre de test ne se redimensionne pas).
-- Le jeu est parfois très lent (3 à 8 s par requête) : ouverture d'une fiche 3 à 28 s, défausse via l'extension ~11 s par carte (celle du jeu est instantanée), chargement de l'inventaire plusieurs minutes.
-- L'ouverture automatique ne s'exécute que sur la page Paquets (elle se met en pause ailleurs).
-- Dépendance aux classes CSS du jeu : un changement de design du jeu peut casser l'ajout des prix et du ⚡ sur la collection.
-- Mise à jour automatique : réservée au développement, à retirer d'une version publiée.
+- Notifications : ce sont des bandeaux dans la page (toasts), pas des notifications du système ; aucune permission « notifications » n'est demandée.
+- Écrans étroits / mobile : non testés.
+- Style de carte : profil vérifié en réel ; guilde, batailles, demandes d'amis non vérifiés faute de carte (même détection, jugé secondaire).
+- Après une défausse native, les compteurs de l'extension se mettent à jour au rechargement de la page.
+- Le jeu est parfois très lent (3 à 20 s par requête) : ouverture d'une fiche 3 à 30 s, mise en vente d'une carte ~15 à 40 s, chargement de l'inventaire plusieurs minutes.
+- L'ouverture automatique des paquets ne s'exécute que sur la page Paquets (en pause ailleurs).
+- L'indicateur « carte toujours possédée » du jeu ne couvre que les 50 dernières enchères de l'historique.
+- Dépendance à la structure de la page du jeu : un changement de design peut casser l'ajout des prix, du ⚡ et du style (détecté et signalé dans le journal).
+- Mise à jour automatique : réservée au développement, à retirer de la version publiée.
 
-## Évolutions décidées
-**Style de carte global (0.16)** : appliqué à toute carte affichée par le jeu (reconnue à sa structure : collection, marché + fiche d'enchère, « Toutes les cartes », fenêtre d'échange) et à l'écran de révélation des paquets. Vérifié en réel sur ces pages ; profil, guilde, batailles et demandes d'amis : pas de carte disponible pour tester, couverts par la même détection. Ouverture de paquets en arrière-plan : possible. Refusés : veille du marché, bilan gains/dépenses, complétion de collection, tendance des prix.
+## Décisions
+Acceptés : défausse par la sélection native, assistant de vente, journal et détection de page cassée, style de carte global. Refusés : veille du marché, bilan gains/dépenses, complétion de collection, tendance des prix. Ouverture de paquets en arrière-plan : possible, optionnel.
 
 ## Publication (Chrome Web Store) — liste de contrôle
-1. Retirer l'actualisation automatique et la permission `alarms` de la version publiée.
-2. Politique de confidentialité : données uniquement locales ; requêtes vers wiki-masters.com et fr.wikipedia.org (images, descriptions).
-3. Justifier chaque permission (storage ; accès au site du jeu).
-4. Vérifier les conditions d'utilisation de WikiMasters (automatisation : ouverture auto, mises auto) et, idéalement, l'accord de l'éditeur.
-5. Captures d'écran, description, icône (déjà faite), compte développeur.
-6. Mode « non répertoriée » possible pour un petit cercle d'utilisateurs avant une publication publique.
+Voir [PUBLICATION.md](PUBLICATION.md) : texte de la fiche, justification des permissions, politique de confidentialité, captures, points à vérifier avant de soumettre.
