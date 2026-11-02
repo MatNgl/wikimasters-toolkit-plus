@@ -77,7 +77,7 @@
     S.loading = false;
     if (complete || !S.items.length) setItems(withoutDiscarded([...byId.values()]));
     // Un chargement interrompu ne remplace pas un inventaire plus complet, et son cache est marqué incomplet (rechargé la prochaine fois).
-    WMX.store.set('invCache', { t: Date.now(), items: S.items, complete });
+    WMX.store.set('invCacheV2', { t: Date.now(), items: S.items, complete });
   }
 
   /** Charge les préférences, puis l'inventaire en cache (affiché aussitôt) et, s'il est périmé, l'inventaire à jour. */
@@ -90,7 +90,7 @@
     if (Array.isArray(prefs.priceTags)) S.priceTags = new Set(prefs.priceTags);
     S.tagsTouched = !!prefs.tagsTouched;
     await WMX.prices.load();
-    const cached = await WMX.store.get('invCache', null);
+    const cached = await WMX.store.get('invCacheV2', null);
     if (cached?.items?.length) setItems(withoutDiscarded(cached.items));
     if (!cached || !cached.complete || Date.now() - cached.t > INV_TTL) loadInventory(); // un cache sans « complete » est partiel : on recharge
   }
@@ -123,7 +123,7 @@
     S.gone.set(e.detail.card_id, (S.gone.get(e.detail.card_id) || 0) + 1);
     for (const it of S.items) if (it.card_id === e.detail.card_id) it.count -= 1;
     setItems(S.items.filter((i) => i.count > 0));
-    if (!S.loading) WMX.store.set('invCache', { t: Date.now(), items: S.items, complete: true }); // le cache ne réaffiche plus les cartes défaussées (jamais une liste partielle)
+    if (!S.loading) WMX.store.set('invCacheV2', { t: Date.now(), items: S.items, complete: true }); // le cache ne réaffiche plus les cartes défaussées (jamais une liste partielle)
   });
 
   function totals() {
