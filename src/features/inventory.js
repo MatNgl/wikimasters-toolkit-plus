@@ -23,7 +23,7 @@
   const priceText = (it) => {
     const p = price(it);
     if (p) return `Moy. ${fmt(p.avg)} W`;
-    return WMX.prices.fresh(it.card_id) ? 'Sans vente' : 'Moy. —';
+    return WMX.prices.has(it.card_id) ? 'Sans vente' : 'Moy. —';
   };
   const compact = (r) => ({
     id: r.id, card_id: r.card_id, title: r.card?.wikipedia_title || '?', rarity: WMX.normRarity(r.card?.rarity) || 'C',
@@ -134,7 +134,7 @@
   function renderStatus() {
     const t = totals();
     const st = WMX.prices.state();
-    const noSale = S.items.filter((it) => WMX.prices.fresh(it.card_id) && !price(it)).length; // prix demandé, mais aucune vente pour cette rareté
+    const noSale = S.items.filter((it) => WMX.prices.has(it.card_id) && !price(it)).length; // prix demandé, mais aucune vente pour cette rareté
     const loaded = t.priced + noSale; // cartes dont le prix est connu (moyenne existante ou « sans vente »)
     const info = !S.items.length ? (S.loading || S.started ? `Chargement de la collection : ${fmt(S.loadedCount)} cartes…` : 'Collection non chargée')
       : st.running
@@ -179,10 +179,10 @@
     const selected = byTag
       ? S.items.filter((it) => it.tags.some((t) => S.priceTags.has(t.id)))
       : S.items.filter((it) => S.priceRar.has(it.rarity));
-    // Un prix encore valable (48 h, 96 h si la carte est très vendue) n'est pas rechargé ; il compte d'emblée dans la jauge.
-    const todo = selected.filter((it) => !WMX.prices.fresh(it.card_id))
-      .sort((a, b) => RANK[b.rarity] - RANK[a.rarity] || a.title.localeCompare(b.title, 'fr'));
-    return { selected, todo };
+    // Priorité : les prix jamais chargés ; l'actualisation (prix de plus de 4 jours) n'a lieu qu'une fois tous passés une fois.
+    const batch = WMX.logic.priceBatch(selected, (it) => WMX.prices.has(it.card_id), (it) => WMX.prices.fresh(it.card_id));
+    const todo = batch.todo.slice().sort((a, b) => RANK[b.rarity] - RANK[a.rarity] || a.title.localeCompare(b.title, 'fr'));
+    return { selected, todo, missing: batch.missing.length, stale: batch.stale.length, refresh: batch.refresh };
   }
   function startPriceLoad() {
     const { selected, todo } = pricePlan();
@@ -204,32 +204,37 @@
     const back = el('div', { class: 'wmx-dlg-back', onmousedown: (e) => { if (e.target === back) close(); } },
       el('div', { class: 'wmx-dlg wmx-dlg--wide', role: 'dialog', 'aria-label': 'Charger les prix' },
         el('h3', {}, 'Charger les prix'),
-        el('p', { class: 'wmx-dlg-note' }, 'Choisissez ce qu’il faut charger. Seuls les prix manquants ou périmés sont demandés (validité 48 h, 96 h pour une carte très vendue) : ceux déjà connus ne changent pas.'),
+        el('p', { class: 'wmx-dlg-note' }, 'Choisissez ce qu’il faut charger. Les prix jamais chargés passent en premier ; un prix déjà chargé n’est actualisé que sur votre demande, et seulement au bout de 4 jours.'),
         body,
         el('div', { class: 'wmx-dlg-row' }, el('button', { class: 'wmx-btn wmx-btn--ghost', onclick: close }, 'Annuler'), go)));
-    const missing = (list) => list.filter((it) => !WMX.prices.fresh(it.card_id)).length;
+    // Par choix : prix jamais chargés (priorité) ou, à défaut, prix de plus de 4 jours.
+    const missing = (list) => list.filter((it) => !WMX.prices.has(it.card_id)).length;
+    const stale = (list) => list.filter((it) => WMX.prices.has(it.card_id) && !WMX.prices.fresh(it.card_id)).length;
+    const count = (list) => { const m = missing(list); return m ? `${m} jamais chargé${m > 1 ? 's' : ''}` : (stale(list) ? `${stale(list)} à actualiser` : 'à jour'); };
     function render() {
       const mode = (m, label) => el('button', { class: 'wmx-chip2', 'aria-pressed': String(S.priceMode === m), onclick: () => { S.priceMode = m; savePrefs(); render(); } }, label);
       let chips;
       if (S.priceMode === 'rar') {
-        chips = el('div', { class: 'wmx-pm-chips' }, ...R.map((r) => chip(`${r} · ${missing(S.items.filter((i) => i.rarity === r))} à charger`, WMX.RARITY_RGB[r], S.priceRar.has(r),
+        chips = el('div', { class: 'wmx-pm-chips' }, ...R.map((r) => chip(`${r} · ${count(S.items.filter((i) => i.rarity === r))}`, WMX.RARITY_RGB[r], S.priceRar.has(r),
           (on) => { on ? S.priceRar.add(r) : S.priceRar.delete(r); savePrefs(); render(); })));
       } else {
         const counts = new Map();
         for (const it of S.items) for (const t of it.tags) { const e = counts.get(t.id) || { ...t, list: [] }; e.list.push(it); counts.set(t.id, e); }
         const tags = [...counts.values()].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
-        chips = el('div', { class: 'wmx-pm-chips wmx-pm-tags' }, ...(tags.length ? tags.map((t) => chip(`${t.name} · ${missing(t.list)}/${t.list.length}`, '', S.priceTags.has(t.id),
+        chips = el('div', { class: 'wmx-pm-chips wmx-pm-tags' }, ...(tags.length ? tags.map((t) => chip(`${t.name} · ${count(t.list)}`, '', S.priceTags.has(t.id),
           (on) => { S.tagsTouched = true; on ? S.priceTags.add(t.id) : S.priceTags.delete(t.id); savePrefs(); render(); }))
           : [el('span', { class: 'wmx-cp-empty' }, 'Aucune étiquette dans la collection')]));
       }
-      const { selected, todo } = pricePlan();
+      const { selected, todo, missing: nMissing, stale: nStale, refresh } = pricePlan();
       const mins = Math.max(1, Math.round((todo.length * 1.5) / 60));
       body.replaceChildren(
         el('div', { class: 'wmx-pm-seg' }, mode('rar', 'Par rareté'), mode('tag', 'Par étiquette')),
         chips,
         el('p', { class: 'wmx-pm-sum' }, !selected.length ? (S.priceMode === 'tag' ? 'Choisissez au moins une étiquette.' : 'Choisissez au moins une rareté.')
-          : todo.length ? `${fmt(todo.length)} prix à charger (${fmt(selected.length - todo.length)} déjà connus) · environ ${mins} min, selon la réponse du jeu.` : 'Tous les prix de ce choix sont déjà connus.'));
-      go.textContent = todo.length ? `Charger ${fmt(todo.length)} prix` : 'Charger';
+          : refresh ? `Tous les prix de ce choix ont été chargés au moins une fois. ${fmt(nStale)} ont plus de 4 jours : à actualiser (environ ${mins} min, selon la réponse du jeu).`
+          : todo.length ? `${fmt(nMissing)} prix jamais chargés${nStale ? ` (${fmt(nStale)} de plus de 4 jours attendront que tout ait été chargé une fois)` : ''} · environ ${mins} min, selon la réponse du jeu.`
+          : 'Tous les prix de ce choix sont à jour (moins de 4 jours).'));
+      go.textContent = todo.length ? (refresh ? `Actualiser ${fmt(todo.length)} prix` : `Charger ${fmt(todo.length)} prix`) : 'Charger';
       go.disabled = !todo.length;
     }
     priceModal = { render };

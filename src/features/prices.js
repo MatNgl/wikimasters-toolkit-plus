@@ -131,6 +131,8 @@
       const s = e?.s?.[rarity];
       return s ? { avg: s.average, last: s.latest, count: s.count, t: e.t } : null;
     },
+    /** Un prix (ou « sans vente ») a déjà été chargé pour cette carte, même ancien. */
+    has(cardId) { return !!cache?.[cardId]; },
     fresh(cardId) {
       return L.isFresh(cache?.[cardId]);
     },
@@ -147,7 +149,7 @@
       await load();
       for (const c of cards || []) {
         const r = WMX.normRarity(c?.rarity);
-        if (c?.id && r && !WMX.prices.get(c.id, r)) schedule(c.id, true);
+        if (c?.id && r && !WMX.prices.fresh(c.id)) schedule(c.id, true); // rien à faire si le prix a moins de 4 jours (même « sans vente »)
       }
     },
     /** Charge les prix de ces cartes par lots (celles dont le prix est déjà à jour sont ignorées). */

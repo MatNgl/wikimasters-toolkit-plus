@@ -4,23 +4,28 @@ const L = require('../src/lib/logic.js');
 
 const H = L.HOUR;
 
-test('priceTtl : 48 h par défaut, 96 h pour une carte très vendue', () => {
-  assert.equal(L.priceTtl({}), 48 * H);
-  assert.equal(L.priceTtl({ UR: { count: 3 } }), 48 * H);
-  assert.equal(L.priceTtl({ UR: { count: 9 }, R: { count: 2 } }), 48 * H);
-  assert.equal(L.priceTtl({ UR: { count: 10 } }), 96 * H);
-  assert.equal(L.priceTtl({ UR: { count: 1 }, R: { count: 25 } }), 96 * H);
-  assert.equal(L.priceTtl(undefined), 48 * H);
-});
-
-test('isFresh : respecte les deux durées', () => {
+test('priceTtl / isFresh : un prix est valable 4 jours', () => {
   const now = 1_000_000_000_000;
+  assert.equal(L.priceTtl(), 96 * H);
   assert.equal(L.isFresh(null, now), false);
-  assert.equal(L.isFresh({ t: now - 47 * H, s: { UR: { count: 1 } } }, now), true);
-  assert.equal(L.isFresh({ t: now - 49 * H, s: { UR: { count: 1 } } }, now), false);
-  assert.equal(L.isFresh({ t: now - 49 * H, s: { UR: { count: 40 } } }, now), true);
+  assert.equal(L.isFresh({ t: now - 95 * H, s: { UR: { count: 1 } } }, now), true);
   assert.equal(L.isFresh({ t: now - 97 * H, s: { UR: { count: 40 } } }, now), false);
   assert.equal(L.isFresh({ s: {} }, now), false);
+});
+
+test('priceBatch : les prix jamais chargés d\'abord, l\'actualisation seulement ensuite', () => {
+  const items = [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }];
+  const has = (it) => it.id !== 1;
+  const fresh = (it) => it.id === 2 || it.id === 1;
+  const a = L.priceBatch(items, has, fresh);
+  assert.deepEqual(a.missing.map((i) => i.id), [1]);
+  assert.deepEqual(a.stale.map((i) => i.id), [3, 4]);
+  assert.deepEqual(a.todo.map((i) => i.id), [1], 'les prix périmés attendent que tout ait été chargé une fois');
+  assert.equal(a.refresh, false);
+  const b = L.priceBatch(items, () => true, fresh);
+  assert.deepEqual(b.todo.map((i) => i.id), [3, 4]);
+  assert.equal(b.refresh, true);
+  assert.deepEqual(L.priceBatch(items, () => true, () => true).todo, []);
 });
 
 test('limitWait : croît, plafonne à 60 s, suit Retry-After', () => {

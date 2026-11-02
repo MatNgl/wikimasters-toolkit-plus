@@ -4,16 +4,23 @@
 
   const L = {
     HOUR,
-    /** Seuil de ventes à partir duquel une moyenne est jugée stable. */
-    STABLE_SALES: 10,
-    /** Durée de validité d'un prix : 48 h, ou 96 h pour une carte très vendue (sa moyenne bouge peu). */
-    priceTtl(summary, stableSales = 10) {
-      const counts = Object.values(summary || {}).map((s) => Number(s?.count) || 0);
-      return (counts.length && Math.max(...counts) >= stableSales ? 96 : 48) * HOUR;
+    /** Durée de validité d'un prix : 4 jours pour toutes les cartes. Un prix plus ancien n'est rechargé que sur demande. */
+    priceTtl() {
+      return 96 * HOUR;
     },
     /** Entrée de cache { t, s } encore valable ? */
     isFresh(entry, now = Date.now()) {
       return !!entry && Number.isFinite(entry.t) && now - entry.t < L.priceTtl(entry.s);
+    },
+    /**
+     * Plan d'un chargement de prix : d'abord les cartes dont le prix n'a JAMAIS été chargé ; ce n'est qu'une fois toutes passées
+     * au moins une fois qu'on actualise celles dont le prix a plus de 4 jours. Ne touche jamais un prix encore valable.
+     * `has(it)` : un prix a déjà été chargé ; `fresh(it)` : il a moins de 4 jours.
+     */
+    priceBatch(items, has, fresh) {
+      const missing = items.filter((it) => !has(it));
+      const stale = items.filter((it) => has(it) && !fresh(it));
+      return { missing, stale, todo: missing.length ? missing : stale, refresh: !missing.length && stale.length > 0 };
     },
     /** Pause (en secondes) après un refus du jeu : grandit à chaque refus consécutif ; Retry-After l'emporte s'il est plus long. */
     limitWait(blocks, retryAfterSec = 0) {
