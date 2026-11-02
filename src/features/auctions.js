@@ -182,9 +182,14 @@
       await sleep(250);
       if (Number(input.value) !== min) return WMX.toast('Le montant saisi n’a pas été pris en compte : rien n’a été misé.', 6000);
       btn.click();
-      await sleep(1800);
-      await refresh();
-      const now = D.bidding.find((x) => x.id === a.id);
+      // Le serveur du jeu peut mettre quelques secondes à enregistrer la mise : on vérifie jusqu'à 6 fois avant de conclure à un échec.
+      let now;
+      for (let t = 0; t < 6; t++) {
+        await sleep(t ? 2000 : 1800);
+        await refresh();
+        now = D.bidding.find((x) => x.id === a.id);
+        if (now && leading(now)) break;
+      }
       const won = !!(now && leading(now));
       WMX.toast(won
         ? `${opts.auto ? 'Mise automatique' : 'Mise'} de ${fmt(min)} W placée sur « ${cardTitle(a)} » : vous menez.`
