@@ -313,11 +313,26 @@
     WMX.prices.start(todo, { base: selected.length - todo.length, total: selected.length });
   }
 
-  /** Mode sélection natif du jeu (défausse, étiquettes… en lot) : on repasse sur la collection du jeu et on clique son bouton. */
+  /**
+   * Mode sélection natif du jeu (étiqueter, retirer l'étiquette, favoris, défausse en lot) : Collection+ peut être ouverte depuis
+   * n'importe quelle page, donc on repasse d'abord sur la collection du jeu, on attend qu'elle soit chargée, puis on clique
+   * son bouton « Sélectionner » (ou on le signale s'il est déjà actif : le menu du bas est alors déjà affiché).
+   */
   async function openNativeSelect() {
     close();
-    const btn = await WMX.dom.waitFor(() => [...document.querySelectorAll('button')].find((b) => /^\s*Sélectionner\s*$/.test(b.textContent) && !b.closest('.wmx-cplus')), 6000, 150);
-    if (btn) btn.click(); else WMX.toast?.('Le bouton « Sélectionner » du jeu est introuvable.');
+    if (location.pathname !== '/collection') {
+      window.dispatchEvent(new CustomEvent('wmx:navigate', { detail: '/collection' }));
+      await WMX.dom.waitFor(() => location.pathname === '/collection', 15000, 150);
+    }
+    const native = (re) => [...document.querySelectorAll('button')].find((x) => re.test(x.textContent.trim()) && !x.closest('.wmx-cplus'));
+    WMX.toast?.('Ouverture de la collection du jeu…', 20000);
+    // La liste du jeu (« Page 1 / N ») doit être affichée : c'est là que le bouton apparaît.
+    await WMX.dom.waitFor(() => /Page \d+\s*\/\s*\d+/.test(document.body.innerText), 30000, 250);
+    const btn = await WMX.dom.waitFor(() => native(/^(☑\s*)?Sélectionner$/) || native(/^Quitter la sélection$/), 12000, 200);
+    WMX.toast?.('');
+    if (!btn) return WMX.toast?.('Le bouton « Sélectionner » du jeu est introuvable : actualisez la page (F5) puis réessayez.', 7000);
+    if (/Quitter/.test(btn.textContent)) return WMX.toast?.('Le mode sélection du jeu est déjà actif : utilisez le menu en bas de l’écran.', 5000);
+    btn.click();
   }
 
   /** Bandeau propre à une page : titre, état, valeur, paramètres. Pas d'onglets ni de croix : on change de page par la barre latérale. */
