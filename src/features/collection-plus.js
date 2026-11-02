@@ -15,6 +15,7 @@
   };
   let overlay = null;
   let refreshTimer = null;
+  let tickTimer = null;
   const ui = {};
 
   const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -342,8 +343,9 @@
 
     WMX.prices.onProgress(() => {
       renderStatus();
-      clearTimeout(refreshTimer);
-      refreshTimer = setTimeout(() => { // met à jour les prix affichés, sans déplacer les cartes
+      if (tickTimer) return; // une mise à jour au plus toutes les 1,5 s, même pendant un chargement continu
+      tickTimer = setTimeout(() => { // met à jour les prix affichés, sans déplacer les cartes
+        tickTimer = null;
         refreshTiles();
         if (ui.reorder && (S.sort === 'expensive' || S.sort === 'cheap' || S.min !== '' || S.max !== '')) ui.reorder.hidden = false;
       }, 1500);

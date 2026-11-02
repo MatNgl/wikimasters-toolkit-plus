@@ -37,10 +37,17 @@
     const r = rar(c);
     const art = el('div', { class: 'wmx-art' });
     const desc = el('small', { class: 'wmx-desc' });
+    const priceChip = el('span', { class: 'wmx-ct-price' });
     const face = el('div', { class: 'wmx-face' },
       art, el('div', { class: 'wmx-shade' }),
       el('span', { class: 'wmx-rar' }, r),
-      el('div', { class: 'wmx-meta' }, el('strong', {}, c.wikipedia_title || '?'), desc));
+      el('div', { class: 'wmx-meta' }, el('strong', {}, c.wikipedia_title || '?'), priceChip, desc));
+    // Moyenne du marché : « … » tant qu'elle n'est pas arrivée (chargée en arrière-plan pendant l'ouverture des paquets).
+    const paintPrice = () => {
+      const p = WMX.prices.get(c.id, r);
+      priceChip.textContent = p ? `Moy. ${Math.round(p.avg).toLocaleString('fr-FR')} W` : 'Moy. …';
+    };
+    paintPrice();
     loadInfo(c).then((i) => {
       if (i.img) WMX.dom.artLayers(i.img, face);
       if (i.desc) desc.textContent = i.desc;
@@ -50,6 +57,7 @@
     // Une fois retournée, un clic ouvre la fiche du jeu (étiquette, enchère…).
     tile.addEventListener('click', () => { if (tile.classList.contains('flip')) WMX.openCardDetail?.(c); });
     tile.title = 'Cliquer pour ouvrir la fiche dans le jeu';
+    tile._paint = paintPrice;
     return tile;
   }
 
@@ -59,20 +67,37 @@
     const all = [];
     const title = el('h2', {}, 'Ouverture en cours…');
     const remaining = el('div', { class: 'wmx-remaining' });
+    const lot = el('div', { class: 'wmx-lot' });
+    let unsub = () => {};
     let remBase = '';
     let remNote = '';
     const grid = el('div', { class: 'wmx-grid' });
     // Cartes tirées mais pas encore vues : conservées si la page du jeu se recharge en cours de route.
-    const cont = el('button', { class: 'wmx-btn', disabled: '', onclick: () => { WMX.store.set('pendingCards', []); overlay.remove(); } }, 'Continuer');
+    const cont = el('button', { class: 'wmx-btn', disabled: '', onclick: () => { WMX.store.set('pendingCards', []); unsub(); overlay.remove(); } }, 'Continuer');
     const skipBtn = el('button', { class: 'wmx-btn wmx-btn--ghost', onclick: () => { skip = true; } }, 'Passer');
-    const overlay = el('div', { class: 'wmx-overlay' }, title, remaining, grid, el('div', { class: 'wmx-actions' }, skipBtn, cont));
+    const overlay = el('div', { class: 'wmx-overlay' }, title, remaining, lot, grid, el('div', { class: 'wmx-actions' }, skipBtn, cont));
     document.body.append(overlay);
+
+    /** Valeur estimée du lot : somme des moyennes connues (les prix arrivent au fil de l'eau). */
+    const updateLot = () => {
+      if (!all.length) { lot.textContent = ''; return; }
+      let v = 0;
+      let n = 0;
+      for (const c of all) {
+        const p = WMX.prices.get(c.id, WMX.normRarity(c.rarity) || 'C');
+        if (p) { v += p.avg; n += 1; }
+      }
+      lot.textContent = `Valeur estimée du lot : ${Math.round(v).toLocaleString('fr-FR')} W · prix connus : ${n}/${all.length}`;
+    };
+    unsub = WMX.prices.onProgress(() => { grid.querySelectorAll('.wmx-tile').forEach((t) => t._paint?.()); updateLot(); });
     WMX.prepareCardSheets?.(); // précharge la fiche du jeu pendant que les cartes se tirent
 
     return {
       addPack(cards) {
         all.push(...cards);
         WMX.store.set('pendingCards', all);
+        WMX.prices.prefetch?.(cards); // sans effet si déjà demandés par l'ouverture du paquet
+        updateLot();
         for (let i = 0; i < cards.length; i++) grid.append(el('div', { class: 'wmx-tile wmx-neutral' },
           el('div', { class: 'wmx-inner' }, el('div', { class: 'wmx-back' }, 'W'))));
         title.textContent = `${all.length} cartes tirées…`;
@@ -87,9 +112,9 @@
       },
       /** Laisse passer les clics vers la vérification du jeu (jamais touchée par l'extension). */
       yield(b) { overlay.classList.toggle('wmx-yield', b); },
-      close() { overlay.remove(); },
+      close() { unsub(); overlay.remove(); },
       async finish() {
-        if (!all.length) { overlay.remove(); return; }
+        if (!all.length) { unsub(); overlay.remove(); return; }
         const cfg = WMX.settings || {};
         const f = cfg.speed === 'fast' ? 0.4 : 1; // facteur de durée des animations
         if (cfg.speed === 'instant') skip = true;
@@ -114,6 +139,7 @@
         skipBtn.remove();
         cont.removeAttribute('disabled');
         remaining.textContent = 'Cliquez sur une carte pour ouvrir sa fiche (étiquette, enchère…)';
+        updateLot();
       },
     };
   };

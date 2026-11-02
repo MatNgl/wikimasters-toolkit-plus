@@ -236,3 +236,5 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-nav-item:hover { background: rgb(45 212 160 / .16); }
 .wmx-nav-item.wmx-nav-active { background: rgb(45 212 160 / .24); border-style: solid; }
 .wmx-nav-tag { margin-left: auto; flex: none; font: 700 8px Outfit, system-ui, sans-serif; font-style: normal; text-transform: uppercase; letter-spacing: .05em; padding: 1px 5px; border-radius: 999px; background: rgb(45 212 160 / .2); color: var(--acc,#2dd4a0); }
+
+.wmx-lot { color: #9db5a8; font-size: 13px; min-height: 18px; font-variant-numeric: tabular-nums; }

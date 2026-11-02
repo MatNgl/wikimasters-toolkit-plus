@@ -16,7 +16,7 @@
   let dailyLimit = false;
   WMX.onApi(({ path, method, status, data }) => {
     if (method !== 'POST' || path !== '/api/packs/open') return;
-    if (data?.cards) lastCards = data.cards;
+    if (data?.cards) { lastCards = data.cards; WMX.prices.prefetch?.(data.cards); } // prix récupérés pendant la pause entre paquets
     else if (status === 429 || data?.rate_limited) openError = { t: Date.now(), data };
   });
 
