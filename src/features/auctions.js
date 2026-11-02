@@ -21,6 +21,7 @@
   S.auto = {};                              // mises automatiques : { idEnchère: règle } (mémorisées)
   S.autoTry = {};                           // dernier essai de mise automatique par enchère
   S.autoFails = {};
+  S.bidQueue = [];
   S.autoOpen = null;                        // enchère dont le formulaire de mise automatique est ouvert
   const saveAuto = () => WMX.store.set('autoBids', S.auto);
   const notified = new Set();               // alertes déjà envoyées (une seule fois chacune)
@@ -204,6 +205,30 @@
     }
   }
 
+  // File d'attente des mises : on peut cliquer sur plusieurs enchères d'affilée, elles sont misées l'une après l'autre.
+  const fire = () => window.dispatchEvent(new CustomEvent('wmx:bids'));
+  let queueRunning = false;
+  function enqueueBid(a) {
+    if (S.bidQueue.some((x) => x.id === a.id) || S.betting === a.id) return;
+    S.bidQueue.push(a);
+    fire();
+    if (S.bidQueue.length > 1 || S.betting) WMX.toast?.(`${S.bidQueue.length} mise${S.bidQueue.length > 1 ? 's' : ''} en file d’attente…`, 3000);
+    runQueue();
+  }
+  async function runQueue() {
+    if (queueRunning) return;
+    queueRunning = true;
+    try {
+      while (S.bidQueue.length) {
+        while (S.betting) await sleep(300); // une mise (ou mise automatique) est déjà en cours
+        const a = S.bidQueue[0];
+        try { await bid(a); } catch (err) { WMX.reportError?.('mise', 0, String(err?.message || err)); }
+        S.bidQueue.shift();
+        fire();
+      }
+    } finally { queueRunning = false; }
+  }
+
   async function cancelSale(a) {
     const item = { card_id: a.card_id, title: cardTitle(a), rarity: rarityOf(a), starred: false };
     await WMX.quick?.refresh();
@@ -286,7 +311,7 @@
     if (kind === 'bid') {
       const lead = leading(a);
       const act = el('button', { class: 'wmx-btn wmx-auc-bid', 'data-id': a.id }, 'Surenchérir');
-      act.addEventListener('click', () => bid(a));
+      act.addEventListener('click', () => enqueueBid(a));
       const rule = S.auto[a.id];
       const autoBtn = el('button', { class: `wmx-auc-autobtn${rule ? ' on' : ''}`, title: rule ? 'Mise automatique active : cliquer pour la modifier' : 'Programmer une mise automatique', 'aria-label': 'Mise automatique' }, '⏱');
       autoBtn.addEventListener('click', () => { S.autoOpen = S.autoOpen === a.id ? null : a.id; renderAll(); });
@@ -457,9 +482,15 @@
   WMX.auctions = {
     refresh,
     state: () => D,
-    bidById(id, title) { return bid(D.bidding.find((x) => x.id === id) || { id, card: { wikipedia_title: title } }); },
+    bidById(id, title) { enqueueBid(D.bidding.find((x) => x.id === id) || { id, card: { wikipedia_title: title } }); },
     warm(id) { if (id && !S.betting) frameFor({ id }); },
-    stateOf(id) { const x = D.bidding.find((b) => b.id === id); return !x ? 'none' : leading(x) ? 'leading' : 'outbid'; },
+    stateOf(id) {
+      const x = D.bidding.find((b) => b.id === id);
+      if (x && leading(x)) return 'leading';
+      if (S.betting === id) return 'betting';
+      if (S.bidQueue.some((q) => q.id === id)) return 'queued';
+      return x ? 'outbid' : 'none';
+    },
     busy: () => S.betting,
   };
 

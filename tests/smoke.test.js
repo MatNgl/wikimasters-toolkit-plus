@@ -233,3 +233,23 @@ test('échanges : valeurs des deux côtés, wikibidous et écart', async () => {
   assert.match(txt, /Écart : 65 W en faveur de moi/);
   env.close();
 });
+
+test('marché : plusieurs « Miser le minimum » de suite se mettent en file et sont misés l\'un après l\'autre', async () => {
+  const mk = (id, cid) => ({ id, card_id: cid, snapshot_rarity: 'R', base_amount: 10, current_bid: null, card: { wikipedia_title: `Carte ${id}`, rarity: 'R' } });
+  const list = [mk('f1', 'k1'), mk('f2', 'k2'), mk('f3', 'k3')];
+  const env = createEnv({ fetchImpl: async (u) => (String(u).includes('/sales') ? json({ summary: { R: { average: 12, count: 5, latest: 11 } } }) : json({ auctions: list, selling: [], bidding: [], won: [], history: [] })) });
+  const { w, WMX } = env;
+  const clicks = fakeBidPages(w, 11);
+  w.history.pushState({}, '', '/marketplace');
+  w.document.body.innerHTML = list.map((a) => `<a class="card-frame" href="/marketplace/${a.id}"><div>${a.id}</div></a>`).join('');
+  for (const f of WMX.features) if (f.name === 'market' || f.name === 'auctions') await f.init();
+  for (let i = 0; i < 80 && w.document.querySelectorAll('.wmx-mk-bid').length < 3; i++) await sleep(150);
+  const btns = [...w.document.querySelectorAll('.wmx-mk-bid')];
+  assert.equal(btns.length, 3);
+  btns.forEach((b) => b.click()); // trois clics d'affilée, sans attendre
+  assert.match(btns[1].textContent, /file d’attente/);
+  assert.match(btns[2].textContent, /file d’attente/);
+  for (let i = 0; i < 160 && clicks.length < 3; i++) await sleep(150);
+  assert.deepEqual(clicks, ['11', '11', '11']);
+  env.close();
+});

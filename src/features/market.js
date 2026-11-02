@@ -21,7 +21,7 @@
   const anchors = () => [...document.querySelectorAll('a.card-frame[href^="/marketplace/"]')];
   const idOf = (a) => a.getAttribute('href').split('/').pop().split(/[?#]/)[0];
 
-  const BID_LABEL = { none: 'Miser le minimum', outbid: 'Surenchérir (minimum)', leading: '✓ Vous menez' };
+  const BID_LABEL = { none: 'Miser le minimum', outbid: 'Surenchérir (minimum)', leading: '✓ Vous menez', queued: '⏳ En file d’attente', betting: 'Mise en cours…' };
   /** Bouton de mise : pose le minimum proposé par le jeu sans ouvrir la page de l'enchère (page préchargée au survol). */
   function ensureBid(a, info) {
     const id = idOf(a);
@@ -29,12 +29,11 @@
     if (!btn) {
       btn = el('button', { class: 'wmx-btn wmx-mk-bid', type: 'button' });
       btn.addEventListener('pointerenter', () => WMX.auctions?.warm(id));
-      btn.addEventListener('click', async (e) => {
+      btn.addEventListener('click', (e) => {
         e.preventDefault(); e.stopPropagation(); // le bouton est dans un lien : pas de navigation
         if (!WMX.auctions) return;
-        btn.disabled = true;
-        btn.textContent = 'Mise en cours…';
-        try { await WMX.auctions.bidById(id, info.title); } finally { paintBid(a); }
+        WMX.auctions.bidById(id, info.title); // mis en file : on peut cliquer sur d'autres cartes sans attendre
+        paintBid(a);
       });
       a.append(btn);
     }
@@ -46,7 +45,7 @@
     const st = WMX.auctions.stateOf(idOf(a));
     btn.textContent = BID_LABEL[st];
     btn.classList.toggle('ok', st === 'leading');
-    btn.disabled = st === 'leading' || !!WMX.auctions.busy();
+    btn.disabled = st === 'leading' || st === 'queued' || st === 'betting';
   }
 
   function paint(a) {
