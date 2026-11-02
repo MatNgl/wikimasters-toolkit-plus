@@ -59,6 +59,7 @@
   /** Saisie compatible React puis Entrée, comme un utilisateur. */
   function search(d, w, text) {
     const input = searchBox(d);
+    if (!input) throw new Error('barre de recherche de la collection introuvable');
     const setter = Object.getOwnPropertyDescriptor(w.HTMLInputElement.prototype, 'value').set;
     setter.call(input, text);
     input.dispatchEvent(new w.Event('input', { bubbles: true }));
@@ -120,6 +121,23 @@
     toast('');
   }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-wmx-route'] });
 
+  /**
+   * Remet le cadre sur la liste de la Collection. Après une mise en vente réussie, le jeu ouvre la page de l'enchère créée
+   * (/marketplace/{id}) DANS le cadre : sans ce retour, l'opération suivante ne trouve plus la barre de recherche.
+   */
+  async function ensureCollection(kind) {
+    const frame = F[kind].frame;
+    const onList = () => { try { return frame.contentWindow.location.pathname === '/collection' && listReady(frame); } catch (_) { return false; } };
+    if (onList()) return true;
+    try { // navigation interne du jeu (rapide) : on clique « Collection » dans le cadre
+      const link = frame.contentDocument.querySelector('nav a[href="/collection"]');
+      if (link) link.click(); else frame.contentWindow.location.href = '/collection';
+    } catch (_) { frame.src = '/collection'; }
+    if (await waitFor(onList, 20000, 200)) return true;
+    frame.src = '/collection'; // dernier recours : rechargement complet du cadre
+    return !!(await waitFor(onList, 120000, 400));
+  }
+
   /** Cherche la carte dans le cadre et ouvre sa fiche (sans l'afficher). Renvoie { d, w, root } ou { error }. */
   async function openInFrame(card, kind = 'view') {
     lastUse = Date.now();
@@ -127,6 +145,7 @@
     if (!ok) return { error: 'frame' };
     const frame = F[kind].frame;
     if (!frame) return { error: 'frame' };
+    if (!(await ensureCollection(kind))) return { error: 'frame' };
     const d = frame.contentDocument;
     const w = frame.contentWindow;
     search(d, w, card.wikipedia_title);

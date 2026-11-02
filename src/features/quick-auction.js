@@ -124,8 +124,11 @@
     if (!p) { await WMX.prices.fetchOne(item.card_id); p = WMX.prices.get(item.card_id, item.rarity); }
     if (!p) return { error: 'aucune vente sur le marché pour cette rareté : pas de moyenne pour fixer le prix' };
     const price = startPrice(p);
-    let res = await driveForm(item, price, c.dur);
-    if (!res.ok && !res.fatal) { await sleep(3000); res = await driveForm(item, price, c.dur); } // un nouvel essai
+    const attempt = async () => {
+      try { return await driveForm(item, price, c.dur); } catch (e) { console.warn('[WMX] enchère', item.title, e); return { error: `${e?.name || 'Erreur'} : ${e?.message || e}` }; }
+    };
+    let res = await attempt();
+    if (!res.ok && !res.fatal) { await sleep(3000); res = await attempt(); } // un nouvel essai (le cadre est remis sur la collection)
     if (!res.ok) return { error: res.error };
     await sleep(600);
     await refresh();
@@ -192,7 +195,7 @@
         S.current = op;
         updateChip(); notify();
         let res;
-        try { res = op.type === 'launch' ? await doLaunch(op.item) : op.type === 'cancel' ? await doCancel(op.item) : await doFavorite(op.item); } catch (e) { res = { error: String(e?.message || e) }; }
+        try { res = op.type === 'launch' ? await doLaunch(op.item) : op.type === 'cancel' ? await doCancel(op.item) : await doFavorite(op.item); } catch (e) { console.warn('[WMX] file d’enchères', op.type, op.item.title, e); res = { error: `${e?.name || 'Erreur'} : ${e?.message || e}` }; }
         S.queue = S.queue.filter((o) => o !== op);
         S.current = null;
         S.batch.done += 1;
