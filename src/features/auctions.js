@@ -171,7 +171,13 @@
     } catch (_) { return null; }
   }
 
-  async function bid(a, opts = {}) {
+  /**
+   * Plusieurs onglets du jeu peuvent être ouverts : un verrou commun à tous les onglets (Web Locks) fait qu'une seule mise à la fois
+   * est vérifiée et passée par enchère. Le second onglet voit alors qu'on mène déjà et ne mise pas par-dessus soi-même.
+   */
+  const withLock = (name, fn) => (navigator.locks?.request ? navigator.locks.request(name, fn) : fn());
+  const bid = (a, opts = {}) => withLock(`wmx-bid-${a.id}`, () => bidInner(a, opts));
+  async function bidInner(a, opts = {}) {
     if (!D.me) await refresh(); // sans mon identifiant, on ne sait pas qui mène : pas de mise
     if (!D.me) return opts.auto ? undefined : WMX.toast('Identifiant introuvable : actualisez la page puis réessayez.', 5000);
     if (S.betting) return opts.auto ? undefined : WMX.toast('Une mise est déjà en cours…');
@@ -290,7 +296,7 @@
   }
   /** Chaque seconde : une règle est-elle à déclencher ? (une seule mise à la fois, 6 s minimum entre deux essais) */
   function runAuto() {
-    if (S.betting || !D.loaded) return;
+    if (!S.leader || S.betting || !D.loaded) return; // un seul onglet (le « chef ») exécute les mises automatiques
     for (const a of D.bidding) {
       const rule = S.auto[a.id];
       if (!rule) continue;
@@ -520,6 +526,13 @@
     name: 'auctions',
     init() {
       buildBubble();
+      // Élection du « chef » : un seul onglet du jeu exécute les mises automatiques (sinon chaque onglet miserait de son côté).
+      if (navigator.locks?.request) navigator.locks.request('wmx-auto-leader', () => {
+        S.leader = true;
+        // Le rôle est rendu dès que ce script est orphelin (extension rechargée) : un onglet actualisé peut alors le reprendre.
+        return new Promise((done) => { const t = setInterval(() => { if (!WMX.alive()) { clearInterval(t); S.leader = false; done(); } }, 2000); });
+      }).catch(() => { S.leader = true; });
+      else S.leader = true;
       WMX.store.get('autoBids', {}).then((r) => { S.auto = r || {}; });
       setInterval(() => { if (WMX.alive()) tick(); }, 1000);
       setTimeout(async () => { await refresh(); schedulePoll(); }, 3000);
