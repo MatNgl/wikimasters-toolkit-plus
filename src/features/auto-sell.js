@@ -179,6 +179,7 @@
       S.skip = await WMX.store.get('autoSellSkip', {});
       S.log = await WMX.store.get('autoSellLog', {});
       S.shared = await WMX.store.get('autoSellStatus', null);
+      WMX.store.get('wmxSettings', {}).then((s) => { Object.assign(WMX.settings, s); paintAll(); }); // la ligne d'état ne dit « désactivé » qu'avant le chargement des réglages
       // Réglages et état partagés entre les onglets : un réglage changé dans un onglet vaut aussitôt dans tous.
       WMX.onStorage((c) => {
         if (c.wmxSettings?.newValue) { Object.assign(WMX.settings, c.wmxSettings.newValue); window.dispatchEvent(new CustomEvent('wmx:settings')); }
