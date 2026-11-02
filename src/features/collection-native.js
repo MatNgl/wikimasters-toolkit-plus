@@ -55,8 +55,7 @@
     if (WMX.settings?.cardStylePreview !== false) {
       const t = norm2(title);
       if (STYLE_CARDS[rarity]) key = STYLE_CARDS[rarity].find(([k]) => t.startsWith(k))?.[1] || null;
-      else if (rarity === 'SR' && srSeen < 3 && !card.classList.contains('wmx-sty')) key = ['a', 'b', 'c'][srSeen++];
-      else if (rarity === 'SR') key = ['a', 'b', 'c'].find((k) => card.classList.contains(`wmx-sty-${k}`)) || null;
+      else if (rarity === 'SR') key = ['a', 'b', 'c'][srSeen++] || null; // les trois premières SR de la page (ordre d'affichage)
     }
     for (const k of ['a', 'b', 'c']) card.classList.toggle(`wmx-sty-${k}`, k === key);
     card.classList.toggle('wmx-sty', !!key);
