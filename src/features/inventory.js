@@ -67,7 +67,7 @@
     }
     S.loading = false;
     setItems(withoutDiscarded([...byId.values()]));
-    WMX.store.set('invCache', { t: Date.now(), items: S.items });
+    WMX.store.set('invCache', { t: Date.now(), items: S.items, complete: true });
   }
 
   /** Charge les préférences, puis l'inventaire en cache (affiché aussitôt) et, s'il est périmé, l'inventaire à jour. */
@@ -82,7 +82,7 @@
     await WMX.prices.load();
     const cached = await WMX.store.get('invCache', null);
     if (cached?.items?.length) setItems(withoutDiscarded(cached.items));
-    if (!cached || Date.now() - cached.t > INV_TTL) loadInventory();
+    if (!cached || !cached.complete || Date.now() - cached.t > INV_TTL) loadInventory(); // un cache sans « complete » est partiel : on recharge
   }
 
   const keyOf = (title, rarity) => `${norm(title)}|${rarity}`;
@@ -113,7 +113,7 @@
     S.gone.set(e.detail.card_id, (S.gone.get(e.detail.card_id) || 0) + 1);
     for (const it of S.items) if (it.card_id === e.detail.card_id) it.count -= 1;
     setItems(S.items.filter((i) => i.count > 0));
-    if (!S.loading) WMX.store.set('invCache', { t: Date.now(), items: S.items }); // le cache ne réaffiche plus les cartes défaussées (jamais une liste partielle)
+    if (!S.loading) WMX.store.set('invCache', { t: Date.now(), items: S.items, complete: true }); // le cache ne réaffiche plus les cartes défaussées (jamais une liste partielle)
   });
 
   function totals() {
