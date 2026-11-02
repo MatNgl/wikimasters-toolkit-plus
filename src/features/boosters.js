@@ -355,6 +355,7 @@
     new ResizeObserver(place).observe(document.documentElement);
     setTimeout(place, 600); setTimeout(place, 2500); // après le rendu du jeu (polices, mise en page)
     setBadge(); setAutoBtn();
+    setTimeout(() => WMX.prepareCardSheets?.('view'), 3000); // fiche du jeu prête avant le premier clic sur une carte tirée
     // Petit écran : le menu démarre réduit à sa bulle « W » (visible, jamais masqué) ; on le déplie d'un clic.
     if ((await WMX.store.get('panelCollapsed', false)) || innerWidth < 1250) setCollapsed(true, false);
 

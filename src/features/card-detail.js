@@ -103,7 +103,9 @@
 
   /** Racine (position fixe) de la fiche ouverte dans le cadre, ou null. */
   function sheetRoot(d, w) {
-    const b = [...d.querySelectorAll('button, a')].find((x) => /Mettre aux enchères|Défausser|Voir l.article/i.test(x.textContent));
+    let b = [...d.querySelectorAll('button, a')].find((x) => /Mettre aux enchères|Défausser|Voir l.article/i.test(x.textContent));
+    // Onglet « Marché » de la fiche : les boutons ci-dessus n'y sont plus affichés, mais les onglets « Détails » / « Marché » oui.
+    if (!b) b = [...d.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Détails' && [...(x.parentElement?.children || [])].some((s) => s.textContent.trim() === 'Marché'));
     let m = b;
     while (m && w.getComputedStyle(m).position !== 'fixed') m = m.parentElement;
     return m || null;
