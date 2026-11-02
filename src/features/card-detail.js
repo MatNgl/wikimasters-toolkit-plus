@@ -112,6 +112,14 @@
     if (e.key === 'Escape' && F.view.frame?.classList.contains('wmx-on')) { e.stopPropagation(); closeSheet('view'); }
   }, true);
 
+  // Changer de page du jeu (ex. clic sur « Marché ») pendant qu'une fiche s'ouvre ou est affichée : on la ferme proprement.
+  let routeGen = 0;
+  new MutationObserver(() => {
+    routeGen += 1;
+    if (F.view.frame?.classList.contains('wmx-on')) closeSheet('view');
+    toast('');
+  }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-wmx-route'] });
+
   /** Cherche la carte dans le cadre et ouvre sa fiche (sans l'afficher). Renvoie { d, w, root } ou { error }. */
   async function openInFrame(card, kind = 'view') {
     lastUse = Date.now();
@@ -154,11 +162,13 @@
   WMX.openCardDetail = function openCardDetail(card) {
     return WMX.sheet.exclusive(async () => {
       // Premier chargement à froid : on l'explique au lieu de laisser croire à un blocage.
+      const gen = routeGen;
       const cold = !F.view.frame;
       const slow = setTimeout(() => toast(cold ? 'Préparation de la fiche… la première ouverture charge la collection du jeu (jusqu’à ~30 s).' : 'Chargement de la fiche…', 90000), cold ? 600 : 1500);
       let r;
       try { r = await openInFrame(card, 'view'); } finally { clearTimeout(slow); }
       toast('');
+      if (gen !== routeGen) { if (!r.error) closeSheet('view'); return undefined; } // l'utilisateur a changé de page entre-temps
       if (r.error) return toast(ERRORS[r.error] || 'Fiche indisponible.');
       const { d, w, root } = r;
       const frame = F.view.frame;
@@ -167,7 +177,7 @@
       if (!d.getElementById('wmx-sheet-style')) {
         const st = d.createElement('style');
         st.id = 'wmx-sheet-style';
-        st.textContent = 'html{visibility:hidden!important;background:transparent!important} body{background:transparent!important} .wmx-keep,.wmx-keep *{visibility:visible!important}';
+        st.textContent = 'html{visibility:hidden!important;background:transparent!important} body{background:transparent!important} .wmx-keep,.wmx-keep *{visibility:visible!important} .fixed.inset-0,.fixed.inset-0 *{visibility:visible!important}';
         d.head.append(st);
       }
       root.classList.add('wmx-keep');

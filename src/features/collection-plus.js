@@ -22,6 +22,12 @@
   const fmt = (n) => Math.round(n).toLocaleString('fr-FR');
   const price = (it) => WMX.prices.get(it.card_id, it.rarity);
   const avg = (it) => price(it)?.avg ?? null;
+  /** « Moy. — » = prix pas encore chargé ; « Sans vente » = chargé, mais aucune vente sur le marché pour cette rareté. */
+  const priceText = (it) => {
+    const p = price(it);
+    if (p) return `Moy. ${fmt(p.avg)} W`;
+    return WMX.prices.fresh(it.card_id) ? 'Sans vente' : 'Moy. —';
+  };
 
   const compact = (r) => ({
     id: r.id, card_id: r.card_id, title: r.card?.wikipedia_title || '?', rarity: WMX.normRarity(r.card?.rarity) || 'C',
@@ -118,7 +124,7 @@
       el('div', { class: 'wmx-ct-shade' }),
       el('span', { class: 'wmx-rar' }, it.rarity),
       el('div', { class: 'wmx-ct-acts' }, bolt(it), it.starred ? el('i', {}, '★') : '', it.count > 1 ? el('i', { class: 'wmx-ct-n' }, `×${it.count}`) : ''),
-      el('div', { class: 'wmx-meta' }, el('strong', {}, it.title), el('span', { class: 'wmx-ct-price' }, p ? `Moy. ${fmt(p.avg)} W` : 'Moy. —')));
+      el('div', { class: 'wmx-meta' }, el('strong', {}, it.title), el('span', { class: 'wmx-ct-price' }, priceText(it))));
     if (it.image) WMX.dom.artLayers(it.image, t);
     t.addEventListener('click', () => WMX.openCardDetail?.({ id: it.card_id, wikipedia_title: it.title, rarity: it.rarity, lang: it.lang }));
     return t;
@@ -157,8 +163,7 @@
       if (!it) continue;
       t.querySelector('.wmx-bolt')?.replaceWith(bolt(it));
       const pr = t.querySelector('.wmx-ct-price');
-      const p = price(it);
-      if (pr) pr.textContent = p ? `Moy. ${fmt(p.avg)} W` : 'Moy. —';
+      if (pr) pr.textContent = priceText(it);
     }
     renderStatus();
   }

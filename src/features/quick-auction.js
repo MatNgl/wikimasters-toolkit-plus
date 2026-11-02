@@ -122,7 +122,7 @@
     if (S.selling.size >= S.max) return { limit: true };
     let p = WMX.prices.get(item.card_id, item.rarity);
     if (!p) { await WMX.prices.fetchOne(item.card_id); p = WMX.prices.get(item.card_id, item.rarity); }
-    if (!p) return { error: 'prix introuvable' };
+    if (!p) return { error: 'aucune vente sur le marché pour cette rareté : pas de moyenne pour fixer le prix' };
     const price = startPrice(p);
     let res = await driveForm(item, price, c.dur);
     if (!res.ok && !res.fatal) { await sleep(3000); res = await driveForm(item, price, c.dur); } // un nouvel essai

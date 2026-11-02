@@ -45,7 +45,7 @@
     // Moyenne du marché : « … » tant qu'elle n'est pas arrivée (chargée en arrière-plan pendant l'ouverture des paquets).
     const paintPrice = () => {
       const p = WMX.prices.get(c.id, r);
-      priceChip.textContent = p ? `Moy. ${Math.round(p.avg).toLocaleString('fr-FR')} W` : 'Moy. …';
+      priceChip.textContent = p ? `Moy. ${Math.round(p.avg).toLocaleString('fr-FR')} W` : (WMX.prices.fresh(c.id) ? 'Sans vente' : 'Moy. …');
     };
     paintPrice();
     loadInfo(c).then((i) => {
@@ -58,6 +58,7 @@
     tile.addEventListener('click', () => { if (tile.classList.contains('flip')) WMX.openCardDetail?.(c); });
     tile.title = 'Cliquer pour ouvrir la fiche dans le jeu';
     tile._paint = paintPrice;
+    tile._card = c;
     return tile;
   }
 
@@ -78,16 +79,21 @@
     const overlay = el('div', { class: 'wmx-overlay' }, title, remaining, lot, grid, el('div', { class: 'wmx-actions' }, skipBtn, cont));
     document.body.append(overlay);
 
-    /** Valeur estimée du lot : somme des moyennes connues (les prix arrivent au fil de l'eau). */
+    /**
+     * Valeur du lot : uniquement pour les cartes DÉJÀ RÉVÉLÉES (retournées), pour ne rien spoiler d'une grosse carte à venir.
+     * Les prix sont connus à l'avance, mais ne sont montrés qu'au moment où chaque carte se retourne.
+     */
     const updateLot = () => {
-      if (!all.length) { lot.textContent = ''; return; }
+      const flipped = [...grid.querySelectorAll('.wmx-tile.flip')].filter((t) => t._card);
+      if (!flipped.length) { lot.textContent = ''; return; }
       let v = 0;
       let n = 0;
-      for (const c of all) {
-        const p = WMX.prices.get(c.id, WMX.normRarity(c.rarity) || 'C');
+      for (const t of flipped) {
+        const p = WMX.prices.get(t._card.id, WMX.normRarity(t._card.rarity) || 'C');
         if (p) { v += p.avg; n += 1; }
       }
-      lot.textContent = `Valeur estimée du lot : ${Math.round(v).toLocaleString('fr-FR')} W · prix connus : ${n}/${all.length}`;
+      const done = flipped.length === all.length;
+      lot.textContent = `${done ? 'Valeur estimée du lot' : 'Valeur des cartes révélées'} : ${Math.round(v).toLocaleString('fr-FR')} W · prix connus : ${n}/${flipped.length}`;
     };
     unsub = WMX.prices.onProgress(() => { grid.querySelectorAll('.wmx-tile').forEach((t) => t._paint?.()); updateLot(); });
     WMX.prepareCardSheets?.(); // précharge la fiche du jeu pendant que les cartes se tirent
@@ -97,7 +103,6 @@
         all.push(...cards);
         WMX.store.set('pendingCards', all);
         WMX.prices.prefetch?.(cards); // sans effet si déjà demandés par l'ouverture du paquet
-        updateLot();
         for (let i = 0; i < cards.length; i++) grid.append(el('div', { class: 'wmx-tile wmx-neutral' },
           el('div', { class: 'wmx-inner' }, el('div', { class: 'wmx-back' }, 'W'))));
         title.textContent = `${all.length} cartes tirées…`;
@@ -133,6 +138,7 @@
             t.classList.remove('shake');
           }
           t.classList.add('flip');
+          updateLot(); // le total grandit au fil des cartes révélées
           if (!skip) await sleep(({ UR: 900, L: 2200 }[t.dataset.r] || 280) * f);
         }
         tiles.forEach((t) => t.classList.add('flip'));
