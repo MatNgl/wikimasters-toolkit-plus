@@ -52,3 +52,20 @@ Texte prêt et rempli dans [PRIVACY.md](PRIVACY.md) (éditeur MatNgl, mise à jo
 - Icône 128×128 : déjà dans `icons/`.
 - URL de la politique, adresse de contact.
 - Option prudente : « Visibilité : non répertoriée » pour un premier lancement auprès d'un petit cercle, puis publique.
+
+## 7. Champs du tableau de bord développeur (à copier-coller)
+Tableau de bord : https://chrome.google.com/webstore/devconsole → « Nouvel élément » → envoyer `release/wikimasters-toolkit-plus-1.0.0.zip`. (Cette adresse n'est pas pilotable par un outil d'automatisation : les champs se remplissent à la main.)
+
+**Fiche du store (Store listing)** : nom, résumé, description, catégorie et langue du §4 ; captures `release/store-screenshots/1…5` (1280×800) ; icône 128×128 : `icons/icon-128.png` ; page d'accueil / assistance : https://github.com/MatNgl/wikimasters-toolkit-plus ; e-mail d'assistance : mattheo.naegellen@gmail.com.
+
+**Confidentialité (Privacy practices)**
+- *Objectif unique* : « Afficher les prix du marché, la valeur de la collection et des outils d'enchères sur le site du jeu WikiMasters. »
+- *Justification « storage »* : « Enregistre localement les réglages, le cache des prix, la copie de la collection, les statistiques et le journal d'activité. »
+- *Justification de l'accès à www.wiki-masters.com* : « L'extension n'a de sens que sur ce site : elle y lit les réponses du jeu (prix, collection, enchères) et y ajoute ses éléments. »
+- *Code distant* : non.
+- *Données collectées* : aucune case cochée (rien n'est transmis hors du navigateur). Cocher les trois attestations (pas de vente de données, pas d'usage hors finalité, pas de solvabilité).
+- *URL de la politique* : https://github.com/MatNgl/wikimasters-toolkit-plus/blob/main/docs/PRIVACY.md
+
+**Distribution** : visibilité « Non répertoriée » pour commencer (passage en « Publique » ensuite), régions : toutes.
+
+**Mises à jour** : incrémenter `version` (npm run build 1.0.1), envoyer le nouveau ZIP dans l'élément existant, « Soumettre pour examen ». Une publication sur GitHub ne met pas à jour le store.
