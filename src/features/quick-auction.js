@@ -8,7 +8,7 @@
   const { el, sleep, waitFor } = WMX.dom;
   const LABELS = { '10min': '10 min', '30min': '30 min', '1h': '1 h', '3h': '3 h', '6h': '6 h', '12h': '12 h' };
   const MINUTES = { '10 min': 10, '30 min': 30, '1 h': 60, '3 h': 180, '6 h': 360, '12 h': 720 };
-  const S = { selling: new Map(), max: 10, queue: [], current: null, running: false, batch: { done: 0, total: 0, ok: 0, failed: [] } };
+  const S = { fav: new Map(), selling: new Map(), max: 10, queue: [], current: null, running: false, batch: { done: 0, total: 0, ok: 0, failed: [] } };
   const listeners = new Set();
   const notify = () => listeners.forEach((cb) => { try { cb(); } catch (_) { /* écouteur obsolète */ } });
   const slim = (it) => ({ card_id: it.card_id, title: it.title, rarity: it.rarity, starred: !!it.starred });
@@ -143,6 +143,27 @@
     return S.selling.has(item.card_id) ? { error: 'le jeu n’a pas annulé l’enchère (déjà misée ?)' } : { ok: true };
   }
 
+  /** Pose ou retire le favori en cliquant l'étoile de la fiche du jeu (cadre invisible), comme l'utilisateur. */
+  async function doFavorite(item) {
+    const r = await WMX.sheet.exclusive(() => WMX.sheet.openInFrame({ id: item.card_id, wikipedia_title: item.title, rarity: item.rarity }, 'work'), 'work');
+    if (r.error) return { error: SHEET_ERRORS[r.error] };
+    const { root } = r;
+    try {
+      const star = [...root.querySelectorAll('button')].find((b) => /favoris/i.test(b.getAttribute('aria-label') || ''));
+      if (!star) return { error: 'étoile des favoris introuvable' };
+      const before = star.getAttribute('aria-label');
+      const wasStarred = !/^ajouter/i.test(before);
+      star.click();
+      await waitFor(() => star.getAttribute('aria-label') !== before, 5000, 120);
+      const starred = !wasStarred;
+      S.fav.set(item.card_id, starred);
+      window.dispatchEvent(new CustomEvent('wmx:fav', { detail: { card_id: item.card_id, starred } }));
+      return { ok: true };
+    } finally {
+      WMX.sheet.closeSheet('work');
+    }
+  }
+
   // --- Pastille de progression (visible sur toutes les pages) -----------------------------------
   function updateChip() {
     let c = document.querySelector('.wmx-qchip');
@@ -151,7 +172,7 @@
       c = el('div', { class: 'wmx-qchip' }, el('span', { class: 'wmx-qtext' }), el('button', { class: 'wmx-qclear', onclick: clearQueue }, 'Vider la file'));
       document.body.append(c);
     }
-    const cur = S.current ? ` · ${S.current.type === 'launch' ? 'mise en vente' : 'annulation'} : ${S.current.item.title}` : '';
+    const cur = S.current ? ` · ${{ launch: 'mise en vente', cancel: 'annulation', favorite: 'favori' }[S.current.type]} : ${S.current.item.title}` : '';
     c.querySelector('.wmx-qtext').textContent = `⚡ Enchères ${S.batch.done}/${S.batch.total}${cur}`;
   }
 
@@ -171,7 +192,7 @@
         S.current = op;
         updateChip(); notify();
         let res;
-        try { res = op.type === 'launch' ? await doLaunch(op.item) : await doCancel(op.item); } catch (e) { res = { error: String(e?.message || e) }; }
+        try { res = op.type === 'launch' ? await doLaunch(op.item) : op.type === 'cancel' ? await doCancel(op.item) : await doFavorite(op.item); } catch (e) { res = { error: String(e?.message || e) }; }
         S.queue = S.queue.filter((o) => o !== op);
         S.current = null;
         S.batch.done += 1;
@@ -211,17 +232,26 @@
   }
 
   const stateOf = (cardId) => {
-    if (S.current?.item.card_id === cardId) return S.current.type === 'launch' ? 'working' : 'cancelling';
-    const q = S.queue.find((o) => o.item.card_id === cardId);
+    if (S.current && S.current.type !== 'favorite' && S.current.item.card_id === cardId) return S.current.type === 'launch' ? 'working' : 'cancelling';
+    const q = S.queue.find((o) => o.type !== 'favorite' && o.item.card_id === cardId);
     if (q) return q.type === 'launch' ? 'queued' : 'cancelling';
     return S.selling.has(cardId) ? 'live' : 'idle';
   };
+  const favState = (cardId) => (S.current?.type === 'favorite' && S.current.item.card_id === cardId) || S.queue.some((o) => o.type === 'favorite' && o.item.card_id === cardId) ? 'working' : 'idle';
+  const isStarred = (item) => (S.fav.has(item.card_id) ? S.fav.get(item.card_id) : !!item.starred);
 
   WMX.quick = {
     refresh,
     onChange(cb) { listeners.add(cb); return () => listeners.delete(cb); },
     isRunning: () => S.running || S.queue.length > 0,
     stateOf,
+    favState,
+    isStarred,
+    /** Ajoute ou retire le favori (file d'attente, comme les enchères). */
+    toggleFavorite(item) {
+      if (favState(item.card_id) === 'working') return;
+      enqueue({ type: 'favorite', item: slim({ ...item, starred: isStarred(item) }) });
+    },
     selling: (cardId) => S.selling.get(cardId) || null,
     count: () => S.selling.size,
     queued: () => S.queue.filter((o) => o.type === 'launch').length,
@@ -234,7 +264,7 @@
       if (st === 'cancelling') return 'Annulation en cours…';
       const a = S.selling.get(item.card_id);
       if (a) return `En vente à ${a.base_amount} W${a.current_bid ? ` (mise actuelle ${a.current_bid} W)` : ''} : cliquez pour annuler`;
-      if (item.starred) return 'Carte favorite : verrouillée, impossible de la vendre';
+      if (isStarred(item)) return 'Carte favorite : verrouillée, impossible de la vendre';
       const c = cfg();
       const p = WMX.prices.get(item.card_id, item.rarity);
       return p ? `Enchère rapide : ${startPrice(p)} W pendant ${c.dur} (moyenne ${Math.round(p.avg)} W × ${c.coef})` : 'Enchère rapide (le prix sera chargé automatiquement)';
@@ -251,7 +281,7 @@
         return undefined;
       }
       if (st === 'live') return enqueue({ type: 'cancel', item: slim(item) });
-      if (item.starred) return WMX.toast('Carte favorite : le jeu la verrouille, impossible de la vendre.');
+      if (isStarred(item)) return WMX.toast('Carte favorite : le jeu la verrouille, impossible de la vendre.');
       if (S.selling.size + WMX.quick.queued() >= S.max) return WMX.toast(`Limite de ${S.max} enchères actives : ${S.selling.size} en vente, ${WMX.quick.queued()} en file.`);
       return enqueue({ type: 'launch', item: slim(item) });
     },

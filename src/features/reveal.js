@@ -38,9 +38,35 @@
     const art = el('div', { class: 'wmx-art' });
     const desc = el('small', { class: 'wmx-desc' });
     const priceChip = el('span', { class: 'wmx-ct-price' });
+    // Deux boutons à droite de la carte : favori, et enchère rapide (mêmes réglages que dans Collection+).
+    const item = { card_id: c.id, title: c.wikipedia_title, rarity: r, starred: false };
+    const acts = el('div', { class: 'wmx-ct-acts' });
+    const paintBtns = () => {
+      const q = WMX.quick;
+      if (!q) { acts.replaceChildren(); return; }
+      const starred = q.isStarred(item);
+      const fav = el('button', {
+        class: `wmx-bolt wmx-fav${starred ? ' on' : ''}${q.favState(c.id) === 'working' ? ' busy' : ''}`,
+        title: starred ? 'Retirer des favoris' : 'Ajouter aux favoris (verrouille la carte : ni défausse, ni vente, ni échange)',
+        'aria-label': 'Favori',
+      }, starred ? '★' : '☆');
+      fav.addEventListener('click', (e) => { e.stopPropagation(); q.toggleFavorite(item); });
+      const st = q.stateOf(c.id);
+      const glyph = { queued: '⏳', working: '…', cancelling: '…' }[st] || '⚡';
+      const bolt = el('button', {
+        class: `wmx-bolt${st === 'live' ? ' live' : ''}${st === 'queued' ? ' queued' : ''}${st === 'working' || st === 'cancelling' ? ' busy' : ''}`,
+        title: q.hint(item),
+        'aria-label': 'Enchère rapide',
+      }, glyph);
+      if (starred && st === 'idle') bolt.disabled = true;
+      bolt.addEventListener('click', (e) => { e.stopPropagation(); q.toggle(item); });
+      acts.replaceChildren(fav, bolt);
+    };
+    paintBtns();
     const face = el('div', { class: 'wmx-face' },
       art, el('div', { class: 'wmx-shade' }),
       el('span', { class: 'wmx-rar' }, r),
+      acts,
       el('div', { class: 'wmx-meta' }, el('strong', {}, c.wikipedia_title || '?'), priceChip, desc));
     // Moyenne du marché : « … » tant qu'elle n'est pas arrivée (chargée en arrière-plan pendant l'ouverture des paquets).
     const paintPrice = () => {
@@ -58,6 +84,7 @@
     tile.addEventListener('click', () => { if (tile.classList.contains('flip')) WMX.openCardDetail?.(c); });
     tile.title = 'Cliquer pour ouvrir la fiche dans le jeu';
     tile._paint = paintPrice;
+    tile._paintBtns = paintBtns;
     tile._card = c;
     return tile;
   }
@@ -95,7 +122,11 @@
       const done = flipped.length === all.length;
       lot.textContent = `${done ? 'Valeur estimée du lot' : 'Valeur des cartes révélées'} : ${Math.round(v).toLocaleString('fr-FR')} W · prix connus : ${n}/${flipped.length}`;
     };
-    unsub = WMX.prices.onProgress(() => { grid.querySelectorAll('.wmx-tile').forEach((t) => t._paint?.()); updateLot(); });
+    const offPrices = WMX.prices.onProgress(() => { grid.querySelectorAll('.wmx-tile').forEach((t) => t._paint?.()); updateLot(); });
+    const repaintBtns = () => grid.querySelectorAll('.wmx-tile').forEach((t) => t._paintBtns?.());
+    const offQuick = WMX.quick?.onChange(repaintBtns);
+    window.addEventListener('wmx:fav', repaintBtns);
+    unsub = () => { offPrices(); offQuick?.(); window.removeEventListener('wmx:fav', repaintBtns); };
     WMX.prepareCardSheets?.(); // précharge la fiche du jeu pendant que les cartes se tirent
 
     return {

@@ -13,7 +13,8 @@
     items: [], page: 1, perPage: 50, sort: 'rarity', q: '', rar: new Set(), tag: '', fav: false, dup: false,
     min: '', max: '', tab: 'cards', priceRar: new Set(['L', 'UR', 'SR', 'R']), loading: false, loadedCount: 0,
   };
-  let overlay = null;
+  let overlay = null;  // page « Collection+ »
+  let pageDash = null; // page « Tableau de bord »
   let refreshTimer = null;
   let tickTimer = null;
   const ui = {};
@@ -123,7 +124,7 @@
     const t = el('div', { class: 'wmx-ct', 'data-id': it.id, 'data-r': it.rarity, style: `--rgb:${WMX.RARITY_RGB[it.rarity]}`, title: 'Cliquer pour ouvrir la fiche' },
       el('div', { class: 'wmx-ct-shade' }),
       el('span', { class: 'wmx-rar' }, it.rarity),
-      el('div', { class: 'wmx-ct-acts' }, bolt(it), it.starred ? el('i', {}, '★') : '', it.count > 1 ? el('i', { class: 'wmx-ct-n' }, `×${it.count}`) : ''),
+      el('div', { class: 'wmx-ct-acts' }, bolt(it), it.starred ? el('i', { class: 'wmx-star' }, '★') : '', it.count > 1 ? el('i', { class: 'wmx-ct-n' }, `×${it.count}`) : ''),
       el('div', { class: 'wmx-meta' }, el('strong', {}, it.title), el('span', { class: 'wmx-ct-price' }, priceText(it))));
     if (it.image) WMX.dom.artLayers(it.image, t);
     t.addEventListener('click', () => WMX.openCardDetail?.({ id: it.card_id, wikipedia_title: it.title, rarity: it.rarity, lang: it.lang }));
@@ -162,6 +163,10 @@
       const it = S.byId.get(t.dataset.id);
       if (!it) continue;
       t.querySelector('.wmx-bolt')?.replaceWith(bolt(it));
+      const acts = t.querySelector('.wmx-ct-acts');
+      const star = acts?.querySelector('.wmx-star');
+      if (it.starred && !star) acts.append(el('i', { class: 'wmx-star' }, '★'));
+      else if (!it.starred && star) star.remove();
       const pr = t.querySelector('.wmx-ct-price');
       if (pr) pr.textContent = priceText(it);
     }
@@ -198,20 +203,27 @@
   }
 
   function renderStatus() {
-    if (!ui.status) return;
+    if (!ui.heads) return;
     const t = totals();
-    ui.value.textContent = t.total ? `Valeur estimée : ${fmt(t.value)} W` : '';
-    ui.value.title = `Somme des moyennes du marché × exemplaires, pour les ${fmt(t.priced)} cartes dont le prix est chargé.`;
     const auctions = WMX.quick ? ` · Enchères : ${WMX.quick.count()}/${WMX.quick.max()}` : '';
-    ui.status.textContent = (S.loading ? `Chargement de la collection : ${fmt(S.loadedCount)} cartes…` : `${fmt(t.total)} cartes uniques · ${fmt(t.copies)} exemplaires`) + auctions;
+    const statusText = (S.loading ? `Chargement de la collection : ${fmt(S.loadedCount)} cartes…` : `${fmt(t.total)} cartes uniques · ${fmt(t.copies)} exemplaires`) + auctions;
+    for (const h of ui.heads) {
+      h.value.textContent = t.total ? `Valeur estimée : ${fmt(t.value)} W` : '';
+      h.value.title = `Somme des moyennes du marché × exemplaires, pour les ${fmt(t.priced)} cartes dont le prix est chargé.`;
+      h.status.textContent = statusText;
+    }
     const st = WMX.prices.state();
     const fresh = S.items.filter((it) => WMX.prices.fresh(it.card_id)).length;
-    ui.priceInfo.textContent = st.running
+    const info = st.running
       ? `Prix : ${fmt(st.done)} / ${fmt(st.total)}${st.wait ? ` · pause ${st.wait} s (limite du jeu)` : ''}${st.failed ? ` · ${st.failed} à réessayer` : ''}${st.paused ? ' · en pause' : ''}`
       : `Prix à jour : ${fmt(fresh)} / ${fmt(t.total)}${st.failed ? ` · ${st.failed} à réessayer` : ''}`;
-    ui.priceBar.firstChild.style.width = `${st.running && st.total ? (st.done / st.total) * 100 : (t.total ? (fresh / t.total) * 100 : 0)}%`;
-    ui.priceBtn.textContent = st.running ? (st.paused ? 'Reprendre' : 'Pause') : 'Charger les prix';
-    ui.priceStop.hidden = !st.running;
+    const pct = `${st.running && st.total ? (st.done / st.total) * 100 : (t.total ? (fresh / t.total) * 100 : 0)}%`;
+    for (const p of ui.priceBars) {
+      p.info.textContent = info;
+      p.bar.firstChild.style.width = pct;
+      p.btn.textContent = st.running ? (st.paused ? 'Reprendre' : 'Pause') : 'Charger les prix';
+      p.stop.hidden = !st.running;
+    }
   }
 
   function fillTags() {
@@ -282,11 +294,40 @@
     if (st.running) { if (st.paused) WMX.prices.resume(); else WMX.prices.pause(); return; }
     const todo = S.items.filter((it) => S.priceRar.has(it.rarity) && !WMX.prices.fresh(it.card_id))
       .sort((a, b) => RANK[b.rarity] - RANK[a.rarity] || a.title.localeCompare(b.title, 'fr'));
-    if (!todo.length) { ui.priceInfo.textContent = 'Les prix de ces raretés sont déjà à jour'; return; }
+    if (!todo.length) { ui.priceBars.forEach((p) => { p.info.textContent = 'Les prix de ces raretés sont déjà à jour'; }); return; }
     WMX.prices.start(todo);
   }
 
+  /** Bandeau propre à une page : titre, état, valeur, paramètres. Pas d'onglets ni de croix : on change de page par la barre latérale. */
+  function head(title) {
+    const status = el('span', { class: 'wmx-cp-status' });
+    const value = el('span', { class: 'wmx-cp-value' });
+    ui.heads.push({ status, value });
+    return el('header', { class: 'wmx-cp-head' }, el('h2', {}, title), status, value,
+      el('button', { class: 'wmx-close', title: 'Paramètres (enchère rapide, prix…)', onclick: () => WMX.openSettings() }, '⚙'));
+  }
+
+  const syncPriceChips = () => {
+    document.querySelectorAll('.wmx-cp-pchips .wmx-chip2').forEach((b) => b.setAttribute('aria-pressed', String(S.priceRar.has(b.textContent))));
+  };
+
+  /** Barre de chargement des prix (présente sur les deux pages, car la valeur en dépend). */
+  function makePriceBar() {
+    const info = el('span', {});
+    const bar = el('div', { class: 'wmx-cp-bar' }, el('i'));
+    const btn = el('button', { class: 'wmx-btn', onclick: priceAction }, 'Charger les prix');
+    const stop = el('button', { class: 'wmx-btn wmx-btn--ghost', hidden: '', onclick: () => WMX.prices.stop() }, 'Arrêter');
+    ui.priceBars.push({ info, bar, btn, stop });
+    return el('div', { class: 'wmx-cp-prices' },
+      el('div', { class: 'wmx-cp-pricehead' }, info,
+        el('span', { class: 'wmx-cp-pchips' }, 'Raretés :', ...R.map((r) => chip(r, WMX.RARITY_RGB[r], S.priceRar.has(r), (on) => { on ? S.priceRar.add(r) : S.priceRar.delete(r); syncPriceChips(); }))),
+        btn, stop),
+      bar);
+  }
+
   function build() {
+    ui.heads = [];
+    ui.priceBars = [];
     ui.q = el('input', { class: 'wmx-input wmx-cp-search', type: 'search', placeholder: 'Rechercher une carte…' });
     ui.q.addEventListener('input', () => { S.q = ui.q.value; S.page = 1; refresh(); });
     ui.per = select(PER_PAGE.map((n) => [n, `${n} par page`]), S.perPage, (v) => { S.perPage = Number(v); S.page = 1; savePrefs(); refresh(); });
@@ -296,25 +337,11 @@
     ui.max = el('input', { class: 'wmx-input', type: 'number', min: '0', placeholder: 'Max W' });
     ui.min.addEventListener('input', () => { S.min = ui.min.value; S.page = 1; refresh(); });
     ui.max.addEventListener('input', () => { S.max = ui.max.value; S.page = 1; refresh(); });
-
-    ui.status = el('span', { class: 'wmx-cp-status' });
-    ui.value = el('span', { class: 'wmx-cp-value' });
-    ui.priceInfo = el('span', {});
-    ui.priceBar = el('div', { class: 'wmx-cp-bar' }, el('i'));
-    ui.priceBtn = el('button', { class: 'wmx-btn', onclick: priceAction }, 'Charger les prix');
-    ui.priceStop = el('button', { class: 'wmx-btn wmx-btn--ghost', hidden: '', onclick: () => WMX.prices.stop() }, 'Arrêter');
     ui.grid = el('div', { class: 'wmx-ct-grid' });
     ui.count = el('span', {});
     ui.pager = el('div', { class: 'wmx-pager' });
-    ui.dash = el('div', { class: 'wmx-dash', hidden: '' });
+    ui.dash = el('div', { class: 'wmx-dash' });
     ui.reorder = el('button', { class: 'wmx-btn wmx-btn--ghost wmx-reorder', hidden: '', title: 'Les prix ont changé : remettre les cartes dans l’ordre du tri', onclick: () => refresh() }, '↻ Réordonner');
-
-    const tabs = ['cards', 'dash'].map((k) => {
-      const b = el('button', { class: `wmx-tab${k === S.tab ? ' on' : ''}` }, k === 'cards' ? 'Cartes' : 'Tableau de bord');
-      b.addEventListener('click', () => setTab(k));
-      return b;
-    });
-    ui.tabs = tabs;
 
     ui.cardsView = el('div', { class: 'wmx-cards-view' },
       el('div', { class: 'wmx-cp-tools' }, ui.q, ui.per, ui.sort, ui.tag,
@@ -323,28 +350,23 @@
         ...R.map((r) => chip(r, WMX.RARITY_RGB[r], false, (on) => { on ? S.rar.add(r) : S.rar.delete(r); S.page = 1; refresh(); })),
         chip('★ Favoris', '', false, (on) => { S.fav = on; S.page = 1; refresh(); }),
         chip('Doublons', '', false, (on) => { S.dup = on; S.page = 1; refresh(); }), ui.reorder),
-      el('div', { class: 'wmx-cp-prices' },
-        el('div', { class: 'wmx-cp-pricehead' }, ui.priceInfo,
-          el('span', { class: 'wmx-cp-pchips' }, 'Raretés :', ...R.map((r) => chip(r, WMX.RARITY_RGB[r], S.priceRar.has(r), (on) => { on ? S.priceRar.add(r) : S.priceRar.delete(r); }))),
-          ui.priceBtn, ui.priceStop),
-        ui.priceBar),
+      makePriceBar(),
       ui.grid,
       el('div', { class: 'wmx-cp-foot' }, ui.count, ui.pager));
 
-    overlay = el('section', { class: 'wmx-cplus', id: 'wmx-cplus' },
-      el('header', { class: 'wmx-cp-head' },
-        el('h2', {}, 'Collection+'), ...tabs, ui.status, ui.value,
-        el('button', { class: 'wmx-close', title: 'Paramètres (enchère rapide, prix…)', onclick: () => WMX.openSettings() }, '⚙'),
-        el('button', { class: 'wmx-close', title: 'Fermer', onclick: close }, '×')),
-      el('div', { class: 'wmx-cp-scroll' }, ui.cardsView, ui.dash));
-    document.body.append(overlay);
+    // Deux pages à part entière : chacune a son propre bandeau et son propre contenu.
+    overlay = el('section', { class: 'wmx-cplus', id: 'wmx-cplus', hidden: '' }, head('Collection+'), el('div', { class: 'wmx-cp-scroll' }, ui.cardsView));
+    pageDash = el('section', { class: 'wmx-cplus', id: 'wmx-dashboard', hidden: '' }, head('Tableau de bord'), el('div', { class: 'wmx-cp-scroll' }, makePriceBar(), ui.dash));
+    document.body.append(overlay, pageDash);
     window.addEventListener('resize', place);
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && overlay && !overlay.hidden && !document.querySelector('.wmx-sheet-frame.wmx-on, .wmx-overlay')) close();
-    });
 
     WMX.quick?.onChange(() => { clearTimeout(refreshTimer); refreshTimer = setTimeout(refreshTiles, 150); }); // ⚡ à jour, cartes à leur place
-    setInterval(() => { if (overlay && !overlay.hidden && WMX.alive()) WMX.quick?.refresh(); }, 60000);
+    // Un favori posé depuis ailleurs (révélation) : mis à jour ici aussi.
+    window.addEventListener('wmx:fav', (e) => {
+      for (const it of S.items) if (it.card_id === e.detail.card_id) it.starred = e.detail.starred;
+      refreshTiles();
+    });
+    setInterval(() => { if (isOpen() && WMX.alive()) WMX.quick?.refresh(); }, 60000);
 
     WMX.prices.onProgress(() => {
       renderStatus();
@@ -352,25 +374,36 @@
       tickTimer = setTimeout(() => { // met à jour les prix affichés, sans déplacer les cartes
         tickTimer = null;
         refreshTiles();
+        if (S.tab === 'dash' && isOpen()) renderDash();
         if (ui.reorder && (S.sort === 'expensive' || S.sort === 'cheap' || S.min !== '' || S.max !== '')) ui.reorder.hidden = false;
       }, 1500);
     });
   }
 
+  const isOpen = () => !!overlay && (!overlay.hidden || !pageDash.hidden);
+
+  /** Affiche UNE des deux pages (l'autre est masquée) ; pendant ce temps le surlignage « actif » du jeu est neutralisé. */
   function setTab(k) {
     S.tab = k;
-    ui.tabs?.forEach((x, i) => x.classList.toggle('on', ['cards', 'dash'][i] === k));
-    if (ui.cardsView) ui.cardsView.hidden = k !== 'cards';
-    if (ui.dash) ui.dash.hidden = k !== 'dash';
+    if (overlay) overlay.hidden = k !== 'cards';
+    if (pageDash) pageDash.hidden = k !== 'dash';
+    document.documentElement.classList.add('wmx-page-open');
     if (k === 'dash') renderDash();
     markNav();
   }
 
-  const place = () => { if (overlay) overlay.style.left = `${Math.round(WMX.dom.sidebarRight())}px`; };
+  const place = () => {
+    const x = `${Math.round(WMX.dom.sidebarRight())}px`;
+    if (overlay) overlay.style.left = x;
+    if (pageDash) pageDash.style.left = x;
+  };
 
+  /** Quitter la page : seulement en allant ailleurs dans le jeu (pas de bouton de fermeture). */
   function close() {
     if (!overlay) return;
     overlay.hidden = true;
+    pageDash.hidden = true;
+    document.documentElement.classList.remove('wmx-page-open');
     markNav();
   }
 
@@ -382,7 +415,6 @@
       if (SORTS.some(([k]) => k === prefs.sort)) S.sort = prefs.sort;
       build();
     }
-    overlay.hidden = false;
     place();
     setTab(tab);
     WMX.prepareCardSheets?.('view'); // fiche du jeu prête au premier clic
@@ -404,7 +436,7 @@
 
   function markNav() {
     document.querySelectorAll('[data-wmx-nav]').forEach((a) => {
-      const on = !!overlay && !overlay.hidden && a.dataset.wmxNav === S.tab;
+      const on = isOpen() && a.dataset.wmxNav === S.tab;
       a.classList.toggle('wmx-nav-active', on);
     });
   }
@@ -444,6 +476,11 @@
       // Le jeu redessine sa barre latérale : on remet nos entrées si elles disparaissent.
       let timer = null;
       new MutationObserver(() => { clearTimeout(timer); timer = setTimeout(mountNav, 250); }).observe(document.body, { childList: true, subtree: true });
+      // Cliquer sur n'importe quelle autre entrée de la barre latérale du jeu quitte la page, même si c'est la page du dessous.
+      document.addEventListener('click', (e) => {
+        const a = e.target.closest?.('nav a[href]');
+        if (a && !a.classList.contains('wmx-nav-item') && isOpen()) close();
+      }, true);
       // Changer de page du jeu referme Collection+.
       new MutationObserver(() => close()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-wmx-route'] });
     },
