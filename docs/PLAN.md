@@ -84,3 +84,4 @@ Légende : ✅ fait et vérifié · 🟡 écrit, à tester · ⬜ à faire
 - **Collection+ supprimée.** La collection du jeu (/collection) reçoit : barre au-dessus de la recherche (valeur estimée, état des prix, « Charger les prix… »), moyenne du marché sur chaque carte et bouton ⚡ à côté de l'étoile ★ native. Sélection, étiquettes, favoris et défausse en lot : fonctions natives du jeu (instantanées).
 - **Tableau de bord** conservé (entrée de la barre latérale) : valeur, valeur par rareté, top 10, courbe.
 - Nouveaux fichiers : `inventory.js` (inventaire + prix), `collection-native.js`, `dashboard.js`. Supprimé : `collection-plus.js`.
+- **Prix (0.11.4)** : un prix reste valable 4 jours ; jamais rechargé automatiquement ; au chargement demandé, les prix jamais chargés passent d'abord, l'actualisation (> 4 jours) seulement ensuite. Le tableau de bord passe sous les notifications du jeu (z-index 50 < 100).
