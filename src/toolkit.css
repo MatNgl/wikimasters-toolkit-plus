@@ -292,3 +292,25 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-auc-price { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.15; }
 .wmx-auc-price small { color: #9db5a8; font-size: 11px; }
 .wmx-auc-price b { font: 800 20px Outfit, system-ui, sans-serif; color: #fff; font-variant-numeric: tabular-nums; }
+
+/* ===== Bulle des enchères : liens, animations, déplacement (0.6.2) ===== */
+.wmx-bubble-panel { transform-origin: 100% 100%; opacity: 0; transform: translateY(14px) scale(.94);
+  transition: opacity .22s ease, transform .26s cubic-bezier(.2,.9,.3,1.15); will-change: transform, opacity;
+  backdrop-filter: blur(14px); box-shadow: 0 22px 60px #000c, inset 0 1px 0 #ffffff12; }
+.wmx-bubble-panel.open { opacity: 1; transform: none; }
+.wmx-bubble-panel.moved { position: fixed; right: auto; bottom: auto; transform-origin: 50% 0; z-index: 9401; }
+.wmx-bubble-panel.dragging { transition: none; cursor: grabbing; box-shadow: 0 30px 80px #000d, 0 0 0 1px var(--acc,#2dd4a0); user-select: none; }
+.wmx-bubble-head { cursor: grab; user-select: none; padding-bottom: 8px; border-bottom: 1px solid #ffffff12; margin-bottom: 12px; }
+.wmx-bubble-head::before { content: ''; width: 34px; height: 4px; border-radius: 2px; background: #ffffff2e; position: absolute; left: 50%; top: 6px; transform: translateX(-50%); }
+.wmx-bubble-panel { position: relative; }
+.wmx-bubble-panel.moved { position: fixed; }
+.wmx-bubble-head strong { font-size: 14px; letter-spacing: .02em; }
+.wmx-bubble-pill { transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease, background .18s ease; }
+.wmx-bubble-pill:hover { transform: translateY(-2px); box-shadow: 0 14px 34px #000b, 0 0 0 1px var(--acc,#2dd4a0) inset; }
+.wmx-bubble-pill.on { border-color: var(--acc,#2dd4a0); }
+.wmx-auc-row { transition: border-color .18s ease, transform .18s ease, background .18s ease; }
+.wmx-auc-row:hover { border-color: rgb(var(--rgb, 80 90 85) / .95); background: #101a16; transform: translateY(-1px); }
+.wmx-auc-title { font-weight: 700; font-size: 14px; color: #f2f7f4; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+  background: linear-gradient(currentColor, currentColor) 0 100% / 0 1px no-repeat; transition: background-size .2s ease, color .2s ease; }
+.wmx-auc-title:hover { color: var(--acc,#2dd4a0); background-size: 100% 1px; }
+@media (prefers-reduced-motion: reduce) { .wmx-bubble-panel, .wmx-bubble-pill, .wmx-auc-row { transition: none; } }

@@ -132,6 +132,12 @@
   }
 
   // --- Affichage -------------------------------------------------------------------------------
+  /** Ouvre la page de l'enchère dans le jeu (routeur interne : pas de rechargement). Ctrl/⌘/clic milieu : nouvel onglet. */
+  const openAuction = (a, e) => {
+    if (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1) return; // laisse le navigateur ouvrir un onglet
+    e.preventDefault();
+    window.dispatchEvent(new CustomEvent('wmx:navigate', { detail: `/marketplace/${a.id}` }));
+  };
   const timeEl = (a) => el('span', { class: 'wmx-auc-time', 'data-end': a.end_at }, fmtLeft(msLeft(a)));
   const rarityTag = (r) => el('span', { class: 'wmx-auc-rar', style: `color:rgb(${WMX.RARITY_RGB[r]})` }, r);
 
@@ -140,7 +146,8 @@
     const img = a.card?.image_url && !a.card?.hide_image
       ? el('img', { class: 'wmx-auc-img', src: a.card.image_url, alt: '', loading: 'lazy' })
       : el('div', { class: 'wmx-auc-img' });
-    const title = el('strong', { title: cardTitle(a) }, cardTitle(a));
+    const title = el('a', { class: 'wmx-auc-title', href: `/marketplace/${a.id}`, title: `Voir l’enchère « ${cardTitle(a)} »` }, cardTitle(a));
+    title.addEventListener('click', (e) => openAuction(a, e));
     let main, side;
     if (kind === 'bid') {
       const lead = leading(a);
@@ -211,19 +218,77 @@
     S.pill = el('button', { class: 'wmx-bubble-pill', onclick: () => toggleBubble() });
     S.bubbleBody = el('div', { class: 'wmx-bubble-body' });
     const panel = el('div', { class: 'wmx-bubble-panel', hidden: '' },
-      el('div', { class: 'wmx-bubble-head' }, el('strong', {}, 'Mes enchères'),
+      S.bubbleHead = el('div', { class: 'wmx-bubble-head', title: 'Maintenez le clic pour déplacer · double-clic pour replacer' }, el('strong', {}, 'Mes enchères'),
         el('span', {}, el('button', { class: 'wmx-qclear', title: 'Actualiser maintenant', onclick: refresh }, '↻'),
           el('button', { class: 'wmx-qclear', title: 'Réduire', onclick: () => toggleBubble(false) }, '×'))),
       S.bubbleBody);
     S.bubblePanel = panel;
+    enableDrag(S.bubbleHead);
+    WMX.store.get('auctionBubblePos').then((p) => { if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) S.pos = p; }).catch(() => {});
     S.bubble = el('div', { class: 'wmx-bubble', hidden: '' }, panel, S.pill);
     document.body.append(S.bubble);
   }
   function toggleBubble(open = !S.bubbleOpen) {
     S.bubbleOpen = open;
-    S.bubblePanel.hidden = !open;
-    if (open) { renderAll(); refresh().then(prepareFrames); prepareFrames(); }
+    const p = S.bubblePanel;
+    clearTimeout(S.closeTimer);
+    if (open) {
+      p.hidden = false;
+      applyPos();
+      void p.offsetWidth; // force le point de départ de la transition
+      p.classList.add('open');
+      S.pill.classList.add('on');
+      renderAll(); refresh().then(prepareFrames); prepareFrames();
+    } else {
+      p.classList.remove('open');
+      S.pill.classList.remove('on');
+      S.closeTimer = setTimeout(() => { if (!S.bubbleOpen) p.hidden = true; }, 260);
+    }
     schedulePoll();
+  }
+
+  // Panneau déplaçable : on attrape l'en-tête ; la position est mémorisée et gardée dans l'écran.
+  const clampPos = (x, y, p) => ({
+    x: Math.min(Math.max(8, x), Math.max(8, innerWidth - p.offsetWidth - 8)),
+    y: Math.min(Math.max(8, y), Math.max(8, innerHeight - p.offsetHeight - 8)),
+  });
+  function applyPos() {
+    const p = S.bubblePanel;
+    if (!S.pos || !p) return;
+    const c = clampPos(S.pos.x, S.pos.y, p);
+    p.classList.add('moved');
+    p.style.left = `${c.x}px`; p.style.top = `${c.y}px`;
+  }
+  function enableDrag(handle) {
+    handle.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || e.target.closest('button')) return;
+      const p = S.bubblePanel, r = p.getBoundingClientRect();
+      const dx = e.clientX - r.left, dy = e.clientY - r.top;
+      handle.setPointerCapture(e.pointerId);
+      p.classList.add('moved', 'dragging');
+      const move = (ev) => {
+        const c = clampPos(ev.clientX - dx, ev.clientY - dy, p);
+        S.pos = c; p.style.left = `${c.x}px`; p.style.top = `${c.y}px`;
+      };
+      move(e);
+      const up = () => {
+        handle.removeEventListener('pointermove', move);
+        handle.removeEventListener('pointerup', up);
+        handle.removeEventListener('pointercancel', up);
+        p.classList.remove('dragging');
+        WMX.store.set('auctionBubblePos', S.pos);
+      };
+      handle.addEventListener('pointermove', move);
+      handle.addEventListener('pointerup', up);
+      handle.addEventListener('pointercancel', up);
+    });
+    handle.addEventListener('dblclick', (e) => { // double-clic sur l'en-tête : retour à l'emplacement d'origine
+      if (e.target.closest('button')) return;
+      S.pos = null;
+      WMX.store.set('auctionBubblePos', null);
+      const p = S.bubblePanel; p.classList.remove('moved'); p.style.left = p.style.top = '';
+    });
+    window.addEventListener('resize', applyPos);
   }
 
   WMX.auctions = { refresh, state: () => D };

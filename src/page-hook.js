@@ -3,6 +3,13 @@
 (() => {
   if (window.__wmxHooked) return;
   window.__wmxHooked = true;
+  // Navigation interne demandée par l'extension (monde isolé → MAIN) : routeur du jeu, sinon chargement classique.
+  window.addEventListener('wmx:navigate', (e) => {
+    const url = String(e.detail || '');
+    if (!url.startsWith('/')) return;
+    try { if (window.next?.router?.push) return window.next.router.push(url); } catch (_) {}
+    location.assign(url);
+  });
   const origFetch = window.fetch;
   window.fetch = async function (...args) {
     let url = null;

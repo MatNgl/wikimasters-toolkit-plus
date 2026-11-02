@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WikiMasters Toolkit+",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Ouverture groupée des paquets, statistiques, valeur des cartes, filtres et enchères rapides pour WikiMasters.",
   "permissions": [
     "storage"
@@ -62,5 +62,5 @@
       "world": "MAIN"
     }
   ],
-  "version_name": "0.6.1 · bulle Enchères en deux colonnes"
+  "version_name": "0.6.2 · bulle déplaçable et animée"
 }
