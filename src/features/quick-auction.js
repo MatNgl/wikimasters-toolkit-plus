@@ -14,7 +14,8 @@
   const slim = (it) => ({ card_id: it.card_id, title: it.title, rarity: it.rarity, starred: !!it.starred, tag: it.tag, add: it.add, want: it.want });
   const isAuctionOp = (o) => o.type === 'launch' || o.type === 'cancel';
   // L'opération en cours n'est PAS réécrite dans le stockage : un autre onglet ne peut pas la reprendre (pas de doublon).
-  const persist = () => WMX.store.set('quickQueue', S.queue.filter((o) => o !== S.current).map((o) => ({ id: o.id, type: o.type, item: o.item })));
+  let pending = Promise.resolve(); // dernière écriture de la file : « claim » l'attend, sinon une opération juste ajoutée paraîtrait absente du stockage
+  const persist = () => { pending = WMX.store.set('quickQueue', S.queue.filter((o) => o !== S.current).map((o) => ({ id: o.id, type: o.type, item: o.item }))); return pending; };
   const newId = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
   const withLock = (name, fn) => (navigator.locks?.request ? navigator.locks.request(name, fn) : fn());
   /**
@@ -22,6 +23,7 @@
    * partagé, sous verrou. Si un autre onglet l'a déjà prise (ou traitée), on passe : jamais deux fois la même opération.
    */
   const claim = (op) => withLock('wmx-queue', async () => {
+    await pending;
     const stored = await WMX.store.get('quickQueue', []);
     const i = stored.findIndex((x) => x.id === op.id);
     if (i < 0) return false;
@@ -273,6 +275,7 @@
       while (S.queue.length) {
         const op = S.queue[0];
         if (!(await claim(op))) { // déjà prise par un autre onglet
+          console.warn('[WMX] file : opération déjà prise ailleurs', op.type, op.item?.title);
           S.queue = S.queue.filter((o) => o !== op);
           S.batch.total = Math.max(S.batch.done, S.batch.total - 1);
           updateChip(); notify();
