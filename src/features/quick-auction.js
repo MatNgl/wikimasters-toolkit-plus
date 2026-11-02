@@ -12,7 +12,7 @@
   const listeners = new Set();
   const resultListeners = new Set(); // (op, résultat) après chaque opération de la file : l'assistant de vente en tire ses écarts
   const notify = () => listeners.forEach((cb) => { try { cb(); } catch (_) { /* écouteur obsolète */ } });
-  const slim = (it) => ({ card_id: it.card_id, title: it.title, rarity: it.rarity, starred: !!it.starred, tag: it.tag, add: it.add, want: it.want });
+  const slim = (it) => ({ card_id: it.card_id, title: it.title, rarity: it.rarity, starred: !!it.starred, tag: it.tag, add: it.add, want: it.want, cap: it.cap });
   const isAuctionOp = (o) => o.type === 'launch' || o.type === 'cancel';
   // L'opération en cours n'est PAS réécrite dans le stockage : un autre onglet ne peut pas la reprendre (pas de doublon).
   let pending = Promise.resolve(); // dernière écriture de la file : « claim » l'attend, sinon une opération juste ajoutée paraîtrait absente du stockage
@@ -151,6 +151,7 @@
     if (!p) { await WMX.prices.fetchOne(item.card_id); p = WMX.prices.get(item.card_id, item.rarity); }
     if (!p) return { error: 'aucune vente sur le marché pour cette rareté : pas de moyenne pour fixer le prix' };
     const price = startPrice(p);
+    if (item.cap && price > item.cap) return { capped: true, error: `prix de départ ${price} W au-dessus du plafond de l’assistant (${item.cap} W)` };
     const attempt = async () => {
       try { return await driveForm(item, price, c.dur); } catch (e) { console.warn('[WMX] enchère', item.title, e); return { error: `${e?.name || 'Erreur'} : ${e?.message || e}` }; }
     };

@@ -197,3 +197,12 @@ test('assistant de vente : cartes éligibles, ordre et garde-fous', () => {
   assert.deepEqual(L.pickAutoSell(items, { ...o, now: now + 2 * 24 * 3600_000 }).map((i) => i.card_id), ['b', 'g', 'f', 'a'],
     'deux jours plus tard : l\'écart de f et le compteur de g ont expiré (e reste en vente)');
 });
+
+test('assistant de vente : le plafond écarte les cartes trop chères', () => {
+  const now = 1_000_000_000_000;
+  const items = ['p', 'q', 'r'].map((id) => ({ card_id: id, title: id, rarity: 'C', count: 1, starred: false, tags: [{ name: 'VENTE' }] }));
+  const avg = { p: 3700, q: 400, r: 0 };
+  const ids = (cap) => L.pickAutoSell(items, { tags: ['VENTE'], free: 5, now, cap, avg: (it) => avg[it.card_id] }).map((i) => i.card_id);
+  assert.deepEqual(ids(500), ['q', 'r'], 'la carte à 3 700 W est écartée, celle sans prix connu reste candidate (le plafond est revérifié au lancement)');
+  assert.deepEqual(ids(0), ['p', 'q', 'r'], 'sans plafond : toutes, les plus chères en premier');
+});

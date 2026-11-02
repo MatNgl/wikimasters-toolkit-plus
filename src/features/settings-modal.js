@@ -8,7 +8,7 @@
     speed: 'normal', order: 'rarity', images: true,
     stopOn: 'off', reserve: 0, fullStockOpen: true, anticipate: true,
     quickCoef: 0.9, quickDuration: '1h', quickPrudent: false, auctionBubble: true, auctionNotify: true, autoReload: true,
-    autoDefaultMode: 'time', autoDefaultSecs: 35, autoCapMode: 'avg', autoCapW: 100, autoCapPct: 20, autoDefaultOn: false, autoSell: false, autoSellTags: 'VENTE', autoSellMax: 3, cardStyle: true, cardShowDesc: true, cardShowStats: true,
+    autoDefaultMode: 'time', autoDefaultSecs: 35, autoCapMode: 'avg', autoCapW: 100, autoCapPct: 20, autoDefaultOn: false, autoSell: false, autoSellTags: 'VENTE', autoSellMax: 3, autoSellCap: 500, cardStyle: true, cardShowDesc: true, cardShowStats: true,
   };
 
   const SECTIONS = [
@@ -51,6 +51,7 @@
       items: [
         { key: 'autoSell', type: 'toggle', label: 'Activer l’assistant de vente', desc: 'Désactivé par défaut : une fois activé, il met de vraies cartes en vente tout seul (jamais une favorite).' },
         { key: 'autoSellTags', type: 'text', label: 'Étiquettes à vendre', desc: 'Noms séparés par des virgules (ex. VENTE, Doublons). Seules les cartes portant l’une d’elles sont concernées.' },
+        { key: 'autoSellCap', type: 'number', min: 1, max: 1000000, step: 10, label: 'Prix de départ maximum (W)', desc: 'Garde-fou : l’assistant ne met jamais en vente une carte dont le prix de départ dépasserait ce montant (500 W par défaut). Pour une carte plus chère, utilisez le bouton ⚡ vous-même.' },
         { key: 'autoSellMax', type: 'number', min: 1, max: 10, step: 1, label: 'Enchères actives visées', desc: 'L’assistant complète jusqu’à ce nombre d’enchères en cours (vos ventes manuelles comptent). 10 = limite du jeu.' },
       ],
     },

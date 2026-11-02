@@ -3,13 +3,14 @@
 // Pour vendre des cartes précises, il suffit de leur mettre l'étiquette (sélection native du jeu → « Étiqueter »).
 // Tout passe par la file d'attente (mêmes gestes, même prix de départ que le bouton ⚡). Un seul onglet agit à la fois.
 // Garde-fous : jamais une carte favorite ; une vente annulée à la main écarte la carte 12 h ; 2 échecs de suite l'écartent 6 h ;
-// au plus 4 mises en vente automatiques par carte et par jour ; jamais plus d'enchères actives que le plafond choisi.
+// jamais une carte dont le prix de départ dépasse le plafond choisi (500 W par défaut) ; au plus 4 mises en vente automatiques par carte et par jour ; jamais plus d'enchères actives que le plafond choisi.
 (() => {
   const { sleep } = WMX.dom;
   const H = WMX.logic.HOUR;
   const S = { skip: {}, log: {}, fails: {}, leader: !navigator.locks?.request, busy: false };
   const on = () => !!WMX.settings?.autoSell;
   const tags = () => String(WMX.settings?.autoSellTags || '').split(',').map((t) => t.trim()).filter(Boolean);
+  const cap = () => Math.max(1, Number(WMX.settings?.autoSellCap) || 500);
   const maxActive = () => Math.max(1, Math.min(10, Number(WMX.settings?.autoSellMax) || 3));
   const save = () => { WMX.store.set('autoSellSkip', S.skip); WMX.store.set('autoSellLog', S.log); };
 
@@ -28,12 +29,12 @@
       if (free <= 0) return;
       const now = Date.now();
       const busy = new Set(items.filter((it) => WMX.quick.stateOf(it.card_id) !== 'idle').map((it) => it.card_id));
-      const picks = WMX.logic.pickAutoSell(items, { tags: tags(), free, busy, skip: S.skip, log: S.log, now, perDay: 4, avg: (it) => WMX.prices.get(it.card_id, it.rarity)?.avg || 0 });
+      const picks = WMX.logic.pickAutoSell(items, { tags: tags(), free, busy, skip: S.skip, log: S.log, now, perDay: 4, cap: cap(), avg: (it) => WMX.prices.get(it.card_id, it.rarity)?.avg || 0 });
       if (!picks.length) return;
       for (const it of picks) (S.log[it.card_id] = (S.log[it.card_id] || []).filter((t) => now - t < 24 * H)).push(now);
       save();
       WMX.journal?.add('Assistant de vente', `${picks.length} carte${picks.length > 1 ? 's' : ''} mise${picks.length > 1 ? 's' : ''} en file : ${picks.map((p) => p.title).join(', ')}`);
-      WMX.quick.bulk('launch', picks);
+      WMX.quick.bulk('launch', picks, { cap: cap() });
     } finally { S.busy = false; }
   }
 
@@ -49,6 +50,7 @@
         if (op.type === 'cancel') skipCard(op.item.card_id, 12 * H); // vente annulée par vous : l'assistant ne la relance pas
         if (op.type !== 'launch') return;
         if (res.ok) { delete S.fails[op.item.card_id]; return; }
+        if (res.capped) { skipCard(op.item.card_id, 24 * H); return; } // trop chère pour l'assistant : on n'y revient pas avant demain
         if (res.skipped || res.limit) return;
         S.fails[op.item.card_id] = (S.fails[op.item.card_id] || 0) + 1;
         if (S.fails[op.item.card_id] >= 2) { skipCard(op.item.card_id, 6 * H); delete S.fails[op.item.card_id]; WMX.journal?.add('Assistant de vente', `${op.item.title} écartée 6 h (deux échecs de suite)`, 'warn'); }
