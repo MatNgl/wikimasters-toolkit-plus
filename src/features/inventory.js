@@ -47,18 +47,27 @@
     const hadCache = S.items.length > 0; // avec un cache on garde l'affichage actuel jusqu'à la fin
     const byId = new Map();
     let blocks = 0;
+    let fails = 0;
+    let complete = false; // vrai seulement si on atteint la dernière page (une réponse vide)
     for (let p = 0; p < 400 && WMX.alive(); p++) {
       const u = new URL('/api/my-collection', location.origin);
       u.searchParams.set('sort', 'name'); // tri alphabétique : ordre stable d'une page à l'autre
       u.searchParams.set('page', String(p));
       u.searchParams.set('stats', '0');
       let res;
-      try { res = await fetch(u); } catch (_) { break; }
-      if (res.status === 429) { blocks += 1; await sleep((3 + blocks) * 1000); p -= 1; continue; }
-      if (!res.ok) { if (res.status >= 500) WMX.reportError?.('inventaire', res.status); break; }
+      try { res = await fetch(u); } catch (_) { res = null; }
+      if (res?.status === 429) { blocks += 1; await sleep((3 + blocks) * 1000); p -= 1; continue; }
+      if (!res || !res.ok) { // erreur passagère du jeu (503…) : on réessaie la même page quelques fois avant d'abandonner
+        fails += 1;
+        if (fails > 6) { WMX.reportError?.('inventaire', res?.status ?? 0, `page ${p}`); break; }
+        await sleep(2000 + fails * 2500);
+        p -= 1;
+        continue;
+      }
       blocks = 0;
+      fails = 0;
       const rows = (await res.json()).collection || [];
-      if (!rows.length) break;
+      if (!rows.length) { complete = true; break; }
       for (const r of rows) byId.set(r.id, compact(r));
       S.loadedCount = byId.size;
       if (!hadCache && p % 4 === 0) setItems(withoutDiscarded([...byId.values()]));
@@ -66,8 +75,9 @@
       await sleep(300);
     }
     S.loading = false;
-    setItems(withoutDiscarded([...byId.values()]));
-    WMX.store.set('invCache', { t: Date.now(), items: S.items, complete: true });
+    if (complete || !S.items.length) setItems(withoutDiscarded([...byId.values()]));
+    // Un chargement interrompu ne remplace pas un inventaire plus complet, et son cache est marqué incomplet (rechargé la prochaine fois).
+    WMX.store.set('invCache', { t: Date.now(), items: S.items, complete });
   }
 
   /** Charge les préférences, puis l'inventaire en cache (affiché aussitôt) et, s'il est périmé, l'inventaire à jour. */
