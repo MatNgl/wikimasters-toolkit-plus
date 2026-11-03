@@ -3,7 +3,7 @@
 // La vérification humaine n'est JAMAIS touchée : on attend qu'elle disparaisse.
 (() => {
   const { el, findExact, sleep } = WMX.dom;
-  const state = { busy: false, auto: false, buffer: [], opened: 0 };
+  const state = { busy: false, auto: false, buffer: [], opened: 0, loopId: 0, nextAt: null };
   let lastCards = null;
   const ui = {};
 
@@ -248,12 +248,22 @@
     }
   }
 
-  async function autoLoop() {
-    const interval = () => rand(Number(ui.min.value), Number(ui.max.value)) * 60000;
-    let nextAt = Date.now() + interval();
+  /** Durée tirée au hasard entre les deux bornes de l'intervalle (en ms). */
+  function nextInterval() { return rand(Number(ui.min.value), Number(ui.max.value)) * 60000; }
+  /** Fixe l'échéance de la prochaine ouverture (une seule pour toute la page, mémorisée avec l'état de l'ouverture auto). */
+  function setNextAt(t) { state.nextAt = t; persistAuto(); }
+
+  /**
+   * Boucle de l'ouverture auto. `initialNextAt` : échéance déjà connue (reprise après un rechargement de la page), sinon une nouvelle est tirée.
+   * Une seule boucle est active à la fois : toute nouvelle boucle met fin à la précédente (`loopId`), même après « Arrêter » puis « Ouvrir auto » en un instant.
+   */
+  async function autoLoop(initialNextAt = null) {
+    const id = ++state.loopId;
+    setNextAt(Number.isFinite(initialNextAt) ? initialNextAt : Date.now() + nextInterval());
     let lastBeat = Date.now();
-    while (state.auto) {
+    while (state.auto && id === state.loopId) {
       await sleep(1000);
+      if (id !== state.loopId) break; // une autre boucle a pris le relais
       if (Date.now() - lastBeat > 15000) { lastBeat = Date.now(); persistAuto(); } // « toujours en cours » : sert à décider de la reprise après un rechargement
       if (!WMX.alive()) { // extension rechargée : ce script orphelin s'arrête et retire son interface
         state.auto = false;
@@ -271,7 +281,7 @@
       trackRegen(nextIn);
       const cfg = WMX.settings;
       const reserve = Math.min(cfg.reserve, max - 1);
-      const wait = (nextAt - Date.now()) / 1000;
+      const wait = (state.nextAt - Date.now()) / 1000;
       let toOpen = 0;
       let why = '';
       // À chaque échéance : on ouvre TOUS les paquets disponibles au-dessus de la réserve, pour ne jamais atteindre le maximum.
@@ -284,7 +294,7 @@
       if (toOpen > 0) {
         setStatus(why ? `Ouverture anticipée (${why})` : 'Ouverture…');
         await openBatch(toOpen);
-        nextAt = Date.now() + interval();
+        setNextAt(Date.now() + nextInterval());
       } else if (state.auto) {
         setStatus(`Prochaine ouverture dans ${mmss(Math.max(0, wait))} · ${packs} paquet${packs > 1 ? 's' : ''} en attente${ready === 0 && packs > 0 ? ' (réserve)' : ''}`);
       }
@@ -296,8 +306,8 @@
    * Un rechargement de la page ne l'interrompt plus : au chargement suivant elle reprend, cartes comprises (voir buildPanel).
    */
   function persistAuto() {
-    if (!state.auto) { state.unlock?.(); state.unlock = null; }
-    return WMX.store.set('autoRun', state.auto ? { on: true, t: Date.now(), buffer: state.buffer, opened: state.opened } : null);
+    if (!state.auto) { state.unlock?.(); state.unlock = null; WMX.stats.release(); } // statistiques retenues : comptées maintenant
+    return WMX.store.set('autoRun', state.auto ? { on: true, t: Date.now(), buffer: state.buffer, opened: state.opened, nextAt: state.nextAt } : null);
   }
   /** Une seule page du jeu mène l'ouverture auto (deux pages ouvriraient les mêmes paquets). Vrai si ce rôle est pris. */
   function takeAutoLock() {
@@ -311,14 +321,15 @@
     });
   }
 
-  function startAuto(resume = false) {
+  function startAuto(resume = false, nextAt = null) {
     if (state.busy) return;
     state.auto = true;
+    WMX.stats.hold(); // la répartition des raretés ne bouge qu'à l'arrêt : pas de spoil pendant l'ouverture
     if (!state.unlock) takeAutoLock();
     persistAuto();
     setBadge(); setAutoBtn();
     if (!resume) WMX.prepareCardSheets?.(); // fiche des cartes prête quand la révélation s'affichera
-    autoLoop();
+    autoLoop(nextAt);
   }
 
   function stopAuto() {
@@ -348,8 +359,9 @@
       ui.min.value = a; ui.max.value = b;
       WMX.store.set('autoPrefs', { min: a, max: b });
     };
-    ui.min.addEventListener('change', clamp);
-    ui.max.addEventListener('change', clamp);
+    const onIntervalChange = () => { clamp(); if (state.auto && !state.busy) setNextAt(Date.now() + nextInterval()); };
+    ui.min.addEventListener('change', onIntervalChange);
+    ui.max.addEventListener('change', onIntervalChange);
     clamp();
 
     ui.autoBtn = el('button', { class: 'wmx-btn wmx-btn--wide', onclick: () => (state.auto ? stopAuto() : startAuto()) });
@@ -363,16 +375,25 @@
     ringSvg.innerHTML = `<circle cx="36" cy="36" r="30" class="wmx-dial-bg"/><circle cx="36" cy="36" r="30" class="wmx-dial-ring" stroke-dasharray="${RING}" stroke-dashoffset="${RING}"/>`;
     ui.fabRing = ringSvg;
     ui.fabTxt = el('span', { class: 'wmx-fab-txt' }, el('b', {}, '–'), el('small', {}, 'paquets'));
-    let lastPacks = estimateSeen(seenPacks);
+    let seenSnap = seenPacks; // dernier relevé fait sur la page Paquets (mémorisé) : base de l'estimation sur les autres pages
+    let lastPacks = estimateSeen(seenSnap);
     let lastSave = 0;
+    // Avertissement « stock plein » : l'ouverture auto ne s'exécute que sur la page Paquets. Quand le stock est plein (10/10) alors qu'on est
+    // ailleurs, un message et un bouton ramènent sur la page Paquets, où l'ouverture reprend d'elle-même.
+    const goPulls = () => window.dispatchEvent(new CustomEvent('wmx:navigate', { detail: '/pulls' }));
+    const warn = el('div', { class: 'wmx-fullwarn', role: 'status', hidden: '' },
+      el('span', { class: 'wmx-fullwarn-ic' }, '⚠'), el('span', { class: 'wmx-fullwarn-txt' }),
+      el('button', { class: 'wmx-btn', onclick: goPulls }, 'Aller aux paquets'));
     const updateFab = () => {
-      if (/^\/pulls/.test(location.pathname)) {
+      const onPulls = /^\/pulls/.test(location.pathname);
+      if (onPulls && document.body.innerText.match(/paquets?/i)) {
         const i = packInfo();
-        if (document.body.innerText.match(/paquets?/i)) {
-          lastPacks = { ...i, nextIn: nextPackIn() };
-          if (Date.now() - lastSave > 15000) { lastSave = Date.now(); WMX.store.set('packsSeen', { packs: i.packs, max: i.max, nextIn: lastPacks.nextIn, t: Date.now() }); }
-        }
-      }
+        lastPacks = { ...i, nextIn: nextPackIn() };
+        seenSnap = { packs: i.packs, max: i.max, nextIn: lastPacks.nextIn, t: Date.now() };
+        if (Date.now() - lastSave > 15000) { lastSave = Date.now(); WMX.store.set('packsSeen', seenSnap); }
+      } else lastPacks = estimateSeen(seenSnap); // hors de la page Paquets : estimation recalculée chaque seconde
+      warn.hidden = !(state.auto && !onPulls && lastPacks && lastPacks.packs >= lastPacks.max);
+      if (!warn.hidden) warn.querySelector('.wmx-fullwarn-txt').textContent = `Stock plein (${lastPacks.est ? '~' : ''}${lastPacks.packs}/${lastPacks.max}) : l’ouverture auto ne marche que sur la page Paquets`;
       if (!lastPacks) return;
       const { packs, max, nextIn, est } = lastPacks;
       const frac = packs >= max ? 1 : Math.min(1, Math.max(0, 1 - (nextIn ?? regen) / regen));
@@ -442,8 +463,8 @@
       .observe(document.documentElement, { attributes: true, attributeFilter: ['data-wmx-route'] });
 
     const cover = el('div', { class: 'wmx-cover' });
-    document.body.append(panel, dial, cover);
-    [panel, dial, cover].forEach(WMX.dom.keepAttached);
+    document.body.append(panel, dial, cover, warn);
+    [panel, dial, cover, warn].forEach(WMX.dom.keepAttached);
 
     // La barre latérale du jeu s'élargit selon l'écran : le menu se cale à sa droite au lieu d'une position fixe.
     const place = () => {
@@ -501,7 +522,7 @@
         if (got) {
           state.buffer = saved.buffer || [];
           state.opened = saved.opened || 0;
-          startAuto(true);
+          startAuto(true, saved.nextAt); // l'échéance d'avant le rechargement est conservée (pas de nouveau tirage au sort)
           if (!/^\/pulls/.test(location.pathname)) setCollapsed(true, false);
           setStatus('Ouverture auto reprise après le rechargement de la page');
         }
@@ -510,6 +531,9 @@
         if (saved.buffer?.length) WMX.reveal(saved.buffer);
       }
     }
+    // Statistiques restées en attente (page fermée pendant l'auto) : comptées, sauf si une autre page du jeu mène encore l'ouverture auto.
+    const otherRuns = saved?.on && Date.now() - (saved.t || 0) < 5 * 60000 && !state.auto;
+    if (!state.auto && !otherRuns) WMX.stats.release();
   }
 
   // Le menu existe sur toutes les pages (masqué hors de la page Paquets tant que l'ouverture auto ne tourne pas) : un rechargement de la

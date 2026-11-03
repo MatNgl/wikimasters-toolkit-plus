@@ -586,3 +586,9 @@ html:not([data-wmx-route^="/pulls"]) .wmx-panel, html:not([data-wmx-route^="/pul
 .wmx-as-row b { color: #cfe; }
 .wmx-as-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wmx-as-row small { color: #8aa; white-space: nowrap; }
+
+/* ===== Avertissement « stock plein » hors de la page Paquets (0.19.8) ===== */
+.wmx-fullwarn { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 10002; display: flex; align-items: center; gap: 12px; max-width: min(92vw, 640px); padding: 10px 14px; border-radius: 16px; background: #0b1411f2; border: 1px solid #f59e0b99; box-shadow: 0 14px 40px #000c, 0 0 24px #f59e0b33; color: #fde68a; font: 600 13px Outfit, system-ui, sans-serif; }
+.wmx-fullwarn[hidden] { display: none; }
+.wmx-fullwarn-ic { font-size: 18px; color: #f59e0b; }
+.wmx-fullwarn .wmx-btn { flex: none; padding: 7px 14px; font-size: 13px; }

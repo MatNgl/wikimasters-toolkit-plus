@@ -639,3 +639,54 @@ test('jeu lent : si le jeu efface <body> en finissant de s\'afficher, la bulle d
   assert.ok(w.document.querySelector('.wmx-panel') && w.document.querySelector('.wmx-pdial'), 'le menu des paquets aussi');
   env.close();
 });
+
+test('ouverture auto : l\'échéance survit au rechargement, et changer l\'intervalle la recalcule une seule fois', async () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  const { w, mem, WMX } = env;
+  const due = Date.now() + 7 * 60000;
+  mem.autoRun = { on: true, t: Date.now() - 5000, buffer: [], opened: 0, nextAt: due };
+  await WMX.features.find((x) => x.name === 'boosters').init();
+  await sleep(300);
+  assert.equal((await WMX.store.get('autoRun', null)).nextAt, due, 'l\'échéance d\'avant le rechargement est conservée (pas de nouveau tirage au sort)');
+  const [min, max] = w.document.querySelectorAll('.wmx-body input[type=number]');
+  min.value = '1'; max.value = '1'; max.dispatchEvent(new w.Event('change', { bubbles: true }));
+  await sleep(100);
+  const after = (await WMX.store.get('autoRun', null)).nextAt;
+  assert.ok(after > Date.now() + 50000 && after < Date.now() + 70000, 'intervalle 1–1 min : échéance recalculée à ~1 min');
+  env.close();
+});
+
+test('statistiques : retenues pendant l\'ouverture auto (pas de spoil de la répartition), comptées d\'un coup à l\'arrêt', async () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  const { WMX } = env;
+  WMX.stats.hold();
+  await WMX.stats.record([{ rarity: 'UR' }, { rarity: 'C' }]);
+  await WMX.stats.record([{ rarity: 'C' }]);
+  let s = await WMX.stats.get();
+  assert.equal(s.cards, 0, 'rien n\'est compté pendant l\'ouverture');
+  assert.equal(s.rarity.UR, 0, 'l\'UR tirée ne se voit pas dans la répartition');
+  await WMX.stats.release();
+  s = await WMX.stats.get();
+  assert.equal(s.packs, 2); assert.equal(s.cards, 3); assert.equal(s.rarity.UR, 1); assert.equal(s.rarity.C, 2);
+  await WMX.stats.record([{ rarity: 'R' }]);
+  assert.equal((await WMX.stats.get()).rarity.R, 1, 'ensuite, l\'enregistrement redevient immédiat');
+  env.close();
+});
+
+test('stock plein hors de la page Paquets : avertissement et bouton pour y retourner (auto active)', async () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  const { w, mem, WMX } = env;
+  mem.autoRun = { on: true, t: Date.now() - 3000, buffer: [], opened: 0, nextAt: Date.now() + 5 * 60000 };
+  mem.packsSeen = { packs: 10, max: 10, nextIn: null, t: Date.now() - 60000 };
+  const nav = [];
+  w.addEventListener('wmx:navigate', (e) => nav.push(e.detail));
+  await WMX.features.find((x) => x.name === 'boosters').init();
+  await sleep(1300);
+  const warn = w.document.querySelector('.wmx-fullwarn');
+  assert.equal(warn.hidden, false, 'l\'avertissement est affiché');
+  assert.match(warn.textContent, /Stock plein \(~10\/10\)/);
+  warn.querySelector('button').click();
+  assert.deepEqual(nav, ['/pulls'], 'le bouton ramène sur la page Paquets');
+  assert.equal(WMX.RARITY_RGB.SR, '244 114 182', 'SR en rose');
+  env.close();
+});

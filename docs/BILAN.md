@@ -1,4 +1,4 @@
-# Bilan — WikiMasters Toolkit+ (v0.19.0)
+# Bilan — WikiMasters Toolkit+ (v0.19.8 / publication 1.0.3)
 
 ## Fait
 **Paquets** — « Tout ouvrir » et ouverture automatique (intervalle min/max, arrêt sur belle carte), écran de révélation façon gacha trié par rareté (prix, ★, ⚡, couronnes sur les cartes les plus chères, « Paquet n/N », valeur estimée du lot), statistiques (répartition, valeur moyenne d'un paquet), menu centré qui sort d'un cadran, visible partout tant que l'auto tourne. Les prix des cartes tirées passent devant tous les autres ; la carte sur laquelle on clique ⚡ passe en tête.
@@ -22,7 +22,7 @@
 - Style de carte : profil vérifié en réel ; guilde, batailles, demandes d'amis non vérifiés faute de carte (même détection, jugé secondaire).
 - Après une défausse native, les compteurs de l'extension se mettent à jour au rechargement de la page.
 - Le jeu est parfois très lent (3 à 20 s par requête) : ouverture d'une fiche 3 à 30 s, mise en vente d'une carte ~15 à 40 s, chargement de l'inventaire plusieurs minutes.
-- L'ouverture automatique des paquets ne s'exécute que sur la page Paquets (en pause ailleurs).
+- L'ouverture automatique des paquets ne s'exécute que sur la page Paquets (en pause ailleurs) : un avertissement « Stock plein » avec un bouton « Aller aux paquets » s'affiche ailleurs quand le stock est à 10/10. Un rechargement de la page ne l'arrête plus (reprise avec les cartes déjà tirées et la même échéance), les statistiques ne se mettent à jour qu'à son arrêt (pas de spoil), et un seul compte à rebours existe, recalculé quand on change l'intervalle.
 - L'indicateur « carte toujours possédée » du jeu ne couvre que les 50 dernières enchères de l'historique.
 - Dépendance à la structure de la page du jeu : un changement de design peut casser l'ajout des prix, du ⚡ et du style (détecté et signalé dans le journal).
 - Les règles de WikiMasters interdisent les outils qui jouent à votre place : risque assumé et signalé aux utilisateurs.

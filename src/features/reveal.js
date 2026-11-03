@@ -5,7 +5,7 @@
   const { el, sleep } = WMX.dom;
   const ORDER = ['C', 'PC', 'R', 'SR', 'UR', 'L'];
   // Couleurs relevées sur les cartes du jeu (rgb) et rayon de halo.
-  const RGB = { C: '183 193 206', PC: '110 231 173', R: '100 191 255', SR: '201 140 255', UR: '255 159 67', L: '255 212 90' };
+  const RGB = { C: '183 193 206', PC: '110 231 173', R: '100 191 255', SR: '244 114 182', UR: '255 159 67', L: '255 212 90' };
   const GLOW = { C: 8, PC: 13, R: 17, SR: 22, UR: 28, L: 32 };
   const NAMES = { C: 'Commune', PC: 'Peu commune', R: 'Rare', SR: 'Super rare', UR: 'Ultra rare', L: 'Légendaire' };
   WMX.RARITY_RGB = RGB;

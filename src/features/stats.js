@@ -10,7 +10,27 @@
 
   const today = () => new Date().toLocaleDateString('sv-SE'); // AAAA-MM-JJ, heure locale
   const empty = () => ({ packs: 0, cards: 0, rarity: Object.fromEntries(WMX.RARITIES.map((r) => [r, 0])), since: Date.now(), value: 0, valuedPacks: 0 });
+  // Pendant l'ouverture auto les cartes ne sont pas encore « vues » : compter chaque paquet tout de suite ferait bouger la répartition des
+  // raretés sous les yeux de l'utilisateur (une UR tirée se verrait dans le menu). Les paquets sont donc retenus (mémorisés, seule la rareté
+  // de chaque carte) et comptés d'un coup à l'arrêt de l'ouverture auto.
+  let holding = false;
   WMX.stats = {
+    /** Retient les statistiques des paquets ouverts jusqu'à `release()`. */
+    hold() { holding = true; },
+    /** Compte les paquets retenus (et reprend l'enregistrement immédiat). */
+    async release() {
+      holding = false;
+      const held = await WMX.store.get('statsHeld', []);
+      if (!held.length) return;
+      await WMX.store.set('statsHeld', []);
+      for (const cards of held) await this.recordNow(cards);
+    },
+    async record(cards) {
+      if (!holding) return this.recordNow(cards);
+      const held = await WMX.store.get('statsHeld', []);
+      held.push(cards.map((c) => ({ rarity: c.rarity })));
+      await WMX.store.set('statsHeld', held);
+    },
     async get() { return WMX.store.get('stats', empty()); },
     async reset() { await WMX.store.set('stats', empty()); },
     /** Valeur (somme des moyennes du marché) d'un lot de `packs` paquets dont TOUS les prix sont connus. */
@@ -20,7 +40,7 @@
       s.valuedPacks = (s.valuedPacks || 0) + packs;
       await WMX.store.set('stats', s);
     },
-    async record(cards) {
+    async recordNow(cards) {
       const s = await this.get();
       s.packs += 1;
       for (const c of cards) {
