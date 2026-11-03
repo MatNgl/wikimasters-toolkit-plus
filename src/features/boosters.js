@@ -382,7 +382,11 @@
       ui.fabTxt.firstChild.textContent = `${est ? '~' : ''}${packs}/${max}`;
       ui.fabTxt.title = (est ? 'Estimation d’après la dernière visite de la page Paquets. ' : '') + (packs >= max ? 'Stock plein : ouvrez vos paquets' : `Prochain paquet dans ${mmss(nextIn ?? 0)}`);
     };
-    setInterval(() => { if (WMX.alive()) updateFab(); }, 1000);
+    setInterval(() => {
+      if (!WMX.alive()) return;
+      updateFab();
+      document.documentElement.classList.toggle('wmx-auto-on', state.auto); // le jeu peut réinitialiser les attributs de <html> en finissant de s'afficher
+    }, 1000);
     // Logo « W » de l'en-tête. Le bouton réduit est un cadran à part, comme celui des enchères : le menu en sort et y rentre.
     const fab = el('span', { class: 'wmx-fab', title: 'WikiMasters Toolkit+' }, el('span', { class: 'wmx-fab-w' }, 'W'), ui.fabCount2);
     const dial = el('button', { class: 'wmx-pdial gone', title: 'Ouvrir le menu des paquets', 'aria-label': 'Menu des paquets', onclick: () => setCollapsed(false) }, ui.fabRing, ui.fabTxt, ui.fabCount);
@@ -439,6 +443,7 @@
 
     const cover = el('div', { class: 'wmx-cover' });
     document.body.append(panel, dial, cover);
+    [panel, dial, cover].forEach(WMX.dom.keepAttached);
 
     // La barre latérale du jeu s'élargit selon l'écran : le menu se cale à sa droite au lieu d'une position fixe.
     const place = () => {

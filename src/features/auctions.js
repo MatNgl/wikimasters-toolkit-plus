@@ -578,6 +578,7 @@
     WMX.store.get('auctionBubblePos').then((p) => { if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) S.pos = p; }).catch(() => {});
     S.bubble = el('div', { class: 'wmx-bubble', hidden: '' }, panel, S.pill);
     document.body.append(S.bubble);
+    WMX.dom.keepAttached(S.bubble);
     placeBubble();
     window.addEventListener('resize', placeBubble);
     new ResizeObserver(placeBubble).observe(document.documentElement);

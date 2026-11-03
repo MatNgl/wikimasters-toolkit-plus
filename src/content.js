@@ -11,6 +11,9 @@
     }
   };
   run();
+  setInterval(() => { // attribut remis si le jeu réinitialise <html> après le chargement
+    if (WMX.alive?.() && document.documentElement.dataset.wmxRoute !== location.pathname) document.documentElement.dataset.wmxRoute = location.pathname;
+  }, 1000);
   let last = location.pathname;
   new MutationObserver(() => {
     if (location.pathname !== last) { last = location.pathname; run(); }

@@ -1,4 +1,14 @@
+// Quand le jeu est lent, il finit parfois de s'afficher APRÈS le chargement de l'extension et remplace alors le contenu de <body> (et les
+// attributs de <html>) : les éléments que l'extension y avait ajoutés disparaissent (bulle des enchères, menu des paquets). On les remet.
+const kept = new Set();
+setInterval(() => {
+  if (!WMX.alive?.() || !document.body) return;
+  for (const n of kept) if (!n.isConnected) document.body.append(n);
+}, 1000);
+
 WMX.dom = {
+  /** Garde un élément de l'extension dans la page : remis dans <body> s'il en est retiré par le jeu. */
+  keepAttached(node) { kept.add(node); return node; },
   el(tag, attrs = {}, ...children) {
     const n = document.createElement(tag);
     for (const [k, v] of Object.entries(attrs)) {

@@ -625,3 +625,17 @@ test('bulle des enchères : la pastille est visible dès le chargement, même si
   assert.match(bubble.querySelector('.wmx-dial-txt').textContent, /…/, 'avec un état « chargement », pas de faux zéros');
   env.close();
 });
+
+test('jeu lent : si le jeu efface <body> en finissant de s\'afficher, la bulle des enchères et le menu des paquets sont remis', async () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  const { w, WMX } = env;
+  WMX.features.find((x) => x.name === 'auctions').init();
+  await WMX.features.find((x) => x.name === 'boosters').init();
+  assert.ok(w.document.querySelector('.wmx-bubble') && w.document.querySelector('.wmx-panel'), 'présents au départ');
+  w.document.body.replaceChildren(); // le jeu remplace le contenu de la page
+  assert.equal(w.document.querySelector('.wmx-bubble'), null, 'effacés');
+  await sleep(1300);
+  assert.ok(w.document.querySelector('.wmx-bubble'), 'la bulle des enchères est revenue');
+  assert.ok(w.document.querySelector('.wmx-panel') && w.document.querySelector('.wmx-pdial'), 'le menu des paquets aussi');
+  env.close();
+});
