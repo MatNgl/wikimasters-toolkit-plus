@@ -455,6 +455,17 @@
   const timeEl = (a) => el('span', { class: 'wmx-auc-time', 'data-end': a.end_at }, fmtLeft(msLeft(a)));
   const rarityTag = (r) => el('span', { class: 'wmx-auc-rar', style: `color:rgb(${WMX.RARITY_RGB[r]})` }, r);
 
+  /** Moyenne du marché et verdict, à côté de la mise actuelle. La moyenne manquante est demandée une fois par carte (file des prix). */
+  function avgChip(a, role) {
+    const p = WMX.prices.get(a.card_id, rarityOf(a));
+    if (!p && !WMX.prices.fresh(a.card_id)) {
+      if (!(S.avgAsked ||= new Set()).has(a.card_id)) { S.avgAsked.add(a.card_id); WMX.prices.fetchOne(a.card_id).then(() => { if (S.bubbleOpen) renderAll(); }); }
+      return el('div', { class: 'wmx-auc-mk wait' }, 'Moy. …');
+    }
+    const n = WMX.logic.priceNote(role, a.current_bid || a.base_amount, p);
+    return el('div', { class: 'wmx-auc-mk ' + n.kind, title: n.title }, el('span', {}, n.avg), el('b', {}, n.verdict));
+  }
+
   function row(a, kind) {
     const r = rarityOf(a);
     const img = a.card?.image_url && !a.card?.hide_image
@@ -476,7 +487,7 @@
         timeEl(a),
         rule ? el('span', { class: 'wmx-auc-autotag' }, WMX.logic.autoLabel(rule)) : '');
       side = el('div', { class: 'wmx-auc-side' },
-        el('div', { class: 'wmx-auc-price' }, el('small', {}, 'Mise actuelle'), el('b', {}, `${fmt(a.current_bid || a.base_amount)} W`)),
+        el('div', { class: 'wmx-auc-price' }, el('small', {}, 'Mise actuelle'), el('b', {}, `${fmt(a.current_bid || a.base_amount)} W`), avgChip(a, 'buy')),
         el('div', { class: 'wmx-auc-acts' }, autoBtn, act));
       return el('div', { class: 'wmx-auc-row', style: `--rgb:${WMX.RARITY_RGB[r]}` }, img, main, side, S.autoOpen === a.id ? autoForm(a) : '');
     } else {
@@ -498,7 +509,8 @@
         el('div', { class: 'wmx-auc-price' },
           a.current_bid ? el('small', {}, 'Mise actuelle') : el('small', {}, 'Prix de départ'),
           el('b', {}, `${fmt(a.current_bid || a.base_amount)} W`),
-          a.current_bid ? el('small', {}, `Départ ${fmt(a.base_amount)} W`) : ''),
+          a.current_bid ? el('small', {}, `Départ ${fmt(a.base_amount)} W`) : '',
+          avgChip(a, 'sale')),
         act);
     }
     return el('div', { class: 'wmx-auc-row', style: `--rgb:${WMX.RARITY_RGB[r]}` }, img, main, side);

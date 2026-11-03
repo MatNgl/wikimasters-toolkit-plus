@@ -90,7 +90,40 @@
     }
   }
 
+  // --- Page d'UNE enchère (/marketplace/{id}) : moyenne du marché et verdict sous « Mise actuelle » ---------------------------
+  const isDetail = () => /^\/marketplace\/[0-9a-f-]{8,}\/?$/i.test(location.pathname);
+  let detailAsked = null;
+  async function paintDetail() {
+    if (!isDetail()) return;
+    const id = location.pathname.split('/').filter(Boolean)[1];
+    const label = [...document.querySelectorAll('span, div')].find((e) => e.children.length === 0 && !e.closest('[class*="wmx-"]') && /^(mise actuelle|prix de départ|mise de départ)$/i.test(e.textContent.trim()));
+    const row = label?.parentElement;
+    if (!row) return; // page pas encore affichée : repris au prochain passage
+    let info = byAuction.get(id);
+    if (!info && detailAsked !== id) {
+      detailAsked = id; // la réponse du jeu n'a pas été vue : même lecture que lui, une seule fois
+      try { const res = await fetch('/api/marketplace/' + id); if (res.ok) learn([(await res.json())?.auction], 'detail'); } catch (err) { WMX.reportError?.('marché', 0, String(err?.message || err)); }
+      info = byAuction.get(id);
+    }
+    if (!info) return;
+    const shownPrice = Number((row.textContent.replace(label.textContent, '').match(/[\d\s\u00a0\u202f]+/) || [''])[0].replace(/\D/g, '')); // mise affichée (elle bouge en direct)
+    const price = shownPrice > 0 ? shownPrice : info.price;
+    const role = roleOf(id, info) === 'sale' ? 'sale' : 'buy';
+    const p = WMX.prices.get(info.card_id, info.rarity);
+    const waiting = !p && !WMX.prices.fresh(info.card_id);
+    const n = waiting ? null : WMX.logic.priceNote(role, price, p);
+    const sig = waiting ? 'wait' : [n.kind, n.avg, n.verdict].join('|');
+    let chip = row.parentElement.querySelector(':scope > .wmx-dk');
+    if (chip && chip.dataset.sig === sig) return; // rien n'a changé : on ne touche pas à la page (évite de se rappeler soi-même)
+    if (!chip) { chip = el('div', { class: 'wmx-dk' }); row.after(chip); }
+    chip.dataset.sig = sig;
+    if (waiting) { chip.className = 'wmx-dk wait'; chip.title = ''; chip.replaceChildren(el('span', {}, 'Moyenne du marché…')); }
+    else { chip.className = 'wmx-dk ' + n.kind; chip.title = n.title; chip.replaceChildren(el('span', {}, n.avg), el('b', {}, n.verdict)); }
+    if (waiting) { await WMX.prices.fetchOne(info.card_id); if (chip.isConnected) paintDetail(); }
+  }
+
   async function scan() {
+    if (isDetail()) { paintDetail(); return; }
     if (!/^\/marketplace\/?$/.test(location.pathname)) return;
     const list = anchors();
     if (!list.length) return;
@@ -114,7 +147,10 @@
     name: 'market',
     match: /^\/marketplace/,
     init() {
-      WMX.onApi(({ path, data }) => { if (/^\/api\/marketplace\/?$/.test(path)) { learnAll(data); schedule(); } });
+      WMX.onApi(({ path, data }) => {
+        if (/^\/api\/marketplace\/?$/.test(path)) { learnAll(data); schedule(); }
+        else if (/^\/api\/marketplace\/[0-9a-f-]{8,}\/?$/i.test(path) && data?.auction) { learn([data.auction], 'detail'); schedule(); } // page d'une enchère : le jeu la relit en direct
+      });
       io = new IntersectionObserver((entries) => {
         for (const e of entries) if (e.isIntersecting) { io.unobserve(e.target); onVisible(e.target); }
       }, { rootMargin: '200px' });

@@ -133,6 +133,23 @@
       return { kind: 'high', label: 'Trop cher', pct, low };
     },
     /**
+     * Moyenne du marché + verdict d'une enchère, prêts à afficher (bulle des enchères, page d'une enchère).
+     * role « sale » : une de MES ventes (bénéfice / prix du marché / à perte) ; sinon une enchère à acheter (bonne affaire / correct / trop cher).
+     * p = { avg, count, last } ou null (aucune vente sur le marché pour cette rareté).
+     */
+    priceNote(role, price, p) {
+      const v = role === 'sale' ? L.saleVerdict(price, p && p.avg, p && p.count) : L.dealVerdict(price, p && p.avg, p && p.count);
+      const fmt = (n) => Math.round(n).toLocaleString('fr-FR');
+      return {
+        kind: v.kind,
+        avg: p ? 'Moy. ' + fmt(p.avg) + ' W' : 'Sans vente',
+        verdict: v.kind === 'unknown' ? v.label : (v.pct > 0 ? '+' : '') + v.pct + ' % · ' + v.label,
+        title: (role === 'sale' ? 'Votre vente comparée à la moyenne du marché. ' : '') + (p
+          ? 'Moyenne de ' + p.count + ' vente' + (p.count > 1 ? 's' : '') + ' de cette rareté · dernière vente ' + fmt(p.last) + ' W' + (v.low ? ' · peu de ventes : estimation fragile' : '')
+          : 'Aucune vente de cette rareté sur le marché'),
+      };
+    },
+    /**
      * Verdict d'une de MES ventes : le prix (mise reçue ou, à défaut, prix de départ) comparé à la moyenne du marché.
      * ≥ 105 % : bénéfice ; entre 95 % et 105 % : prix du marché ; en dessous : vendu sous la moyenne (à perte).
      */

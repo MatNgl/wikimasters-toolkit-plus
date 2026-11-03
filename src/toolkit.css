@@ -627,3 +627,15 @@ html.wmx-opening .wmx-cover { display: block; }
 /* Infobulle d'aide (ⓘ) dans les formulaires (0.21.1) */
 .wmx-info { display: inline-block; margin-left: 6px; font-style: normal; color: #7fe8c6; cursor: help; opacity: .85; }
 .wmx-info:hover, .wmx-info:focus { opacity: 1; outline: none; }
+
+/* ===== Moyenne du marché + verdict : bulle des enchères et page d'une enchère (0.22.0) ===== */
+.wmx-auc-mk { display: flex; flex-direction: column; align-items: flex-end; margin-top: 2px; font-size: 11px; line-height: 1.2; color: #9db5a8; }
+.wmx-auc-mk b { font-size: 11px; font-weight: 700; }
+.wmx-auc-mk.wait { color: #7f8f87; }
+.wmx-auc-mk.deal b, .wmx-auc-mk.profit b { color: #2dd4a0; } .wmx-auc-mk.fair b, .wmx-auc-mk.even b { color: #7cc6ff; } .wmx-auc-mk.high b, .wmx-auc-mk.loss b { color: #fca5a5; }
+.wmx-dk { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; padding: 8px 12px; border-radius: 10px; border: 1px solid #ffffff1f; background: #ffffff0a; font: 600 13px Outfit, system-ui, sans-serif; color: #cbd5d0; }
+.wmx-dk b { font-weight: 800; }
+.wmx-dk.wait { color: #7f8f87; font-weight: 500; }
+.wmx-dk.deal, .wmx-dk.profit { background: rgb(45 212 160 / .14); border-color: rgb(45 212 160 / .5); } .wmx-dk.deal b, .wmx-dk.profit b { color: #2dd4a0; }
+.wmx-dk.fair, .wmx-dk.even { background: rgb(100 191 255 / .12); border-color: rgb(100 191 255 / .4); } .wmx-dk.fair b, .wmx-dk.even b { color: #7cc6ff; }
+.wmx-dk.high, .wmx-dk.loss { background: rgb(239 68 68 / .12); border-color: rgb(239 68 68 / .45); } .wmx-dk.high b, .wmx-dk.loss b { color: #fca5a5; }

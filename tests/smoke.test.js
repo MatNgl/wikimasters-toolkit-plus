@@ -807,3 +807,42 @@ test('mise automatique « sous un délai » : remise à chaque surenchère adver
   assert.ok(env.mem.autoBids.b9, 'et la règle reste active (une mise aussitôt dépassée n\'est pas un échec)');
   env.close();
 });
+
+test('page d\'une enchère : moyenne du marché et verdict sous « Mise actuelle » (une seule fois, mis à jour quand la mise change)', async () => {
+  const id = '9d5a646b-6447-4245-ac06-c47abb5e144d';
+  const auctionJson = { auction: { id, seller_id: 'other', card_id: 'c-x', base_amount: 10, current_bid: 33, status: 'active', snapshot_rarity: 'L', end_at: inMin(10), card: { wikipedia_title: 'Carte X', rarity: 'L' } } };
+  const env = createEnv({ fetchImpl: async () => json(auctionJson) });
+  const { w, WMX } = env;
+  w.history.pushState({}, '', '/marketplace/' + id);
+  w.document.body.innerHTML = '<main><div class="box"><div class="flex"><span>Mise actuelle</span><span id="v">33</span></div><div>Meneur : X</div></div></main>';
+  WMX.prices.get = () => ({ avg: 100, count: 5, last: 98 });
+  WMX.prices.fresh = () => true;
+  await WMX.features.find((x) => x.name === 'market').init();
+  await sleep(700);
+  const chip = w.document.querySelector('.wmx-dk');
+  assert.ok(chip, 'une ligne moyenne + verdict est ajoutée');
+  assert.match(chip.textContent, /Moy\. 100 W/); assert.match(chip.textContent, /-67 % · Bonne affaire/);
+  assert.equal(w.document.querySelectorAll('.wmx-dk').length, 1, 'une seule');
+  w.document.getElementById('v').textContent = '120'; // la mise monte en direct
+  await sleep(700);
+  assert.match(w.document.querySelector('.wmx-dk').textContent, /\+20 % · Trop cher/, 'le verdict suit la mise affichée');
+  assert.equal(w.document.querySelectorAll('.wmx-dk').length, 1);
+  env.close();
+});
+
+test('bulle des enchères : moyenne du marché et verdict à côté de la mise actuelle', async () => {
+  const future = (m) => new Date(Date.now() + m * 60000).toISOString();
+  const bid = { id: 'b1', status: 'active', card_id: 'c1', snapshot_rarity: 'C', card: { wikipedia_title: 'Carte B', rarity: 'C' }, end_at: future(30), base_amount: 5, current_bid: 60, current_bidder_id: 'x' };
+  const env = createEnv({ fetchImpl: async () => json({ selling: [], bidding: [bid], won: [{ winner_id: ME }], history: [] }) });
+  const { w, WMX } = env;
+  WMX.prices.get = () => ({ avg: 100, count: 5, last: 98 });
+  WMX.prices.fresh = () => true;
+  WMX.features.find((x) => x.name === 'auctions').init();
+  await WMX.auctions.refresh();
+  w.document.querySelector('.wmx-dial').click();
+  await sleep(100);
+  const mk = w.document.querySelector('.wmx-auc-mk');
+  assert.ok(mk, 'la moyenne est affichée dans la bulle');
+  assert.match(mk.textContent, /Moy\. 100 W/); assert.match(mk.textContent, /-40 % · Bonne affaire/);
+  env.close();
+});

@@ -7,6 +7,7 @@ PAQUETS
 • ANIMATION D'OUVERTURE : les cartes se retournent, triées de la plus commune à la plus rare, avec une couronne sur les plus chères
 • VALEUR ESTIMÉE DU LOT affichée à la fin de l'ouverture
 • STATISTIQUES : répartition des raretés, valeur moyenne d'un paquet, export CSV
+• CADRAN DES PAQUETS sur toutes les pages, avec une alerte quand le stock est plein
 
 PRIX ET COLLECTION
 • MOYENNE DES PRIX du marché sur chaque carte (collection, ouverture, marché, échanges)
@@ -15,9 +16,9 @@ PRIX ET COLLECTION
 • NOUVEAU STYLE DE CARTE plein cadre (couleur de la rareté, vagues, reflet), appliqué partout dans le jeu et désactivable
 
 ENCHÈRES
-• VERDICT sous chaque enchère : bonne affaire, prix correct ou trop cher
+• MOYENNE DU MARCHÉ ET VERDICT sous chaque enchère, dans la bulle et sur la page de l'enchère : bonne affaire, prix correct ou trop cher
 • « MISER LE MINIMUM » en un clic, avec file d'attente
-• SURENCHÈRE AUTOMATIQUE : dès qu'on vous dépasse ou quelques secondes avant la fin, avec un plafond fixe ou calculé sur la moyenne du marché
+• SURENCHÈRE AUTOMATIQUE : dès qu'on vous dépasse, ou sous un délai choisi (elle remise à chaque fois que quelqu'un vous dépasse), avec un plafond fixe ou calculé sur la moyenne du marché
 • MISE EN ENCHÈRE EN UN CLIC (éclair) : prix de départ calculé à partir de la moyenne, durée au choix, file d'attente et annulation
 • ASSISTANT DE VENTE : garde des enchères actives avec les cartes portant l'étiquette de votre choix et remet en vente les invendues (désactivé par défaut)
 • BULLE DES ENCHÈRES : vos mises et vos ventes en direct, alertes quand on vous surenchérit ou que la fin approche

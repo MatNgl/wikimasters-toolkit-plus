@@ -230,3 +230,13 @@ test('autoBidDue : sous le délai, on surenchérit à CHAQUE fois qu\'un autre n
   assert.equal(L.autoBidDue(rule, { ...st, minBid: 14, capW: 13 }), false, 'le plafond reste la seule autre condition');
   assert.equal(L.autoLabel(rule), 'Auto · sous 35 s');
 });
+
+test('priceNote : moyenne et verdict prêts à afficher (achat, vente, sans vente)', () => {
+  const p = { avg: 100, count: 5, last: 98 };
+  const buy = L.priceNote('buy', 60, p);
+  assert.equal(buy.kind, 'deal'); assert.match(buy.avg, /Moy\. 100 W/); assert.match(buy.verdict, /-40 % · Bonne affaire/);
+  assert.equal(L.priceNote('buy', 130, p).kind, 'high');
+  assert.equal(L.priceNote('sale', 130, p).kind, 'profit', 'ma vente au-dessus de la moyenne : bénéfice');
+  const none = L.priceNote('buy', 50, null);
+  assert.equal(none.avg, 'Sans vente'); assert.equal(none.kind, 'unknown');
+});
