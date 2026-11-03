@@ -623,3 +623,7 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-panel.dragging { transition: none; cursor: grabbing; box-shadow: 0 30px 80px #000d, 0 0 0 1px var(--acc,#2dd4a0); }
 .wmx-fold { display: grid; place-items: center; padding: 0; line-height: 0; }
 .wmx-fold svg { display: block; }
+
+/* Infobulle d'aide (ⓘ) dans les formulaires (0.21.1) */
+.wmx-info { display: inline-block; margin-left: 6px; font-style: normal; color: #7fe8c6; cursor: help; opacity: .85; }
+.wmx-info:hover, .wmx-info:focus { opacity: 1; outline: none; }

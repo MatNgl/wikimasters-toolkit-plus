@@ -70,6 +70,9 @@ test('bulle des enchères : lignes, urgence, mise automatique et alerte', async 
   assert.ok(form, 'formulaire ouvert');
   const pick = (label) => [...w.document.querySelectorAll('.wmx-auc-auto .wmx-seg-btn')].find((b) => b.textContent.trim() === label);
   pick('Sous un délai avant la fin').click();
+  const info = w.document.querySelector('.wmx-auc-auto .wmx-info');
+  assert.match(info.title, /je surenchéris à chaque fois que quelqu’un d’autre me dépasse/, 'l\'explication est dans une infobulle');
+  assert.equal([...w.document.querySelectorAll('.wmx-auc-auto small')].some((s) => /je surenchéris/.test(s.textContent)), false, 'et plus en texte dans le formulaire');
   const amount = w.document.querySelector('.wmx-auc-auto .wmx-auc-num');
   amount.value = '45';
   amount.dispatchEvent(new w.Event('input', { bubbles: true }));

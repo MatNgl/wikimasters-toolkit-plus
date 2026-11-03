@@ -373,14 +373,15 @@
         el('div', { class: 'wmx-auc-field' }, el('label', {}, 'Quand miser'), seg([['outbid', 'Dès que je suis surenchéri'], ['time', 'Sous un délai avant la fin']], d.mode, (v) => { d.mode = v; draw(); })),
       ];
       if (d.mode === 'time') {
-        kids.push(el('div', { class: 'wmx-auc-field' }, el('label', {}, 'Quand il reste'),
+        // L'explication complète est dans une infobulle (survol de ⓘ) : le formulaire reste court.
+        const hint = 'Tant que le compteur est sous ce délai, je surenchéris à chaque fois que quelqu’un d’autre me dépasse, jusqu’à la fin ou au plafond. Gardez une marge d’au moins 20 s : le délai de réponse du jeu dépend de votre connexion.';
+        kids.push(el('div', { class: 'wmx-auc-field' }, el('label', {}, 'Quand il reste', el('i', { class: 'wmx-info', title: hint, tabindex: '0', 'aria-label': hint }, 'ⓘ')),
           el('div', { class: 'wmx-auc-inline' }, num('amount', { min: '1', step: '1' }), seg([['s', 'secondes'], ['min', 'minutes']], d.unit, (v) => { d.unit = v; draw(); })),
           el('div', { class: 'wmx-auc-presets' }, ...[[20, 's', '20 s'], [35, 's', '35 s'], [1, 'min', '1 min'], [2, 'min', '2 min'], [5, 'min', '5 min']].map(([n, u, label]) => {
             const b = el('button', { type: 'button', class: 'wmx-seg-btn', 'aria-pressed': String(d.amount === n && d.unit === u) }, label);
             b.addEventListener('click', () => { d.amount = n; d.unit = u; draw(); });
             return b;
-          })),
-          el('small', {}, 'Tant que le compteur est sous ce délai, je surenchéris à chaque fois que quelqu’un d’autre me dépasse, jusqu’à la fin ou au plafond. Gardez une marge d’au moins 20 s : le délai de réponse du jeu dépend de votre connexion.')));
+          }))));
       }
       const capKids = [el('label', {}, 'Plafond (je ne dépasse jamais)'), seg([['none', 'Aucun'], ['abs', 'Valeur fixe'], ['avg', 'Selon la moyenne']], d.capMode, (v) => { d.capMode = v; draw(); })];
       if (d.capMode === 'abs') capKids.push(el('div', { class: 'wmx-auc-inline' }, num('cap', { min: '1', step: '1' }, drawPreview), el('span', { class: 'wmx-auc-unit' }, 'W')));
