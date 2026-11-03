@@ -246,22 +246,32 @@
       setNumber(input, min); // exactement le minimum proposé par le jeu
       await sleep(250);
       if (Number(input.value) !== min) return WMX.toast('Le montant saisi n’a pas été pris en compte : rien n’a été misé.', 6000);
-      S.autoLast[a.id] = { bid: Number(live?.bid) || 0, t: Date.now() };
+      const before = Number(live?.bid) || 0;
+      S.autoLast[a.id] = { bid: before, t: Date.now() };
       btn.click();
       // Le serveur du jeu peut mettre quelques secondes à enregistrer la mise : on vérifie jusqu'à 6 fois avant de conclure à un échec.
-      let now;
+      // On regarde l'état réel de l'enchère (léger) : si on mène, c'est gagné ; si la mise a monté jusqu'à notre montant sans qu'on mène, elle est
+      // passée et un autre joueur l'a déjà dépassée (ce n'est pas un échec : la règle continue de surenchérir).
+      let now, l2 = null;
       for (let t = 0; t < 6; t++) {
-        await sleep(t ? 2000 : 1800);
+        await sleep(t ? 1500 : 1200);
+        l2 = await liveState(a.id);
+        if (l2 && D.me && l2.bidder === D.me) break;
+        if (l2 && l2.bid >= min && l2.bid > before) break;
         await refresh();
         now = D.bidding.find((x) => x.id === a.id);
         if (now && leading(now)) break;
       }
-      const won = !!(now && leading(now));
+      await refresh();
+      now = D.bidding.find((x) => x.id === a.id);
+      const won = !!(now && leading(now)) || !!(l2 && D.me && l2.bidder === D.me);
+      const placed = won || !!(l2 && l2.bid >= min && l2.bid > before);
       WMX.toast(won
         ? `${opts.auto ? 'Mise automatique' : 'Mise'} de ${fmt(min)} W placée sur « ${cardTitle(a)} » : vous menez.`
-        : 'La mise n’est pas confirmée : solde insuffisant, ou quelqu’un a surenchéri entre-temps. Vérifiez la page de l’enchère.', 7000);
+        : placed ? `Mise de ${fmt(min)} W placée sur « ${cardTitle(a)} », mais déjà surenchérie.`
+          : 'La mise n’est pas confirmée : solde insuffisant, ou quelqu’un a surenchéri entre-temps. Vérifiez la page de l’enchère.', 7000);
       if (opts.auto) { // 3 échecs de suite : on arrête pour ne pas boucler
-        S.autoFails[a.id] = won ? 0 : (S.autoFails[a.id] || 0) + 1;
+        S.autoFails[a.id] = placed ? 0 : (S.autoFails[a.id] || 0) + 1;
         if (S.autoFails[a.id] >= 3) { delete S.auto[a.id]; saveAuto(); alertUser('Mise automatique arrêtée', `« ${cardTitle(a)} » : 3 mises sans effet (solde insuffisant ?).`, `${a.id}:fails`); }
       }
     } finally {
@@ -360,7 +370,7 @@
       };
       const kids = [
         el('div', { class: 'wmx-auc-auto-head' }, el('strong', {}, 'Mise automatique'), el('small', {}, 'Mise toujours le minimum proposé par le jeu')),
-        el('div', { class: 'wmx-auc-field' }, el('label', {}, 'Quand miser'), seg([['outbid', 'Dès que je suis surenchéri'], ['time', 'Juste avant la fin']], d.mode, (v) => { d.mode = v; draw(); })),
+        el('div', { class: 'wmx-auc-field' }, el('label', {}, 'Quand miser'), seg([['outbid', 'Dès que je suis surenchéri'], ['time', 'Sous un délai avant la fin']], d.mode, (v) => { d.mode = v; draw(); })),
       ];
       if (d.mode === 'time') {
         kids.push(el('div', { class: 'wmx-auc-field' }, el('label', {}, 'Quand il reste'),
@@ -370,7 +380,7 @@
             b.addEventListener('click', () => { d.amount = n; d.unit = u; draw(); });
             return b;
           })),
-          el('small', {}, 'Gardez une marge d’au moins 20 s : le délai de réponse du jeu dépend de votre connexion.')));
+          el('small', {}, 'Tant que le compteur est sous ce délai, je surenchéris à chaque fois que quelqu’un d’autre me dépasse, jusqu’à la fin ou au plafond. Gardez une marge d’au moins 20 s : le délai de réponse du jeu dépend de votre connexion.')));
       }
       const capKids = [el('label', {}, 'Plafond (je ne dépasse jamais)'), seg([['none', 'Aucun'], ['abs', 'Valeur fixe'], ['avg', 'Selon la moyenne']], d.capMode, (v) => { d.capMode = v; draw(); })];
       if (d.capMode === 'abs') capKids.push(el('div', { class: 'wmx-auc-inline' }, num('cap', { min: '1', step: '1' }, drawPreview), el('span', { class: 'wmx-auc-unit' }, 'W')));
@@ -426,7 +436,7 @@
       // surenchère d'un autre joueur) ou 90 s, au lieu de remiser par-dessus soi-même.
       const last = S.autoLast[a.id];
       if (last && Date.now() - last.t < 90000 && (a.current_bid || 0) <= last.bid) continue;
-      const due = WMX.logic.autoBidDue(rule, { leading: leading(a), msLeft: msLeft(a), minBid: m, capW, cooldownOk: Date.now() - (S.autoTry[a.id] || 0) > 6000 });
+      const due = WMX.logic.autoBidDue(rule, { leading: leading(a), msLeft: msLeft(a), minBid: m, capW, cooldownOk: Date.now() - (S.autoTry[a.id] || 0) > (msLeft(a) <= 90000 ? 3000 : 6000) });
       if (!due) continue;
       S.autoTry[a.id] = Date.now();
       bid(a, { auto: true, cap: capW });

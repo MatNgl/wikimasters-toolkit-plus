@@ -69,7 +69,7 @@ test('bulle des enchères : lignes, urgence, mise automatique et alerte', async 
   const form = w.document.querySelector('.wmx-auc-auto');
   assert.ok(form, 'formulaire ouvert');
   const pick = (label) => [...w.document.querySelectorAll('.wmx-auc-auto .wmx-seg-btn')].find((b) => b.textContent.trim() === label);
-  pick('Juste avant la fin').click();
+  pick('Sous un délai avant la fin').click();
   const amount = w.document.querySelector('.wmx-auc-auto .wmx-auc-num');
   amount.value = '45';
   amount.dispatchEvent(new w.Event('input', { bubbles: true }));
@@ -78,7 +78,7 @@ test('bulle des enchères : lignes, urgence, mise automatique et alerte', async 
   assert.match(w.document.querySelector('.wmx-auc-preview').textContent, /[Mm]oyenne|Plafond/);
   w.document.querySelector('.wmx-auc-auto .wmx-btn:not(.wmx-btn--ghost)').click();
   await sleep(50);
-  assert.match(w.document.querySelector('.wmx-auc-autotag').textContent, /Auto · à 45 s · max moy\. \+30 %/);
+  assert.match(w.document.querySelector('.wmx-auc-autotag').textContent, /Auto · sous 45 s · max moy\. \+30 %/);
   assert.deepEqual(Object.values(env.mem.autoBids)[0], { mode: 'time', secs: 45, capMode: 'avg', capPct: 30 });
   env.close();
 });
@@ -769,5 +769,38 @@ test('menu des paquets : déplaçable (position mémorisée et reprise), bouton 
   panel.querySelector('.wmx-head').dispatchEvent(new w.MouseEvent('dblclick', { bubbles: true }));
   assert.equal(panel.classList.contains('moved'), false, 'double-clic sur l\'en-tête : retour à l\'emplacement d\'origine');
   assert.equal(await WMX.store.get('panelPos', 'absent'), 'absent', 'position effacée');
+  env.close();
+});
+
+test('menu des paquets : ouvert depuis une autre page, il reste ouvert en arrivant sur la page Paquets (« Tout ouvrir » ne le referme pas)', async () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  const { w, mem, WMX } = env;
+  mem.panelCollapsed = true; // préférence d'affichage de la page Paquets : replié
+  await WMX.features.find((x) => x.name === 'boosters').init();
+  const panel = w.document.querySelector('.wmx-panel');
+  w.document.querySelector('.wmx-pdial').click();
+  assert.ok(panel.classList.contains('open'), 'ouvert depuis le cadran');
+  w.history.pushState({}, '', '/pulls');
+  w.document.documentElement.dataset.wmxRoute = '/pulls';
+  await sleep(80);
+  assert.ok(panel.classList.contains('open'), 'toujours ouvert sur la page Paquets');
+  env.close();
+});
+
+test('mise automatique « sous un délai » : remise à chaque surenchère adverse tant que le compteur est sous le délai', async () => {
+  const a = auction('b9', { seller_id: 'other', current_bid: 8, current_bidder_id: 'rival', end_at: inMin(0.3) }); // ~18 s restantes, délai de 35 s
+  let clicks = [];
+  const fetchImpl = async (url) => {
+    const bid = 8 + 2 * clicks.length; // chaque mise de ma part est aussitôt surenchérie par un rival
+    if (/\/api\/marketplace\/b9/.test(String(url))) return json({ auction: { current_bidder_id: 'rival', current_bid: bid, status: 'active' } });
+    return json({ selling: [], bidding: [{ ...a, current_bid: bid }], won: [{ winner_id: ME }], history: [] });
+  };
+  const env = createEnv({ fetchImpl });
+  clicks = fakeBidPages(env.w, 7);
+  env.mem.autoBids = { b9: { mode: 'time', secs: 35 } };
+  for (const f of env.WMX.features) await f.init?.();
+  for (let i = 0; i < 30 && clicks.length < 2; i++) await sleep(500);
+  assert.ok(clicks.length >= 2, 'surenchère adverse après ma mise, toujours sous 35 s : l\'extension remise une 2e fois');
+  assert.ok(env.mem.autoBids.b9, 'et la règle reste active (une mise aussitôt dépassée n\'est pas un échec)');
   env.close();
 });

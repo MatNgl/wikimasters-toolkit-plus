@@ -76,8 +76,8 @@
       desc: 'Réglages proposés par défaut quand vous programmez une mise automatique (bouton ⏱ d’une mise). Elle mise toujours le minimum du jeu.',
       items: [
         { key: 'autoDefaultMode', type: 'select', label: 'Déclencheur par défaut', desc: 'Quand miser automatiquement.',
-          options: [['time', 'Juste avant la fin de l’enchère'], ['outbid', 'Dès que je suis surenchéri']] },
-        { key: 'autoDefaultSecs', type: 'number', min: 5, max: 3600, step: 5, label: 'Délai avant la fin (secondes)', desc: 'Pour « juste avant la fin ». Gardez une marge : le délai de réponse du jeu dépend de votre connexion (au moins 20 s).' },
+          options: [['time', 'Sous un délai avant la fin (surenchère à chaque fois)'], ['outbid', 'Dès que je suis surenchéri']] },
+        { key: 'autoDefaultSecs', type: 'number', min: 5, max: 3600, step: 5, label: 'Délai avant la fin (secondes)', desc: 'Pour « sous un délai » : tant que le compteur est en dessous, on surenchérit à chaque fois qu’un autre joueur nous dépasse. Gardez une marge : le délai de réponse du jeu dépend de votre connexion (au moins 20 s).' },
         { key: 'autoCapMode', type: 'select', label: 'Plafond par défaut', desc: 'Limite au-delà de laquelle l’extension ne mise plus.',
           options: [['avg', 'Selon la moyenne du marché'], ['abs', 'Valeur fixe en W'], ['none', 'Aucun plafond']] },
         { key: 'autoCapPct', type: 'number', min: -90, max: 500, step: 5, label: 'Écart à la moyenne (%)', desc: 'Pour le plafond « selon la moyenne » : +30 = jusqu’à 30 % au-dessus de la moyenne, 0 = à la moyenne, −10 = en dessous.' },

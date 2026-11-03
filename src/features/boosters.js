@@ -507,7 +507,13 @@
 
     // Changement de page : le menu se réduit à son cadran (visible partout, à côté de celui des enchères) hors de la page Paquets, et reprend
     // l'affichage choisi en y revenant.
-    new MutationObserver(() => { setCollapsed(/^\/pulls/.test(location.pathname) ? prefCollapsed : true, true, false); place(); })
+    // Un menu déjà OUVERT le reste en arrivant sur la page Paquets : « Tout ouvrir » / « Ouvrir auto » lancés depuis une autre page y ramènent, et le menu
+    // (avec son état d'avancement) ne doit pas se refermer en route à cause de la préférence d'affichage de la page Paquets.
+    new MutationObserver(() => {
+      if (!/^\/pulls/.test(location.pathname)) setCollapsed(true, true, false);
+      else if (!panel.classList.contains('open')) setCollapsed(prefCollapsed, true, false);
+      place();
+    })
       .observe(document.documentElement, { attributes: true, attributeFilter: ['data-wmx-route'] });
 
     const cover = el('div', { class: 'wmx-cover' });

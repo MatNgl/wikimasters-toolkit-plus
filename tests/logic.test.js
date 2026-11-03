@@ -101,8 +101,8 @@ test('parseAutoRule : normalise et refuse les valeurs invalides', () => {
 
 test('autoLabel', () => {
   assert.equal(L.autoLabel({ mode: 'outbid' }), 'Auto · dès surenchère');
-  assert.equal(L.autoLabel({ mode: 'time', secs: 30 }), 'Auto · à 30 s');
-  assert.equal(L.autoLabel({ mode: 'time', secs: 300, cap: 80 }), 'Auto · à 5 min · max 80 W');
+  assert.equal(L.autoLabel({ mode: 'time', secs: 30 }), 'Auto · sous 30 s');
+  assert.equal(L.autoLabel({ mode: 'time', secs: 300, cap: 80 }), 'Auto · sous 5 min · max 80 W');
   assert.equal(L.autoLabel(null), '');
 });
 
@@ -126,6 +126,8 @@ test('autoPollMs : rapide près de l\'échéance', () => {
   assert.equal(L.autoPollMs([{ rule: { mode: 'outbid' }, msLeft: 9e6 }]), 4000);
   assert.equal(L.autoPollMs([{ rule: { mode: 'time', secs: 30 }, msLeft: 3_600_000 }]), 10000);
   assert.equal(L.autoPollMs([{ rule: { mode: 'time', secs: 30 }, msLeft: 49_000 }]), 4000);
+  assert.equal(L.autoPollMs([{ rule: { mode: 'time', secs: 35 }, msLeft: 20_000 }]), 2000, 'dans la fenêtre « sous 35 s » : toutes les 2 s');
+  assert.equal(L.autoPollMs([{ rule: { mode: 'outbid' }, msLeft: 40_000 }]), 2000, 'dès surenchère, dans la dernière minute');
 });
 
 test('dealVerdict : bonne affaire / correct / trop cher / inconnu', () => {
@@ -216,4 +218,15 @@ test('assistant de vente : le plan explique la raison de chaque carte mise de c�
   assert.deepEqual(plan.eligible.map((i) => i.card_id), ['ok']);
   assert.deepEqual(Object.fromEntries(plan.excluded.map((e) => [e.card_id, e.reason])), { fav: 'favorite', busy: 'busy', skip: 'skipped', cher: 'capped', jour: 'perDay' });
   assert.equal(plan.excluded.find((e) => e.card_id === 'skip').until, now + 3600_000);
+});
+
+test('autoBidDue : sous le délai, on surenchérit à CHAQUE fois qu\'un autre nous dépasse (jamais avant le délai, jamais si on mène)', () => {
+  const rule = { mode: 'time', secs: 35 };
+  const st = { leading: false, msLeft: 30_000, minBid: 12, capW: null, cooldownOk: true };
+  assert.equal(L.autoBidDue(rule, st), true, 'sous 35 s, quelqu\'un d\'autre mène : on mise');
+  assert.equal(L.autoBidDue(rule, { ...st, leading: true }), false, 'on mène : rien');
+  assert.equal(L.autoBidDue(rule, { ...st, minBid: 14 }), true, 'nouvelle surenchère adverse, toujours sous 35 s : on remise');
+  assert.equal(L.autoBidDue(rule, { ...st, msLeft: 36_000 }), false, 'avant le délai : rien');
+  assert.equal(L.autoBidDue(rule, { ...st, minBid: 14, capW: 13 }), false, 'le plafond reste la seule autre condition');
+  assert.equal(L.autoLabel(rule), 'Auto · sous 35 s');
 });

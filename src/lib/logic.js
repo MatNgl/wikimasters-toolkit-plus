@@ -89,7 +89,7 @@
     },
     autoLabel(rule) {
       if (!rule) return '';
-      const when = rule.mode === 'outbid' ? 'dès surenchère' : rule.secs < 120 ? `à ${rule.secs} s` : `à ${Math.round(rule.secs / 60)} min`;
+      const when = rule.mode === 'outbid' ? 'dès surenchère' : rule.secs < 120 ? `sous ${rule.secs} s` : `sous ${Math.round(rule.secs / 60)} min`;
       const cap = L.capLabel(rule);
       return `Auto · ${when}${cap ? ` · ${cap}` : ''}`;
     },
@@ -111,6 +111,9 @@
     /** Cadence d'actualisation (ms) quand des mises automatiques existent : rapide près de l'échéance, 0 s'il n'y en a pas. */
     autoPollMs(items) {
       if (!items.length) return 0;
+      // Dans la fenêtre de surenchère (compteur sous le délai choisi ; moins d'1 min pour « dès surenchère ») : actualisation toutes les 2 s,
+      // pour voir une surenchère adverse au plus vite et répondre avant la fin.
+      if (items.some(({ rule, msLeft }) => msLeft > 0 && msLeft <= (rule.mode === 'outbid' ? 60000 : rule.secs * 1000))) return 2000;
       const near = items.some(({ rule, msLeft }) => rule.mode === 'outbid' || msLeft <= rule.secs * 1000 + 20000);
       return near ? 4000 : 10000;
     },
