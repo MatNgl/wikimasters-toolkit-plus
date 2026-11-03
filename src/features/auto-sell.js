@@ -39,10 +39,11 @@
   function line() {
     if (!on()) return { text: 'désactivé', cls: 'off' };
     const st = S.shared;
-    if (!st || Date.now() - st.t > 4 * 60000) return { text: 'en attente d’un onglet actif…', cls: 'wait' };
+    if (!st || Date.now() - st.t > 4 * 60000) return { text: 'en attente d’un onglet actif… (gardez une page du jeu ouverte)', cls: 'wait' };
     const head = `${st.active ?? 0}/${st.target} en vente${st.queued ? ` · ${st.queued} en file` : ''}`;
     return { text: `${head} · ${st.reason}`, cls: st.state === 'listed' ? 'go' : st.state === 'nothing' || st.state === 'no-inventory' ? 'warn' : 'ok' };
   }
+  const WAIT_HELP = 'Aucune page du jeu n’a lancé de passe depuis plus de 4 minutes. L’assistant tourne dans une page ouverte de wiki-masters.com : gardez-en une ouverte (n’importe laquelle). Si vous venez d’activer l’assistant ou de mettre l’extension à jour, actualisez la page (F5) : la première passe a lieu environ 20 secondes après le chargement. Une page en arrière-plan ou « en veille » (économiseur de mémoire de Chrome) ne travaille pas : affichez-la.';
   function paintAll() { S.painters.forEach((p) => { try { p(); } catch (_) { /* élément retiré */ } }); }
 
   // ---- une passe ----
@@ -129,7 +130,7 @@
     const box = el('div', { class: 'wmx-as-line' }, el('strong', {}, 'Assistant de vente'), txt,
       el('button', { class: 'wmx-qclear', title: 'Lancer une passe maintenant', onclick: runNow }, '▶ Lancer'),
       el('button', { class: 'wmx-qclear', title: 'Pourquoi telle carte est ou n’est pas mise en vente', onclick: openPanel }, 'Détails'));
-    const paint = () => { const l = line(); txt.textContent = l.text; box.dataset.state = l.cls; box.title = l.text; };
+    const paint = () => { const l = line(); txt.textContent = l.text; box.dataset.state = l.cls; box.title = l.cls === 'wait' ? WAIT_HELP : l.text; };
     S.painters.add(paint);
     paint();
     return box;
@@ -145,6 +146,7 @@
       const st = S.shared;
       const l = line();
       const parts = [el('div', { class: 'wmx-as-state', 'data-state': l.cls }, l.text)];
+      if (l.cls === 'wait') parts.push(el('div', { class: 'wmx-as-meta' }, WAIT_HELP));
       if (on() && st) {
         parts.push(el('div', { class: 'wmx-as-meta' },
           `Dernière passe : ${fmtAt(st.t)} · prochaine dans ${fmtIn(st.nextAt - Date.now())} · ${st.target} enchère${st.target > 1 ? 's' : ''} visée${st.target > 1 ? 's' : ''} · plafond de départ ${st.cap} W`));

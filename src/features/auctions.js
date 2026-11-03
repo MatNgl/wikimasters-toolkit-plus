@@ -83,7 +83,7 @@
     S.dialRing.style.stroke = nearest == null ? '#3a4a43' : WMX.logic.ringColor(frac);
     const urgent = all.filter((x) => timeState(msLeft(x)) === 'urgent').length;
     const outbid = liveBids().filter((x) => !leading(x)).length;
-    S.dialBids.textContent = `${liveBids().length} mise${liveBids().length > 1 ? 's' : ''}`;
+    S.dialBids.textContent = `${liveBids().length} enchère${liveBids().length > 1 ? 's' : ''}`;
     S.dialSales.textContent = `${liveSales().length} vente${liveSales().length > 1 ? 's' : ''}`;
     S.dialOut.hidden = !outbid; S.dialOut.textContent = String(outbid);
     S.dialOut.title = `${outbid} enchère${outbid > 1 ? 's' : ''} où vous êtes surenchéri`;
@@ -493,8 +493,20 @@
     return el('div', { class: 'wmx-auc-row', style: `--rgb:${WMX.RARITY_RGB[r]}` }, img, main, side);
   }
 
-  const column = (label, rows, empty) => el('div', { class: 'wmx-auc-col' }, el('h3', {}, `${label} (${rows.length})`),
-    rows.length ? el('div', { class: 'wmx-auc-list' }, ...rows) : el('p', { class: 'wmx-cp-empty' }, empty));
+  /** Ouvre l'onglet « Mes enchères » ou « Mes ventes » du Marché (navigation interne du jeu, puis clic sur l'onglet). */
+  async function goMarket(tabRe) {
+    toggleBubble(false);
+    if (!/^\/marketplace\/?$/.test(location.pathname)) window.dispatchEvent(new CustomEvent('wmx:navigate', { detail: '/marketplace' }));
+    const tab = await waitFor(() => [...document.querySelectorAll('button, [role=tab], a')].find((x) => !x.closest('.wmx-bubble') && tabRe.test(x.textContent.trim())), 20000, 200);
+    tab?.click();
+  }
+  const column = (label, rows, tabRe) => el('div', { class: 'wmx-auc-col' },
+    el('h3', {}, el('a', { class: 'wmx-auc-h3link', href: '/marketplace', title: `Voir « ${label} » dans le Marché`, onclick: (e) => {
+      if (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1) return; // laisse le navigateur ouvrir un onglet
+      e.preventDefault(); goMarket(tabRe);
+    } }, `${label} (${rows.length}) ↗`)),
+    el('div', { class: 'wmx-auc-list' }, ...rows));
+  const note = (text) => el('p', { class: 'wmx-auc-note' }, text);
 
   /** Une enchère terminée reste 15 s à l'écran (« Terminée »), puis disparaît du tableau, sans attendre le règlement par le serveur. */
   const GRACE_MS = 15000;
@@ -506,7 +518,15 @@
   function content() {
     const bids = D.bidding.filter(shown).sort((a, b) => msLeft(a) - msLeft(b)).map((a) => row(a, 'bid'));
     const sells = D.selling.filter(shown).sort((a, b) => msLeft(a) - msLeft(b)).map((a) => row(a, 'sell'));
-    return [column('Mes mises', bids, 'Aucune mise en cours.'), column('Mes ventes', sells, 'Aucune vente en cours.')];
+    // Panneau adaptatif : deux colonnes quand il y a des enchères ET des ventes ; une seule (plus étroite) avec une note sur l'autre sinon.
+    const mode = bids.length && sells.length ? 'two' : (bids.length || sells.length ? 'one' : 'none');
+    if (S.bubblePanel) { S.bubblePanel.dataset.mode = mode; applySize(); }
+    const out = [];
+    if (bids.length) out.push(column('Mes enchères', bids, /^Mes ench/i));
+    if (sells.length) out.push(column('Mes ventes', sells, /^Mes ventes/i));
+    if (!bids.length) out.push(note('Aucune enchère en cours.'));
+    if (!sells.length) out.push(note('Aucune vente en cours.'));
+    return out;
   }
 
   function renderAll() {
@@ -550,7 +570,7 @@
     if (!S.bubble) return;
     const x = Math.round(WMX.dom.sidebarRight()) + 16;
     S.bubble.style.left = `${x}px`;
-    S.bubblePanel.style.maxWidth = `calc(100vw - ${x + 16}px)`;
+    S.bubblePanel.style.maxWidth = S.pos ? 'calc(100vw - 16px)' : `calc(100vw - ${x + 16}px)`;
   };
   function buildBubble() {
     const svg = (html) => { const n = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); n.setAttribute('viewBox', '0 0 72 72'); n.setAttribute('class', 'wmx-dial-svg'); n.innerHTML = html; return n; };
@@ -567,7 +587,7 @@
     } }, ring, el('span', { class: 'wmx-dial-txt' }, S.dialBids, S.dialSales), S.dialOut, S.dialWarn);
     S.bubbleBody = el('div', { class: 'wmx-bubble-body' });
     const panel = el('div', { class: 'wmx-bubble-panel', hidden: '' },
-      S.bubbleHead = el('div', { class: 'wmx-bubble-head', title: 'Maintenez le clic pour déplacer · double-clic pour replacer' }, el('strong', {}, 'Mes enchères'),
+      S.bubbleHead = el('div', { class: 'wmx-bubble-head', title: 'Maintenez le clic pour déplacer · double-clic pour replacer' }, el('strong', {}, 'Enchères et ventes'),
         el('span', {},
           el('button', { class: 'wmx-qclear', title: 'Paramètres des enchères', onclick: () => WMX.openSettings() }, '⚙'),
           el('button', { class: 'wmx-qclear', title: 'Actualiser maintenant', onclick: refresh }, '↻'),
@@ -575,6 +595,8 @@
       S.bubbleBody, WMX.autoSell?.footer());
     S.bubblePanel = panel;
     enableDrag(S.bubbleHead);
+    addGrips(panel);
+    WMX.store.get('auctionBubbleSize').then((s) => { if (s && typeof s === 'object') { S.size = s; applySize(); } }).catch(() => {});
     WMX.store.get('auctionBubblePos').then((p) => { if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) S.pos = p; }).catch(() => {});
     S.bubble = el('div', { class: 'wmx-bubble', hidden: '' }, panel, S.pill);
     document.body.append(S.bubble);
@@ -604,12 +626,13 @@
     clearTimeout(S.closeTimer);
     if (open) {
       p.hidden = false;
+      renderAll();
       applyPos();
       aimAtPill();
       void p.offsetWidth; // force le point de départ de la transition
       p.classList.add('open');
       S.pill.classList.add('on');
-      renderAll(); refresh().then(prepareFrames); prepareFrames();
+      refresh().then(prepareFrames); prepareFrames();
     } else {
       aimAtPill();
       p.classList.remove('open');
@@ -661,6 +684,58 @@
       const p = S.bubblePanel; p.classList.remove('moved'); p.style.left = p.style.top = '';
     });
     window.addEventListener('resize', applyPos);
+  }
+
+  // Largeur réglable : on attrape le bord gauche ou droit du panneau ; la largeur est mémorisée par disposition (deux colonnes / une / vide),
+  // double-clic sur un bord : retour à la largeur d'origine. Le bord gauche fait passer le panneau en position libre (son bord droit reste en place).
+  const MIN_W = 300;
+  const sizes = () => (S.size ||= {});
+  function applySize() {
+    const p = S.bubblePanel;
+    if (!p) return;
+    const w = sizes()[p.dataset.mode];
+    p.style.width = w ? `${Math.min(w, innerWidth - 16)}px` : '';
+  }
+  function addGrips(panel) {
+    for (const side of ['l', 'r']) {
+      const g = el('div', { class: `wmx-bubble-grip ${side}`, title: 'Glisser pour changer la largeur · double-clic : largeur d’origine' });
+      g.addEventListener('pointerdown', (e) => startResize(e, side, g));
+      g.addEventListener('dblclick', () => { delete sizes()[panel.dataset.mode]; WMX.store.set('auctionBubbleSize', S.size); applySize(); });
+      panel.append(g);
+    }
+  }
+  function startResize(e, side, grip) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const p = S.bubblePanel, r = p.getBoundingClientRect();
+    const mode = p.dataset.mode || 'two';
+    const startX = e.clientX, w0 = r.width, left0 = r.left, top0 = r.top;
+    grip.setPointerCapture(e.pointerId);
+    p.classList.add('resizing');
+    const move = (ev) => {
+      const dx = ev.clientX - startX;
+      const maxW = side === 'r' ? innerWidth - 8 - left0 : left0 + w0 - 8;
+      const w = Math.round(Math.min(Math.max(MIN_W, side === 'r' ? w0 + dx : w0 - dx), Math.max(MIN_W, maxW)));
+      p.style.maxWidth = 'calc(100vw - 16px)';
+      p.style.width = `${w}px`;
+      sizes()[mode] = w;
+      if (side === 'l') {
+        const left = Math.max(8, left0 + w0 - w);
+        S.pos = { x: left, y: top0 };
+        p.classList.add('moved'); p.style.left = `${left}px`; p.style.top = `${top0}px`;
+      }
+    };
+    const up = () => {
+      grip.removeEventListener('pointermove', move);
+      grip.removeEventListener('pointerup', up);
+      grip.removeEventListener('pointercancel', up);
+      p.classList.remove('resizing');
+      WMX.store.set('auctionBubbleSize', S.size);
+      if (S.pos) WMX.store.set('auctionBubblePos', S.pos);
+    };
+    grip.addEventListener('pointermove', move);
+    grip.addEventListener('pointerup', up);
+    grip.addEventListener('pointercancel', up);
   }
 
   /** Utilisé par la page Marché : miser le minimum sur une enchère sans ouvrir sa page. */

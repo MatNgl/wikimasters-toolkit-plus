@@ -84,8 +84,7 @@
 @media (max-width: 1450px) { .wmx-panel { width: 250px; } }
 @media (min-width: 1800px) { .wmx-panel { width: 340px; } }
 @media (min-width: 2300px) { .wmx-panel { width: 380px; } }
-html:not([data-wmx-route^="/pulls"]):not(.wmx-auto-on) .wmx-panel { display: none; }
-html:not([data-wmx-route^="/pulls"]) .wmx-panel { top: auto; bottom: 112px; transform: none; }
+html:not([data-wmx-route^="/pulls"]) .wmx-panel { top: auto; bottom: 112px; margin: 0; }
 
 /* Statistiques (barres par rareté) */
 .wmx-sbox { display: flex; flex-direction: column; gap: 5px; padding: 8px 10px; border-radius: 12px; background: #0a0f0d; border: 1px solid #1e2b26; }
@@ -483,7 +482,7 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-panel:not(.open) > * { opacity: 0; }
 .wmx-panel.open > * { opacity: 1; transition: opacity .26s ease .16s; }
 .wmx-panel[hidden] { display: none; }
-.wmx-pdial { position: fixed; top: 0; bottom: 0; margin-block: auto; left: 272px; width: 76px; height: 76px; padding: 0; border: 0; border-radius: 50%; z-index: 40; cursor: pointer; color: #e6efe9;
+.wmx-pdial { position: fixed; top: auto; bottom: 24px; margin: 0; left: 360px; width: 76px; height: 76px; padding: 0; border: 0; border-radius: 50%; z-index: 40; cursor: pointer; color: #e6efe9;
   background: radial-gradient(circle at 30% 25%, #14221c, #0a110e); box-shadow: 0 10px 28px #000b, inset 0 1px 0 #ffffff14; font-family: Outfit, system-ui, sans-serif;
   transition: transform .25s cubic-bezier(.22,1,.36,1), opacity .2s ease, box-shadow .18s ease; }
 .wmx-pdial:hover { box-shadow: 0 14px 34px #000c, 0 0 0 1px #2dd4a066; transform: translateY(-2px) scale(1.03); }
@@ -493,8 +492,7 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-pdial .wmx-fab-txt b { font: 800 14px Outfit, system-ui, sans-serif; } .wmx-pdial .wmx-fab-txt small { font: 500 10px Outfit, system-ui, sans-serif; color: #9db5a8; }
 .wmx-pdial .wmx-fab-count { top: -4px; right: -4px; }
 .wmx-fab { display: grid; place-items: center; }
-html:not([data-wmx-route^="/pulls"]):not(.wmx-auto-on) .wmx-panel, html:not([data-wmx-route^="/pulls"]):not(.wmx-auto-on) .wmx-pdial { display: none; }
-html:not([data-wmx-route^="/pulls"]) .wmx-panel, html:not([data-wmx-route^="/pulls"]) .wmx-pdial { top: auto; bottom: 112px; margin: 0; }
+
 
 /* Reflet : en continu sur les Légendaires, au survol pour les autres raretés (économise le rendu sur 50 cartes) */
 .wmx-sty:not([data-wmx-r="L"]) .wmx-sty-sheen { animation: none; opacity: 0; transition: opacity .3s ease; }
@@ -592,3 +590,21 @@ html:not([data-wmx-route^="/pulls"]) .wmx-panel, html:not([data-wmx-route^="/pul
 .wmx-fullwarn[hidden] { display: none; }
 .wmx-fullwarn-ic { font-size: 18px; color: #f59e0b; }
 .wmx-fullwarn .wmx-btn { flex: none; padding: 7px 14px; font-size: 13px; }
+
+/* ===== Cadran des paquets partout, bulle des enchères adaptative et redimensionnable (0.20.0) ===== */
+.wmx-pdial.full { animation: wmx-pill-pulse 1.5s ease-in-out infinite; box-shadow: 0 10px 28px #000b, 0 0 0 1px #ef4444aa; }
+.wmx-pdial.full .wmx-fab-txt small { color: #fca5a5; font-weight: 700; }
+.wmx-fullwarn .wmx-qclear { flex: none; }
+.wmx-bubble-panel[data-mode="two"] { width: min(860px, calc(100vw - 24px)); }
+.wmx-bubble-panel[data-mode="one"] { width: min(420px, calc(100vw - 24px)); }
+.wmx-bubble-panel[data-mode="none"] { width: min(340px, calc(100vw - 24px)); }
+.wmx-bubble-panel[data-mode="one"] .wmx-bubble-body, .wmx-bubble-panel[data-mode="none"] .wmx-bubble-body { flex-direction: column; }
+.wmx-auc-h3link { color: inherit; text-decoration: none; cursor: pointer; }
+.wmx-auc-h3link:hover { text-decoration: underline; }
+.wmx-auc-note { margin: 0; padding: 8px 10px; border-radius: 10px; background: #ffffff08; color: #8fa89c; font-size: 12px; }
+.wmx-bubble-grip { position: absolute; top: 46px; bottom: 0; width: 10px; z-index: 4; cursor: ew-resize; touch-action: none; }
+.wmx-bubble-grip.l { left: 0; } .wmx-bubble-grip.r { right: 0; }
+.wmx-bubble-grip::after { content: ''; position: absolute; top: 50%; width: 3px; height: 36px; margin-top: -18px; border-radius: 2px; background: #ffffff30; opacity: 0; transition: opacity .15s; }
+.wmx-bubble-grip.l::after { left: 3px; } .wmx-bubble-grip.r::after { right: 3px; }
+.wmx-bubble-panel:hover .wmx-bubble-grip::after, .wmx-bubble-panel.resizing .wmx-bubble-grip::after { opacity: 1; }
+.wmx-bubble-panel.resizing { transition: none; user-select: none; }

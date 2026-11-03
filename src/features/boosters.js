@@ -272,8 +272,9 @@
       }
       if (!state.auto) break;
       if (state.busy) continue;
-      if (!/^\/pulls/.test(location.pathname)) { // hors de la page Paquets, les paquets ne sont pas visibles : l'auto attend le retour
-        setStatus('En pause : revenez sur la page Paquets pour reprendre les ouvertures');
+      if (!/^\/pulls/.test(location.pathname)) { // hors de la page Paquets, les paquets ne sont pas visibles : le compte à rebours continue, l'ouverture attend le retour
+        const w = (state.nextAt - Date.now()) / 1000;
+        setStatus(w > 0 ? `Prochaine ouverture dans ${mmss(w)} · elle se fera sur la page Paquets` : 'Ouverture prête : retournez sur la page Paquets');
         continue;
       }
       const { packs, max } = packInfo();
@@ -375,15 +376,19 @@
     ringSvg.innerHTML = `<circle cx="36" cy="36" r="30" class="wmx-dial-bg"/><circle cx="36" cy="36" r="30" class="wmx-dial-ring" stroke-dasharray="${RING}" stroke-dashoffset="${RING}"/>`;
     ui.fabRing = ringSvg;
     ui.fabTxt = el('span', { class: 'wmx-fab-txt' }, el('b', {}, '–'), el('small', {}, 'paquets'));
+    let dialEl = null; // le cadran, défini plus bas
+    let prefCollapsed = false; // préférence d'affichage du menu sur la page Paquets
     let seenSnap = seenPacks; // dernier relevé fait sur la page Paquets (mémorisé) : base de l'estimation sur les autres pages
     let lastPacks = estimateSeen(seenSnap);
     let lastSave = 0;
     // Avertissement « stock plein » : l'ouverture auto ne s'exécute que sur la page Paquets. Quand le stock est plein (10/10) alors qu'on est
     // ailleurs, un message et un bouton ramènent sur la page Paquets, où l'ouverture reprend d'elle-même.
     const goPulls = () => window.dispatchEvent(new CustomEvent('wmx:navigate', { detail: '/pulls' }));
+    let warnDismissed = false;
     const warn = el('div', { class: 'wmx-fullwarn', role: 'status', hidden: '' },
       el('span', { class: 'wmx-fullwarn-ic' }, '⚠'), el('span', { class: 'wmx-fullwarn-txt' }),
-      el('button', { class: 'wmx-btn', onclick: goPulls }, 'Aller aux paquets'));
+      el('button', { class: 'wmx-btn', onclick: goPulls }, 'Aller aux paquets'),
+      el('button', { class: 'wmx-qclear', title: 'Masquer', 'aria-label': 'Masquer', onclick: () => { warnDismissed = true; warn.hidden = true; } }, '×'));
     const updateFab = () => {
       const onPulls = /^\/pulls/.test(location.pathname);
       if (onPulls && document.body.innerText.match(/paquets?/i)) {
@@ -392,14 +397,18 @@
         seenSnap = { packs: i.packs, max: i.max, nextIn: lastPacks.nextIn, t: Date.now() };
         if (Date.now() - lastSave > 15000) { lastSave = Date.now(); WMX.store.set('packsSeen', seenSnap); }
       } else lastPacks = estimateSeen(seenSnap); // hors de la page Paquets : estimation recalculée chaque seconde
-      warn.hidden = !(state.auto && !onPulls && lastPacks && lastPacks.packs >= lastPacks.max);
-      if (!warn.hidden) warn.querySelector('.wmx-fullwarn-txt').textContent = `Stock plein (${lastPacks.est ? '~' : ''}${lastPacks.packs}/${lastPacks.max}) : l’ouverture auto ne marche que sur la page Paquets`;
+      const full = !!lastPacks && lastPacks.packs >= lastPacks.max;
+      if (!full) warnDismissed = false; // le prochain stock plein ramènera l'alerte
+      warn.hidden = !(full && !onPulls && !warnDismissed);
+      if (!warn.hidden) warn.querySelector('.wmx-fullwarn-txt').textContent = `Stock plein (${lastPacks.est ? '~' : ''}${lastPacks.packs}/${lastPacks.max}) : ` + (state.auto ? 'l’ouverture auto ne marche que sur la page Paquets' : 'vos paquets ne se régénèrent plus, allez les ouvrir');
+      dialEl?.classList.toggle('full', full); // anneau rouge : le stock est plein
       if (!lastPacks) return;
       const { packs, max, nextIn, est } = lastPacks;
       const frac = packs >= max ? 1 : Math.min(1, Math.max(0, 1 - (nextIn ?? regen) / regen));
       const ring = ringSvg.querySelector('.wmx-dial-ring');
       ring.style.strokeDashoffset = String(RING * (1 - frac));
-      ring.style.stroke = packs >= max ? '#f59e0b' : '#2dd4a0';
+      ring.style.stroke = packs >= max ? '#ef4444' : '#2dd4a0';
+      ui.fabTxt.lastChild.textContent = packs >= max ? 'plein' : 'paquets';
       ui.fabTxt.firstChild.textContent = `${est ? '~' : ''}${packs}/${max}`;
       ui.fabTxt.title = (est ? 'Estimation d’après la dernière visite de la page Paquets. ' : '') + (packs >= max ? 'Stock plein : ouvrez vos paquets' : `Prochain paquet dans ${mmss(nextIn ?? 0)}`);
     };
@@ -410,7 +419,7 @@
     }, 1000);
     // Logo « W » de l'en-tête. Le bouton réduit est un cadran à part, comme celui des enchères : le menu en sort et y rentre.
     const fab = el('span', { class: 'wmx-fab', title: 'WikiMasters Toolkit+' }, el('span', { class: 'wmx-fab-w' }, 'W'), ui.fabCount2);
-    const dial = el('button', { class: 'wmx-pdial gone', title: 'Ouvrir le menu des paquets', 'aria-label': 'Menu des paquets', onclick: () => setCollapsed(false) }, ui.fabRing, ui.fabTxt, ui.fabCount);
+    const dial = dialEl = el('button', { class: 'wmx-pdial gone', title: 'Ouvrir le menu des paquets', 'aria-label': 'Menu des paquets', onclick: () => setCollapsed(false) }, ui.fabRing, ui.fabTxt, ui.fabCount);
     const fold = el('button', { class: 'wmx-icon wmx-fold', title: 'Réduire le menu', 'aria-label': 'Réduire le menu', onclick: () => setCollapsed(true) }, '«');
 
     const body = el('div', { class: 'wmx-body' },
@@ -442,7 +451,7 @@
       panel.style.transition = prev;
     }
     /** Réduit le menu dans son cadran (c = true) ou le fait ressortir, avec animation. */
-    function setCollapsed(c, animate = true) {
+    function setCollapsed(c, animate = true, remember = true) {
       clearTimeout(panel._t);
       if (!c) {
         if (animate) { aim(); void panel.offsetWidth; } else { panel.hidden = false; panel.style.transition = 'none'; }
@@ -455,11 +464,12 @@
         panel._t = setTimeout(() => { if (!panel.classList.contains('open')) panel.hidden = true; }, animate ? 340 : 0);
         setTimeout(() => dial.classList.remove('gone'), animate ? 160 : 0);
       }
-      WMX.store.set('panelCollapsed', c);
+      if (remember && /^\/pulls/.test(location.pathname)) { prefCollapsed = c; WMX.store.set('panelCollapsed', c); }
     }
 
-    // En quittant la page Paquets avec l'ouverture auto active, le menu se réduit à sa bulle « W » (visible sur toutes les pages).
-    new MutationObserver(() => { if (state.auto && !/^\/pulls/.test(location.pathname)) setCollapsed(true); })
+    // Changement de page : le menu se réduit à son cadran (visible partout, à côté de celui des enchères) hors de la page Paquets, et reprend
+    // l'affichage choisi en y revenant.
+    new MutationObserver(() => setCollapsed(/^\/pulls/.test(location.pathname) ? prefCollapsed : true, true, false))
       .observe(document.documentElement, { attributes: true, attributeFilter: ['data-wmx-route'] });
 
     const cover = el('div', { class: 'wmx-cover' });
@@ -472,7 +482,7 @@
       const x = edges.length ? Math.max(...edges) : 256;
       const left = `${Math.max(8, Math.min(Math.round(x + 16), innerWidth - (panel.offsetWidth || 330) - 8))}px`; // reste toujours dans l'écran
       panel.style.left = left;
-      dial.style.left = left;
+      dial.style.left = `${Math.max(8, Math.min(Math.round(x + 16) + 76 + 12, innerWidth - 84))}px`; // à côté du cadran des enchères
       cover.style.left = `${Math.round(x)}px`;
     };
     place();
@@ -482,7 +492,8 @@
     setBadge(); setAutoBtn();
     setTimeout(() => { if (/^\/pulls/.test(location.pathname)) WMX.prepareCardSheets?.('view'); }, 3000); // fiche du jeu prête avant le premier clic sur une carte tirée
     // Petit écran : le menu démarre réduit à sa bulle « W » (visible, jamais masqué) ; on le déplie d'un clic.
-    setCollapsed((await WMX.store.get('panelCollapsed', false)) || innerWidth < 1250, false);
+    prefCollapsed = (await WMX.store.get('panelCollapsed', false)) || innerWidth < 1250;
+    setCollapsed(/^\/pulls/.test(location.pathname) ? prefCollapsed : true, false, false);
 
     // Statistiques : anneau coloré par rareté + légende, avec le nombre de cartes uniquement.
     const render = async () => {

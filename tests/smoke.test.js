@@ -51,7 +51,7 @@ test('bulle des enchères : lignes, urgence, mise automatique et alerte', async 
   await sleep(3400); // premier chargement (3 s)
   assert.equal(w.document.querySelector('.wmx-bubble').hidden, false);
   const pill = w.document.querySelector('.wmx-dial');
-  assert.match(pill.textContent, /2 mises/);
+  assert.match(pill.textContent, /2 enchères/);
   assert.match(pill.textContent, /1 vente/);
   assert.equal(pill.querySelector('.wmx-auc-warn').hidden, false, 'pastille ⚠ pour l\'enchère sous 2 min');
   assert.ok(pill.classList.contains('alert'));
@@ -333,7 +333,7 @@ test('enchères terminées : visibles 15 s puis retirées du tableau et du déco
   w.document.querySelector('.wmx-dial').click();
   await sleep(100);
   assert.equal(w.document.querySelectorAll('.wmx-auc-row').length, 1, 'l\'enchère terminée depuis 40 s a disparu');
-  assert.match(w.document.querySelector('.wmx-dial').textContent, /1 mise/);
+  assert.match(w.document.querySelector('.wmx-dial').textContent, /1 enchère/);
   env.close();
 });
 
@@ -688,5 +688,47 @@ test('stock plein hors de la page Paquets : avertissement et bouton pour y retou
   warn.querySelector('button').click();
   assert.deepEqual(nav, ['/pulls'], 'le bouton ramène sur la page Paquets');
   assert.equal(WMX.RARITY_RGB.SR, '244 114 182', 'SR en rose');
+  env.close();
+});
+
+test('bulle des enchères : colonnes adaptatives, titres vers le Marché, largeur réglable', async () => {
+  const future = (m) => new Date(Date.now() + m * 60000).toISOString();
+  const bid = { id: 'b1', status: 'active', card: { wikipedia_title: 'Carte B', rarity: 'C' }, end_at: future(30), base_amount: 5, current_bid: 6, current_bidder_id: 'x' };
+  const env = createEnv({ fetchImpl: async () => json({ selling: [], bidding: [bid], won: [{ winner_id: ME }], history: [] }) });
+  const { w, WMX } = env;
+  WMX.features.find((x) => x.name === 'auctions').init();
+  await WMX.auctions.refresh();
+  const nav = [];
+  w.addEventListener('wmx:navigate', (e) => nav.push(e.detail));
+  w.document.querySelector('.wmx-dial').click();
+  await sleep(100);
+  const panel = w.document.querySelector('.wmx-bubble-panel');
+  assert.equal(panel.dataset.mode, 'one', 'une seule colonne quand il n\'y a pas de vente');
+  assert.match(panel.textContent, /Mes enchères \(1\)/);
+  assert.match(panel.textContent, /Aucune vente en cours\./, 'avec une note sur ce qui manque');
+  assert.equal(w.document.querySelectorAll('.wmx-auc-col').length, 1);
+  w.document.querySelector('.wmx-auc-h3link').click();
+  assert.deepEqual(nav, ['/marketplace'], 'le titre mène au Marché');
+  const grips = panel.querySelectorAll('.wmx-bubble-grip');
+  assert.equal(grips.length, 2, 'un bord de chaque côté');
+  env.close();
+});
+
+test('cadran des paquets : visible sur toutes les pages (menu replié), rouge avec une alerte quand le stock est plein même sans ouverture auto', async () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  const { w, mem, WMX } = env;
+  mem.packsSeen = { packs: 10, max: 10, nextIn: null, t: Date.now() - 30000 };
+  await WMX.features.find((x) => x.name === 'boosters').init(); // page « /collection » : pas la page Paquets
+  await sleep(1300);
+  const dial = w.document.querySelector('.wmx-pdial');
+  assert.ok(dial && !dial.classList.contains('gone'), 'le cadran est visible hors de la page Paquets, sans ouverture auto');
+  assert.equal(w.document.querySelector('.wmx-panel').hidden, true, 'le menu complet est replié');
+  assert.ok(dial.classList.contains('full'), 'cadran rouge : stock plein');
+  assert.match(dial.textContent, /~10\/10/);
+  const warn = w.document.querySelector('.wmx-fullwarn');
+  assert.equal(warn.hidden, false);
+  assert.match(warn.textContent, /ne se régénèrent plus/, 'sans auto : le message invite à aller ouvrir les paquets');
+  warn.querySelector('.wmx-qclear').click();
+  assert.equal(warn.hidden, true, 'masquable');
   env.close();
 });
