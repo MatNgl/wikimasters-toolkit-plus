@@ -469,7 +469,7 @@
 
     // Changement de page : le menu se réduit à son cadran (visible partout, à côté de celui des enchères) hors de la page Paquets, et reprend
     // l'affichage choisi en y revenant.
-    new MutationObserver(() => setCollapsed(/^\/pulls/.test(location.pathname) ? prefCollapsed : true, true, false))
+    new MutationObserver(() => { setCollapsed(/^\/pulls/.test(location.pathname) ? prefCollapsed : true, true, false); place(); })
       .observe(document.documentElement, { attributes: true, attributeFilter: ['data-wmx-route'] });
 
     const cover = el('div', { class: 'wmx-cover' });
@@ -481,8 +481,10 @@
       const edges = [...document.querySelectorAll('nav')].map((n) => n.getBoundingClientRect().right).filter((x) => x > 100 && x < 700);
       const x = edges.length ? Math.max(...edges) : 256;
       const left = `${Math.max(8, Math.min(Math.round(x + 16), innerWidth - (panel.offsetWidth || 330) - 8))}px`; // reste toujours dans l'écran
-      panel.style.left = left;
-      dial.style.left = `${Math.max(8, Math.min(Math.round(x + 16) + 76 + 12, innerWidth - 84))}px`; // à côté du cadran des enchères
+      const dialLeft = Math.max(8, Math.min(Math.round(x + 16) + 76 + 12, innerWidth - 84)); // à côté du cadran des enchères
+      dial.style.left = `${dialLeft}px`;
+      // Hors de la page Paquets le menu s'ouvre AU-DESSUS de son cadran, donc à droite de la colonne des enchères ; sur la page Paquets il garde sa place.
+      panel.style.left = /^\/pulls/.test(location.pathname) ? left : `${Math.max(8, Math.min(dialLeft, innerWidth - (panel.offsetWidth || 330) - 8))}px`;
       cover.style.left = `${Math.round(x)}px`;
     };
     place();

@@ -51,7 +51,7 @@ test('bulle des enchères : lignes, urgence, mise automatique et alerte', async 
   await sleep(3400); // premier chargement (3 s)
   assert.equal(w.document.querySelector('.wmx-bubble').hidden, false);
   const pill = w.document.querySelector('.wmx-dial');
-  assert.match(pill.textContent, /2 enchères/);
+  assert.match(pill.textContent, /2 mises/);
   assert.match(pill.textContent, /1 vente/);
   assert.equal(pill.querySelector('.wmx-auc-warn').hidden, false, 'pastille ⚠ pour l\'enchère sous 2 min');
   assert.ok(pill.classList.contains('alert'));
@@ -333,7 +333,7 @@ test('enchères terminées : visibles 15 s puis retirées du tableau et du déco
   w.document.querySelector('.wmx-dial').click();
   await sleep(100);
   assert.equal(w.document.querySelectorAll('.wmx-auc-row').length, 1, 'l\'enchère terminée depuis 40 s a disparu');
-  assert.match(w.document.querySelector('.wmx-dial').textContent, /1 enchère/);
+  assert.match(w.document.querySelector('.wmx-dial').textContent, /1 mise/);
   env.close();
 });
 
@@ -710,7 +710,7 @@ test('bulle des enchères : colonnes adaptatives, titres vers le Marché, largeu
   w.document.querySelector('.wmx-auc-h3link').click();
   assert.deepEqual(nav, ['/marketplace'], 'le titre mène au Marché');
   const grips = panel.querySelectorAll('.wmx-bubble-grip');
-  assert.equal(grips.length, 2, 'un bord de chaque côté');
+  assert.equal(grips.length, 4, 'un bord de chaque côté, en haut et en bas');
   env.close();
 });
 
@@ -730,5 +730,29 @@ test('cadran des paquets : visible sur toutes les pages (menu replié), rouge av
   assert.match(warn.textContent, /ne se régénèrent plus/, 'sans auto : le message invite à aller ouvrir les paquets');
   warn.querySelector('.wmx-qclear').click();
   assert.equal(warn.hidden, true, 'masquable');
+  env.close();
+});
+
+test('bulle des enchères : hauteur réglable (mémorisée), en-tête et ligne de l\'assistant toujours présents, quatre bords à saisir', async () => {
+  const future = (m) => new Date(Date.now() + m * 60000).toISOString();
+  const bid = { id: 'b1', status: 'active', card: { wikipedia_title: 'Carte B', rarity: 'C' }, end_at: future(30), base_amount: 5, current_bid: 6, current_bidder_id: 'x' };
+  const env = createEnv({ fetchImpl: async () => json({ selling: [], bidding: [bid], won: [{ winner_id: ME }], history: [] }) });
+  const { w, mem, WMX } = env;
+  mem.auctionBubbleSize = { h: 300, one: 400 };
+  WMX.features.find((x) => x.name === 'auctions').init();
+  await sleep(50);
+  await WMX.auctions.refresh();
+  w.document.querySelector('.wmx-dial').click();
+  await sleep(100);
+  const panel = w.document.querySelector('.wmx-bubble-panel');
+  assert.equal(panel.style.height, '300px', 'la hauteur choisie est reprise');
+  assert.equal(panel.style.width, '400px', 'et la largeur de cette disposition');
+  assert.equal(panel.querySelectorAll('.wmx-bubble-grip').length, 4, 'gauche, droite, haut, bas');
+  assert.ok(panel.querySelector('.wmx-bubble-head') && panel.querySelector('.wmx-as-line'), 'en-tête et assistant de vente restent dans le panneau');
+  assert.match(w.document.querySelector('.wmx-dial').textContent, /1 mise/, 'le cadran dit « mises »');
+  assert.match(panel.querySelector('.wmx-bubble-head').textContent, /Enchères et ventes/, 'l\'en-tête garde « Enchères »');
+  const grip = panel.querySelector('.wmx-bubble-grip.t');
+  grip.dispatchEvent(new w.MouseEvent('dblclick', { bubbles: true }));
+  assert.equal(panel.style.height, '', 'double-clic : hauteur d\'origine');
   env.close();
 });

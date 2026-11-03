@@ -83,7 +83,7 @@
     S.dialRing.style.stroke = nearest == null ? '#3a4a43' : WMX.logic.ringColor(frac);
     const urgent = all.filter((x) => timeState(msLeft(x)) === 'urgent').length;
     const outbid = liveBids().filter((x) => !leading(x)).length;
-    S.dialBids.textContent = `${liveBids().length} enchère${liveBids().length > 1 ? 's' : ''}`;
+    S.dialBids.textContent = `${liveBids().length} mise${liveBids().length > 1 ? 's' : ''}`;
     S.dialSales.textContent = `${liveSales().length} vente${liveSales().length > 1 ? 's' : ''}`;
     S.dialOut.hidden = !outbid; S.dialOut.textContent = String(outbid);
     S.dialOut.title = `${outbid} enchère${outbid > 1 ? 's' : ''} où vous êtes surenchéri`;
@@ -686,21 +686,30 @@
     window.addEventListener('resize', applyPos);
   }
 
-  // Largeur réglable : on attrape le bord gauche ou droit du panneau ; la largeur est mémorisée par disposition (deux colonnes / une / vide),
-  // double-clic sur un bord : retour à la largeur d'origine. Le bord gauche fait passer le panneau en position libre (son bord droit reste en place).
-  const MIN_W = 300;
+  // Taille réglable : on attrape un bord du panneau (gauche, droit, haut ou bas). La largeur est mémorisée par disposition (deux colonnes / une / vide),
+  // la hauteur est commune. Seul le CONTENU change de taille : l'en-tête (titre, réglages, actualiser, fermer) et la ligne de l'assistant de vente
+  // restent affichés, la liste des enchères défile. Double-clic sur un bord : retour à la taille d'origine. Le bord haut garde le panneau collé à sa
+  // pastille ; les bords gauche et bas le font passer en position libre (le bord opposé reste en place).
+  const MIN_W = 300, MIN_H = 230;
   const sizes = () => (S.size ||= {});
   function applySize() {
     const p = S.bubblePanel;
     if (!p) return;
     const w = sizes()[p.dataset.mode];
+    const h = sizes().h;
     p.style.width = w ? `${Math.min(w, innerWidth - 16)}px` : '';
+    p.style.height = h ? `${Math.min(h, innerHeight - 16)}px` : '';
+    if (h) p.style.maxHeight = 'none';
   }
+  const GRIP_HINT = { l: 'la largeur', r: 'la largeur', t: 'la hauteur', b: 'la hauteur' };
   function addGrips(panel) {
-    for (const side of ['l', 'r']) {
-      const g = el('div', { class: `wmx-bubble-grip ${side}`, title: 'Glisser pour changer la largeur · double-clic : largeur d’origine' });
+    for (const side of ['l', 'r', 't', 'b']) {
+      const g = el('div', { class: `wmx-bubble-grip ${side}`, title: `Glisser pour changer ${GRIP_HINT[side]} · double-clic : taille d’origine` });
       g.addEventListener('pointerdown', (e) => startResize(e, side, g));
-      g.addEventListener('dblclick', () => { delete sizes()[panel.dataset.mode]; WMX.store.set('auctionBubbleSize', S.size); applySize(); });
+      g.addEventListener('dblclick', () => {
+        if (side === 't' || side === 'b') { delete sizes().h; panel.style.height = ''; panel.style.maxHeight = ''; } else delete sizes()[panel.dataset.mode];
+        WMX.store.set('auctionBubbleSize', S.size); applySize();
+      });
       panel.append(g);
     }
   }
@@ -709,21 +718,25 @@
     e.preventDefault();
     const p = S.bubblePanel, r = p.getBoundingClientRect();
     const mode = p.dataset.mode || 'two';
-    const startX = e.clientX, w0 = r.width, left0 = r.left, top0 = r.top;
-    grip.setPointerCapture(e.pointerId);
+    const startX = e.clientX, startY = e.clientY, w0 = r.width, h0 = r.height, left0 = r.left, top0 = r.top;
+    const clamp = (v, lo, hi) => Math.round(Math.min(Math.max(lo, v), Math.max(lo, hi)));
+    grip.setPointerCapture?.(e.pointerId);
     p.classList.add('resizing');
     const move = (ev) => {
-      const dx = ev.clientX - startX;
-      const maxW = side === 'r' ? innerWidth - 8 - left0 : left0 + w0 - 8;
-      const w = Math.round(Math.min(Math.max(MIN_W, side === 'r' ? w0 + dx : w0 - dx), Math.max(MIN_W, maxW)));
+      const dx = ev.clientX - startX, dy = ev.clientY - startY;
       p.style.maxWidth = 'calc(100vw - 16px)';
-      p.style.width = `${w}px`;
-      sizes()[mode] = w;
-      if (side === 'l') {
-        const left = Math.max(8, left0 + w0 - w);
-        S.pos = { x: left, y: top0 };
-        p.classList.add('moved'); p.style.left = `${left}px`; p.style.top = `${top0}px`;
+      let left = left0, top = top0, free = false;
+      if (side === 'r' || side === 'l') {
+        const w = side === 'r' ? clamp(w0 + dx, MIN_W, innerWidth - 8 - left0) : clamp(w0 - dx, MIN_W, left0 + w0 - 8);
+        p.style.width = `${w}px`; sizes()[mode] = w;
+        if (side === 'l') { left = Math.max(8, left0 + w0 - w); free = true; }
+      } else {
+        const h = side === 'b' ? clamp(h0 + dy, MIN_H, innerHeight - 8 - top0) : clamp(h0 - dy, MIN_H, top0 + h0 - 8);
+        p.style.maxHeight = 'none'; p.style.height = `${h}px`; sizes().h = h;
+        if (side === 'b') free = true;
+        else if (p.classList.contains('moved')) { top = top0 + h0 - h; free = true; } // panneau libre : son bord bas reste en place
       }
+      if (free) { S.pos = { x: left, y: top }; p.classList.add('moved'); p.style.left = `${left}px`; p.style.top = `${top}px`; }
     };
     const up = () => {
       grip.removeEventListener('pointermove', move);

@@ -608,3 +608,10 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-bubble-grip.l::after { left: 3px; } .wmx-bubble-grip.r::after { right: 3px; }
 .wmx-bubble-panel:hover .wmx-bubble-grip::after, .wmx-bubble-panel.resizing .wmx-bubble-grip::after { opacity: 1; }
 .wmx-bubble-panel.resizing { transition: none; user-select: none; }
+
+/* ===== Hauteur réglable : l'en-tête et la ligne de l'assistant restent affichés, seule la liste défile (0.20.1) ===== */
+.wmx-bubble-panel > .wmx-as-line { flex: none; }
+.wmx-bubble-grip.t, .wmx-bubble-grip.b { left: 16px; right: 16px; width: auto; height: 8px; cursor: ns-resize; }
+.wmx-bubble-grip.t { top: 0; bottom: auto; } .wmx-bubble-grip.b { bottom: 0; top: auto; }
+.wmx-bubble-grip.t::after, .wmx-bubble-grip.b::after { top: auto; left: 50%; width: 36px; height: 3px; margin: 0 0 0 -18px; }
+.wmx-bubble-grip.t::after { top: 2px; } .wmx-bubble-grip.b::after { bottom: 2px; }
