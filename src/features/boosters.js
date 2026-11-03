@@ -514,5 +514,15 @@
 
   // Le menu existe sur toutes les pages (masqué hors de la page Paquets tant que l'ouverture auto ne tourne pas) : un rechargement de la
   // page ne doit ni le faire disparaître ni interrompre l'ouverture auto.
-  WMX.register({ name: 'boosters', match: /./, init: buildPanel });
+  WMX.register({
+    name: 'boosters',
+    match: /./,
+    init() {
+      document.documentElement.dataset.wmxBoost = 'init';
+      return buildPanel().then(() => { document.documentElement.dataset.wmxBoost = 'ok'; }).catch((e) => { // erreur de construction du menu : visible (console et attribut) au lieu de disparaître en silence
+        document.documentElement.dataset.wmxBoost = 'err: ' + (e?.message || e);
+        console.warn('[WMX] menu des paquets', e);
+      });
+    },
+  });
 })();
