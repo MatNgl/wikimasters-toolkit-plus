@@ -584,3 +584,44 @@ test('assistant de vente : charge lui-même la collection (hors page Collection)
   assert.match(WMX.quick.hint({ card_id: 'x1', rarity: 'R' }), /10 W .*aucune vente/, 'prix par défaut annoncé dans l\'infobulle du ⚡');
   env.close();
 });
+
+test('ouverture auto : un rechargement de la page ne l\'arrête pas, les cartes déjà tirées sont gardées, le stock est estimé', async () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  const { w, mem, WMX } = env;
+  mem.autoRun = { on: true, t: Date.now() - 20000, buffer: [{ id: 'c1' }, { id: 'c2' }], opened: 2 };
+  mem.packsSeen = { packs: 3, max: 10, nextIn: 100, t: Date.now() - 250000 }; // vu il y a ~4 min : 1 paquet de plus
+  const f = WMX.features.find((x) => x.name === 'boosters');
+  assert.ok(f.match.test('/marketplace'), 'le menu des paquets existe sur toutes les pages, pas seulement sur Paquets');
+  await f.init();
+  await sleep(1300);
+  assert.ok(w.document.documentElement.classList.contains('wmx-auto-on'), 'l\'ouverture auto a repris après le rechargement');
+  assert.equal(w.document.querySelector('.wmx-fab-count').textContent, '2', 'avec les paquets déjà ouverts');
+  assert.equal(w.document.querySelector('.wmx-fab-txt b').textContent, '~4/10', 'stock estimé depuis la dernière visite de la page Paquets');
+  assert.equal((await WMX.store.get('autoRun', null)).buffer.length, 2, 'les cartes mises de côté restent mémorisées');
+  env.close();
+});
+
+test('ouverture auto : une trace ancienne n\'est pas relancée, mais les cartes tirées sont montrées', async () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  const { w, mem, WMX } = env;
+  mem.autoRun = { on: true, t: Date.now() - 10 * 60000, buffer: [{ id: 'c1' }], opened: 1 };
+  let shown = null;
+  WMX.reveal = (cards) => { shown = cards; };
+  await WMX.features.find((x) => x.name === 'boosters').init();
+  await sleep(300);
+  assert.ok(!w.document.documentElement.classList.contains('wmx-auto-on'), 'pas de reprise après une longue absence');
+  assert.deepEqual(shown, [{ id: 'c1' }], 'les cartes déjà tirées sont montrées');
+  assert.equal(await WMX.store.get('autoRun', null), null, 'la trace est effacée');
+  env.close();
+});
+
+test('bulle des enchères : la pastille est visible dès le chargement, même si les enchères tardent à arriver', async () => {
+  const env = createEnv({ fetchImpl: async () => { throw new Error('jeu lent'); } });
+  const { w, WMX } = env;
+  WMX.features.find((x) => x.name === 'auctions').init();
+  await sleep(1300);
+  const bubble = w.document.querySelector('.wmx-bubble');
+  assert.equal(bubble.hidden, false, 'la bulle est affichée sans attendre le premier chargement réussi');
+  assert.match(bubble.querySelector('.wmx-dial-txt').textContent, /…/, 'avec un état « chargement », pas de faux zéros');
+  env.close();
+});

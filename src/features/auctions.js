@@ -69,6 +69,12 @@
   const RING = 2 * Math.PI * 30;
   function updatePill() {
     if (!S.pill) return;
+    if (!D.loaded) { // premier chargement en cours (jeu lent) : la pastille est déjà là, sans chiffres trompeurs
+      S.dialRing.style.stroke = '#3a4a43';
+      S.dialBids.textContent = '…'; S.dialSales.textContent = '';
+      S.pill.title = 'Mes enchères : chargement…';
+      return;
+    }
     const all = [...liveBids(), ...liveSales()];
     const lefts = all.map(msLeft).filter((x) => x > 0);
     const nearest = lefts.length ? Math.min(...lefts) : null;
@@ -536,7 +542,7 @@
       checkUrgent(); runAuto();
     }
     updatePill();
-    if (S.bubble) S.bubble.hidden = WMX.settings?.auctionBubble === false || !D.loaded;
+    if (S.bubble) S.bubble.hidden = WMX.settings?.auctionBubble === false;
   }
 
   // --- Bulle flottante -------------------------------------------------------------------------
@@ -686,7 +692,11 @@
       else S.leader = true;
       WMX.store.get('autoBids', {}).then((r) => { S.auto = r || {}; });
       setInterval(() => { if (WMX.alive()) tick(); }, 1000);
-      setTimeout(async () => { await refresh(); schedulePoll(); }, 3000);
+      // Premier chargement : réessayé de plus en plus espacé tant qu'il échoue (jeu lent ou erreur passagère), au lieu d'attendre la minute suivante.
+      setTimeout(async () => {
+        for (let n = 0; n < 15 && !D.loaded && WMX.alive(); n++) { await refresh(); if (!D.loaded) await sleep(Math.min(30000, 4000 + n * 3000)); }
+        schedulePoll();
+      }, 3000);
     },
   });
 })();
