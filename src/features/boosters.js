@@ -20,8 +20,10 @@
     else if (status === 429 || data?.rate_limited) openError = { t: Date.now(), data };
   });
 
-  const COOLDOWN_S = 3; // pause obligatoire entre deux paquets : le jeu refuse les ouvertures trop rapprochées
-  let blocks = 0;       // refus consécutifs : la pause s'allonge d'1 s à chaque refus, puis repart de COOLDOWN_S au premier succès
+  // Pause entre deux paquets : 2 s au départ. Si le jeu refuse une ouverture trop rapprochée, la pause monte d'1 s (jusqu'à 6 s) et ce réglage appris
+  // est mémorisé : l'extension ne retente pas à chaque paquet une pause que le jeu refuse.
+  let cooldownS = 2;
+  let blocks = 0;       // refus consécutifs : la pause s'allonge d'1 s à chaque refus, puis repart de la pause de base (cooldownS) au premier succès
 
   /** Indication `retry_after` du jeu en secondes (nombre, « 5 s », « 2 min » ou date), ou null si illisible. */
   const retryHint = (v) => {
@@ -144,9 +146,10 @@
         openError = null;
         if (d.rate_limit_daily) { dailyLimit = true; setStatus('Limite quotidienne d’ouvertures atteinte'); break; }
         blocks += 1;
+        if (blocks === 1 && cooldownS < 6) { cooldownS += 1; WMX.store.set('packCooldown', cooldownS); } // le jeu a refusé cette pause : on l'allonge pour la suite
         if (blocks > 15) { setStatus('Le jeu refuse l’ouverture : arrêt'); break; }
         // Attente = pause de base + 1 s par refus consécutif (4, 5, 6… s), au moins ce que demande le jeu.
-        const waitS = Math.min(120, Math.max(COOLDOWN_S + blocks, retryHint(d.retry_after) ?? 0));
+        const waitS = Math.min(120, Math.max(cooldownS + blocks, retryHint(d.retry_after) ?? 0));
         for (let s = Math.ceil(waitS); s > 0 && !lastCards; s--) {
           setStatus(`Ouverture trop rapide : nouvel essai dans ${s} s`);
           session?.setNote(`attente ${s} s`);
@@ -185,7 +188,7 @@
 
   /** Pause obligatoire entre deux paquets, visible dans le panneau et sur l'écran de révélation. */
   async function cooldown(session) {
-    for (let s = COOLDOWN_S; s > 0 && (state.busy || state.auto); s--) {
+    for (let s = cooldownS; s > 0 && (state.busy || state.auto); s--) {
       session?.setNote(`pause ${s} s`);
       setStatus(`Pause de ${s} s avant le paquet suivant`);
       await sleep(1000);
@@ -349,6 +352,10 @@
     Object.assign(WMX.settings, await WMX.store.get('wmxSettings', {}));
     const ap = await WMX.store.get('autoPrefs', { min: 5, max: 10 });
     const seenPacks = await WMX.store.get('packsSeen', null);
+    const learned = Number(await WMX.store.get('packCooldown', 2));
+    if (Number.isFinite(learned) && learned >= 2 && learned <= 6) cooldownS = Math.round(learned);
+    let panelPos = await WMX.store.get('panelPos', null); // position choisie du menu ouvert ({ x, y }) ou null : emplacement d'origine
+    if (!(panelPos && Number.isFinite(panelPos.x) && Number.isFinite(panelPos.y))) panelPos = null;
 
     ui.status = el('div', { class: 'wmx-status' });
     ui.stats = el('div', { class: 'wmx-pstats' });
@@ -420,7 +427,8 @@
     // Logo « W » de l'en-tête. Le bouton réduit est un cadran à part, comme celui des enchères : le menu en sort et y rentre.
     const fab = el('span', { class: 'wmx-fab', title: 'WikiMasters Toolkit+' }, el('span', { class: 'wmx-fab-w' }, 'W'), ui.fabCount2);
     const dial = dialEl = el('button', { class: 'wmx-pdial gone', title: 'Ouvrir le menu des paquets', 'aria-label': 'Menu des paquets', onclick: () => setCollapsed(false) }, ui.fabRing, ui.fabTxt, ui.fabCount);
-    const fold = el('button', { class: 'wmx-icon wmx-fold', title: 'Réduire le menu', 'aria-label': 'Réduire le menu', onclick: () => setCollapsed(true) }, '«');
+    const fold = el('button', { class: 'wmx-icon wmx-fold', title: 'Réduire le menu', 'aria-label': 'Réduire le menu', onclick: () => setCollapsed(true) });
+    fold.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M11 6l-6 6 6 6M19 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
     const body = el('div', { class: 'wmx-body' },
       el('div', { class: 'wmx-btnrow' }, el('button', { class: 'wmx-btn wmx-btn--wide', onclick: openAllAnywhere }, 'Tout ouvrir'), ui.autoBtn),
@@ -433,8 +441,38 @@
       el('button', { class: 'wmx-settings-btn', onclick: () => WMX.openSettings() }, el('span', {}, '⚙'), 'Paramètres'),
       el('div', { class: 'wmx-ver' }, (() => { try { return `v${chrome.runtime.getManifest().version_name || chrome.runtime.getManifest().version}`; } catch (_) { return ''; } })()));
 
-    const panel = el('aside', { class: 'wmx-panel', hidden: '' },
-      el('div', { class: 'wmx-head' }, fab, el('h3', {}, 'WikiMasters Toolkit+'), fold), body);
+    const head = el('div', { class: 'wmx-head', title: 'Maintenez le clic pour déplacer · double-clic pour replacer' }, fab, el('h3', {}, 'WikiMasters Toolkit+'), fold);
+    const panel = el('aside', { class: 'wmx-panel', hidden: '' }, head, body);
+
+    // Menu déplaçable (comme la bulle des enchères) : on attrape l'en-tête ; la position est mémorisée et gardée dans l'écran.
+    const clampPanel = (x, y) => ({
+      x: Math.min(Math.max(8, x), Math.max(8, innerWidth - (panel.offsetWidth || 330) - 8)),
+      y: Math.min(Math.max(8, y), Math.max(8, innerHeight - (panel.offsetHeight || 420) - 8)),
+    });
+    function applyPanelPos() {
+      if (!panelPos) { panel.classList.remove('moved'); panel.style.top = panel.style.bottom = panel.style.margin = ''; return; }
+      const c = clampPanel(panelPos.x, panelPos.y);
+      panel.classList.add('moved');
+      Object.assign(panel.style, { left: `${c.x}px`, top: `${c.y}px`, bottom: 'auto', margin: '0' });
+    }
+    head.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || e.target.closest('button')) return;
+      const r = panel.getBoundingClientRect();
+      const dx = e.clientX - r.left, dy = e.clientY - r.top;
+      head.setPointerCapture?.(e.pointerId);
+      panel.classList.add('dragging');
+      const move = (ev) => { panelPos = clampPanel(ev.clientX - dx, ev.clientY - dy); applyPanelPos(); };
+      const up = () => {
+        head.removeEventListener('pointermove', move); head.removeEventListener('pointerup', up); head.removeEventListener('pointercancel', up);
+        panel.classList.remove('dragging');
+        WMX.store.set('panelPos', panelPos);
+      };
+      head.addEventListener('pointermove', move); head.addEventListener('pointerup', up); head.addEventListener('pointercancel', up);
+    });
+    head.addEventListener('dblclick', (e) => { // double-clic sur l'en-tête : retour à l'emplacement d'origine
+      if (e.target.closest('button')) return;
+      panelPos = null; WMX.store.set('panelPos', null); applyPanelPos(); place();
+    });
 
     /** Le menu part du centre du cadran et y retourne : son point d'origine est calculé d'après la position réelle des deux. */
     function aim() {
@@ -481,13 +519,12 @@
       const edges = [...document.querySelectorAll('nav')].map((n) => n.getBoundingClientRect().right).filter((x) => x > 100 && x < 700);
       const x = edges.length ? Math.max(...edges) : 256;
       const left = `${Math.max(8, Math.min(Math.round(x + 16), innerWidth - (panel.offsetWidth || 330) - 8))}px`; // reste toujours dans l'écran
-      const dialLeft = Math.max(8, Math.min(Math.round(x + 16) + 76 + 12, innerWidth - 84)); // à côté du cadran des enchères
-      dial.style.left = `${dialLeft}px`;
-      // Hors de la page Paquets le menu s'ouvre AU-DESSUS de son cadran, donc à droite de la colonne des enchères ; sur la page Paquets il garde sa place.
-      panel.style.left = /^\/pulls/.test(location.pathname) ? left : `${Math.max(8, Math.min(dialLeft, innerWidth - (panel.offsetWidth || 330) - 8))}px`;
+      dial.style.left = left; // au-dessus du cadran des enchères (même colonne)
+      if (panelPos) applyPanelPos(); else panel.style.left = left;
       cover.style.left = `${Math.round(x)}px`;
     };
     place();
+    applyPanelPos();
     window.addEventListener('resize', place);
     new ResizeObserver(place).observe(document.documentElement);
     setTimeout(place, 600); setTimeout(place, 2500); // après le rendu du jeu (polices, mise en page)

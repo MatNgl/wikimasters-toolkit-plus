@@ -84,7 +84,7 @@
 @media (max-width: 1450px) { .wmx-panel { width: 250px; } }
 @media (min-width: 1800px) { .wmx-panel { width: 340px; } }
 @media (min-width: 2300px) { .wmx-panel { width: 380px; } }
-html:not([data-wmx-route^="/pulls"]) .wmx-panel { top: auto; bottom: 112px; margin: 0; }
+html:not([data-wmx-route^="/pulls"]) .wmx-panel { top: auto; bottom: 200px; margin: 0; }
 
 /* Statistiques (barres par rareté) */
 .wmx-sbox { display: flex; flex-direction: column; gap: 5px; padding: 8px 10px; border-radius: 12px; background: #0a0f0d; border: 1px solid #1e2b26; }
@@ -482,7 +482,7 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-panel:not(.open) > * { opacity: 0; }
 .wmx-panel.open > * { opacity: 1; transition: opacity .26s ease .16s; }
 .wmx-panel[hidden] { display: none; }
-.wmx-pdial { position: fixed; top: auto; bottom: 24px; margin: 0; left: 360px; width: 76px; height: 76px; padding: 0; border: 0; border-radius: 50%; z-index: 40; cursor: pointer; color: #e6efe9;
+.wmx-pdial { position: fixed; top: auto; bottom: 112px; margin: 0; left: 272px; width: 76px; height: 76px; padding: 0; border: 0; border-radius: 50%; z-index: 40; cursor: pointer; color: #e6efe9;
   background: radial-gradient(circle at 30% 25%, #14221c, #0a110e); box-shadow: 0 10px 28px #000b, inset 0 1px 0 #ffffff14; font-family: Outfit, system-ui, sans-serif;
   transition: transform .25s cubic-bezier(.22,1,.36,1), opacity .2s ease, box-shadow .18s ease; }
 .wmx-pdial:hover { box-shadow: 0 14px 34px #000c, 0 0 0 1px #2dd4a066; transform: translateY(-2px) scale(1.03); }
@@ -615,3 +615,11 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-bubble-grip.t { top: 0; bottom: auto; } .wmx-bubble-grip.b { bottom: 0; top: auto; }
 .wmx-bubble-grip.t::after, .wmx-bubble-grip.b::after { top: auto; left: 50%; width: 36px; height: 3px; margin: 0 0 0 -18px; }
 .wmx-bubble-grip.t::after { top: 2px; } .wmx-bubble-grip.b::after { bottom: 2px; }
+
+/* ===== Retouches (0.20.2) : une seule barre en haut de la bulle, menu des paquets déplaçable, bouton replier centré ===== */
+.wmx-bubble-grip.t::after { display: none; } /* la barre de l'en-tête suffit : pas de deuxième trait au survol */
+.wmx-head { cursor: grab; user-select: none; }
+.wmx-head button { cursor: pointer; }
+.wmx-panel.dragging { transition: none; cursor: grabbing; box-shadow: 0 30px 80px #000d, 0 0 0 1px var(--acc,#2dd4a0); }
+.wmx-fold { display: grid; place-items: center; padding: 0; line-height: 0; }
+.wmx-fold svg { display: block; }

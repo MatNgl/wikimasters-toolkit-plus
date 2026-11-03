@@ -756,3 +756,18 @@ test('bulle des enchères : hauteur réglable (mémorisée), en-tête et ligne d
   assert.equal(panel.style.height, '', 'double-clic : hauteur d\'origine');
   env.close();
 });
+
+test('menu des paquets : déplaçable (position mémorisée et reprise), bouton replier centré (chevrons dessinés), cadran au-dessus de celui des enchères', async () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  const { w, mem, WMX } = env;
+  mem.panelPos = { x: 120, y: 90 };
+  await WMX.features.find((x) => x.name === 'boosters').init();
+  const panel = w.document.querySelector('.wmx-panel');
+  assert.ok(panel.classList.contains('moved'), 'la position choisie est reprise');
+  assert.equal(panel.style.left, '120px'); assert.equal(panel.style.top, '90px');
+  assert.ok(panel.querySelector('.wmx-fold svg'), 'bouton replier : chevrons dessinés, centrés');
+  panel.querySelector('.wmx-head').dispatchEvent(new w.MouseEvent('dblclick', { bubbles: true }));
+  assert.equal(panel.classList.contains('moved'), false, 'double-clic sur l\'en-tête : retour à l\'emplacement d\'origine');
+  assert.equal(await WMX.store.get('panelPos', 'absent'), 'absent', 'position effacée');
+  env.close();
+});
