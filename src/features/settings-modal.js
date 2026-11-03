@@ -11,12 +11,10 @@
     autoDefaultMode: 'time', autoDefaultSecs: 35, autoCapMode: 'avg', autoCapW: 100, autoCapPct: 20, autoDefaultOn: false, autoSell: false, autoSellTags: 'VENTE', autoSellMax: 3, autoSellCap: 500, quickNoSalePrice: 10, cardStyle: true, cardShowDesc: true, cardShowStats: true,
   };
 
-  WMX.NOTICE = "Extension non officielle, développée indépendamment de WikiMasters et non affiliée à WikiMasters ni à Wikipédia. Certaines fonctions (ouverture automatique des paquets, mises automatiques, enchères rapides ⚡, assistant de vente) ne sont pas approuvées par WikiMasters, dont les règles de la communauté interdisent les outils qui jouent ou interagissent à votre place. Elles sont désactivées par défaut ou ne se déclenchent que sur votre demande ; si vous les utilisez, c’est sous votre propre responsabilité et avec modération. Les fonctions de lecture (prix, verdicts, tableau de bord, style des cartes) n’agissent pas à votre place.";
   // La mise à jour automatique n'existe que dans la version de développement (permission « alarms ») : absente de la version publiée.
   const devBuild = () => { try { return !!chrome.runtime.getManifest().permissions?.includes('alarms'); } catch (_) { return false; } };
 
   const SECTIONS = [
-    { title: 'À savoir', desc: WMX.NOTICE, items: [] },
     {
       title: 'Révélation',
       desc: 'Animation et ordre d’affichage des cartes après l’ouverture.',

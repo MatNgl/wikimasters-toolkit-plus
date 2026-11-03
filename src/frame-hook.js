@@ -13,6 +13,8 @@
     if (log.length > 4) log.shift();
     try { document.documentElement.dataset.wmxNet = log.join(' ; '); } catch (_) { /* document pas encore prêt */ }
   };
+  // L'extension remet le relevé à zéro avant chaque mise en vente : sans cela, les réponses des cartes précédentes y resteraient.
+  document.addEventListener('wmx-net-reset', () => { log.length = 0; try { delete document.documentElement.dataset.wmxNet; } catch (_) { /* document pas prêt */ } });
   const realFetch = window.fetch;
   window.fetch = function wmxFetch(input, init) {
     const method = String((init && init.method) || (input && input.method) || 'GET').toUpperCase();

@@ -8,6 +8,7 @@
   const { el, sleep, waitFor } = WMX.dom;
   const LABELS = { '10min': '10 min', '30min': '30 min', '1h': '1 h', '3h': '3 h', '6h': '6 h', '12h': '12 h' };
   const MINUTES = { '10 min': 10, '30 min': 30, '1 h': 60, '3 h': 180, '6 h': 360, '12 h': 720 };
+  const BLOCK_PAUSE = 10 * 60000; // le jeu refuse la mise en vente (403/429) : on le laisse tranquille avant de réessayer
   const S = { fav: new Map(), selling: new Map(), notOwned: new Set(), max: 10, queue: [], current: null, running: false, batch: { done: 0, total: 0, ok: 0, failed: [] } };
   const listeners = new Set();
   const resultListeners = new Set(); // (op, résultat) après chaque opération de la file : l'assistant de vente en tire ses écarts
@@ -100,14 +101,19 @@
       [...form.querySelectorAll('button')].find((b) => b.textContent.trim() === dur)?.click();
       await sleep(250);
       if (Number(input.value) !== price) return { error: 'le prix saisi n’a pas été pris en compte' };
+      // Réponse du serveur aux requêtes d'écriture du cadre (notée par frame-hook.js) : dit si le jeu a refusé la création.
+      const net = () => { try { return d.documentElement.dataset.wmxNet || ''; } catch (_) { return ''; } };
+      const refused = () => /\/api\/marketplace → (403|429|réseau)/.test(net()); // le jeu bloque les requêtes (403/429) ou coupe la connexion
+      const blocked = () => ({ error: `le jeu refuse la mise en vente (${net().split(' ; ').pop()})`, blocked: true, fatal: true });
+      try { d.dispatchEvent(new Event('wmx-net-reset')); } catch (_) { /* cadre libéré */ }
       launch.click();
-      const closed = await waitFor(() => !/Lancer l.enchère/i.test(d.body.innerText), 9000, 150);
+      const closed = await waitFor(() => !/Lancer l.enchère/i.test(d.body.innerText) || refused(), 9000, 150);
+      if (refused()) return blocked();
       if (!closed) return { error: 'le jeu n’a pas confirmé l’enchère' };
       // Après une mise en vente réussie, le jeu ouvre la page de l'enchère créée dans le cadre : c'est le signe le plus sûr.
       const where = () => { try { return w.location.pathname; } catch (_) { return '?'; } };
-      // Réponse du serveur aux requêtes d'écriture du cadre (notée par frame-hook.js) : dit si le jeu a refusé la création.
-      const net = () => { try { return d.documentElement.dataset.wmxNet || ''; } catch (_) { return ''; } };
-      const navigated = await waitFor(() => /^\/marketplace\/[0-9a-f-]{8,}/i.test(where()), 4000, 150);
+      const navigated = await waitFor(() => (/^\/marketplace\/[0-9a-f-]{8,}/i.test(where()) ? 'nav' : refused() ? 'refused' : ''), 4000, 150);
+      if (navigated === 'refused') return blocked();
       if (navigated) return { ok: true, where: net() ? `réponse du jeu : ${net()}` : '' };
       // Formulaire refermé sans que le jeu ouvre l'enchère : on garde de quoi comprendre (page du cadre, requête du jeu, message affiché).
       let msg = '';
@@ -177,6 +183,11 @@
     // « Carte introuvable » peut venir d'un cadre resté ouvert trop longtemps : un nouvel essai avec un cadre neuf avant de conclure qu'elle a disparu.
     if (res.gone) { WMX.releaseCardSheets?.('work'); await sleep(1500); res = await attempt(); }
     else if (!res.ok && !res.fatal) { await sleep(3000); res = await attempt(); } // un nouvel essai (le cadre est remis sur la collection)
+    if (res.blocked) { // le jeu refuse (403/429) : insister prolongerait le blocage ; tout se met en pause (prix compris)
+      WMX.gameBlockedUntil = Date.now() + BLOCK_PAUSE;
+      WMX.releaseCardSheets?.('work');
+      return { error: `${res.error} : pause de ${BLOCK_PAUSE / 60000} min`, blocked: true };
+    }
     if (!res.ok) return { error: res.error, gone: !!res.gone };
     // Le serveur du jeu peut mettre quelques secondes à enregistrer l'enchère : on vérifie jusqu'à 6 fois avant de conclure à un échec.
     let read = false; // « Mes ventes » a-t-elle pu être lue au moins une fois ?
@@ -360,13 +371,13 @@
           S.batch.total = S.batch.done + S.queue.length;
         } else if (res.error) S.batch.failed.push(`${op.item.title} : ${res.error}`);
         unconfirmed = res.unconfirmed ? unconfirmed + 1 : 0;
-        if (unconfirmed >= 2) { // le jeu n'enregistre rien pour l'instant : inutile d'enchaîner les autres cartes (17 s chacune), elles seront reprises plus tard
+        if (unconfirmed >= 2 || res.blocked) { // le jeu n'enregistre rien pour l'instant : inutile d'enchaîner les autres cartes (17 s chacune), elles seront reprises plus tard
           const rest = S.queue.filter((o) => o.type === 'launch').length;
           if (rest) {
             S.queue = S.queue.filter((o) => o.type !== 'launch');
             S.batch.failed.push(`${rest} autre${rest > 1 ? 's' : ''} carte${rest > 1 ? 's' : ''} non tentée${rest > 1 ? 's' : ''} (le jeu n’enregistre pas les mises en vente pour l’instant)`);
             S.batch.total = S.batch.done + S.queue.length;
-            WMX.journal?.add('File', `${rest} mise${rest > 1 ? 's' : ''} en vente abandonnée${rest > 1 ? 's' : ''} : le jeu n’a pas enregistré les deux précédentes, reprise plus tard`, 'warn');
+            WMX.journal?.add('File', `${rest} mise${rest > 1 ? 's' : ''} en vente abandonnée${rest > 1 ? 's' : ''} : ${res.blocked ? 'le jeu bloque les requêtes' : 'le jeu n’a pas enregistré les deux précédentes'}, reprise plus tard`, 'warn');
           }
         }
         persist(); updateChip(); notify();

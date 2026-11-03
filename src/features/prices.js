@@ -66,7 +66,7 @@
       if (idx > 0 && (lat < EXTRA_AT[idx] || sched.blocks > 0 || waitLeft() > 0)) { await sleep(500); continue; }
       const item = sched.hi.shift() || sched.lo.shift();
       if (!item) continue;
-      const left = sched.penaltyUntil - Date.now();
+      const left = Math.max(sched.penaltyUntil, WMX.gameBlockedUntil || 0) - Date.now(); // le jeu refuse aussi les mises en vente : on ne l'interroge plus
       if (left > 0) await sleep(left);
       let r;
       const t0 = Date.now();
