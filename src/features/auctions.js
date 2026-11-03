@@ -140,7 +140,8 @@
       let dirty = false;
       for (const id of Object.keys(S.auto)) if (!D.bidding.some((x) => x.id === id)) { delete S.auto[id]; delete S.autoTry[id]; dirty = true; } // enchère terminée
       if (dirty) saveAuto();
-      for (const id of Object.keys(S.auto)) { const x = D.bidding.find((b) => b.id === id); if (x) frameFor(x); } // page prête à l'avance : miser sans attendre
+      // Page prête à l'avance (miser sans attendre) pour les règles dont l'enchère finit le plus tôt : jamais plus de pages que MAX_FRAMES.
+      Object.keys(S.auto).map((id) => D.bidding.find((b) => b.id === id)).filter(Boolean).sort((x, y) => msLeft(x) - msLeft(y)).slice(0, MAX_FRAMES).forEach(frameFor);
       pruneFrames();
       renderAll();
       window.dispatchEvent(new CustomEvent('wmx:bids'));
@@ -169,11 +170,14 @@
   const bidButton = (f) => { try { return [...f.contentDocument.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Miser'); } catch (_) { return null; } };
 
   /** Page de l'enchère chargée (et gardée à jour par le jeu) dans un cadre invisible : le minimum y est toujours le bon. */
+  const MAX_FRAMES = 4; // jamais plus : chaque page préchargée est une page du jeu de plus qui tourne
   function frameFor(a) {
     let f = S.frames.get(a.id);
     if (f?.isConnected) return f;
-    if (S.frames.size >= 4) { // au plus 4 pages préchargées
-      for (const [id, old] of S.frames) { if (id !== S.betting) { old.remove(); S.frames.delete(id); break; } }
+    if (S.frames.size >= MAX_FRAMES) { // on libère celle dont l'enchère finit le plus tard (jamais la plus urgente)
+      let far = null;
+      for (const [id] of S.frames) { if (id !== S.betting && id !== a.id && (!far || msLeftById(id) > msLeftById(far))) far = id; }
+      if (far) { S.frames.get(far).remove(); S.frames.delete(far); }
     }
     f = el('iframe', { class: 'wmx-sheet-frame', src: `/marketplace/${a.id}#wmx-auto`, title: 'Mise', tabindex: '-1' });
     document.body.append(f);
@@ -225,20 +229,25 @@
     if (leading(a)) return opts.auto ? undefined : WMX.toast('Vous menez déjà cette enchère.');
     S.betting = a.id;
     renderAll();
+    const jr = (text, level) => WMX.journal?.add(opts.auto ? 'Mise automatique' : 'Surenchère', `« ${cardTitle(a)} » : ${text}`, level);
+    const t0 = Date.now();
     try {
       WMX.toast(`Mise sur « ${cardTitle(a)} »…`, 60000);
+      const preloaded = !!bidInput(S.frames.get(a.id) || {});
       const f = frameFor(a);
       const input = await waitFor(() => bidInput(f), 90000, 150);
-      if (!input) return WMX.toast('La page de l’enchère ne s’est pas chargée.', 6000);
+      if (!input) { jr(`la page de l’enchère ne s’est pas chargée (${Math.round((Date.now() - t0) / 1000)} s) : rien n’a été misé`, 'error'); return WMX.toast('La page de l’enchère ne s’est pas chargée.', 6000); }
       const btn = bidButton(f);
-      if (!btn) return WMX.toast('Bouton « Miser » introuvable sur la page de l’enchère.', 6000);
+      if (!btn) { jr('bouton « Miser » introuvable sur la page de l’enchère', 'error'); return WMX.toast('Bouton « Miser » introuvable sur la page de l’enchère.', 6000); }
       const min = Number(input.min);
-      if (!Number.isFinite(min) || min <= 0) return WMX.toast('Minimum de mise illisible : rien n’a été misé.', 6000);
+      if (!Number.isFinite(min) || min <= 0) { jr('minimum de mise illisible : rien n’a été misé', 'error'); return WMX.toast('Minimum de mise illisible : rien n’a été misé.', 6000); }
       if (opts.cap && min > opts.cap) { // plafond de la mise automatique dépassé : on s'arrête
         delete S.auto[a.id]; saveAuto();
+        jr(`le minimum (${fmt(min)} W) dépasse le plafond de ${fmt(opts.cap)} W : règle arrêtée`, 'warn');
         alertUser('Mise automatique arrêtée', `« ${cardTitle(a)} » : le minimum (${fmt(min)} W) dépasse votre plafond de ${fmt(opts.cap)} W.`, `${a.id}:cap`);
         return;
       }
+      if (opts.auto) jr(`mise de ${fmt(min)} W déclenchée (il reste ${Math.max(0, Math.round(msLeft(a) / 1000))} s${preloaded ? '' : ', page chargée à la demande en ' + Math.round((Date.now() - t0) / 1000) + ' s'})`);
       // Dernier contrôle, sur l'état RÉEL de l'enchère (pas sur la liste, parfois en retard) : jamais de surenchère sur soi-même.
       const live = await liveState(a.id);
       if (live && live.status && live.status !== 'active') return opts.auto ? undefined : WMX.toast('Cette enchère est terminée.', 5000);

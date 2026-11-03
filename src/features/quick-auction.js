@@ -184,10 +184,14 @@
     if (res.gone) { WMX.releaseCardSheets?.('work'); await sleep(1500); res = await attempt(); }
     else if (!res.ok && !res.fatal) { await sleep(3000); res = await attempt(); } // un nouvel essai (le cadre est remis sur la collection)
     if (res.blocked) { // le jeu refuse (403/429) : insister prolongerait le blocage ; tout se met en pause (prix compris)
-      WMX.gameBlockedUntil = Date.now() + BLOCK_PAUSE;
+      // Le jeu dit lui-même que l'automatisation n'est pas autorisée (« Trop de requêtes automatisées… voir le règlement ») : on s'arrête longtemps.
+      const refusedAutomation = /automatis|règlement/i.test(res.error || '');
+      const pause = refusedAutomation ? 6 * 3600000 : BLOCK_PAUSE;
+      if (refusedAutomation) WMX.toast?.('Le jeu refuse les mises en vente automatiques (« trop de requêtes automatisées »). L’assistant de vente est mis en pause 6 h : insister risque votre compte.', 15000);
+      WMX.gameBlockedUntil = Date.now() + pause;
       WMX.store.set('gameBlockedUntil', WMX.gameBlockedUntil); // partagé entre les onglets et gardé après un rechargement de la page
       WMX.releaseCardSheets?.('work');
-      return { error: `${res.error} : pause de ${BLOCK_PAUSE / 60000} min`, blocked: true };
+      return { error: `${res.error} : pause de ${pause >= 3600000 ? pause / 3600000 + ' h' : pause / 60000 + ' min'}`, blocked: true };
     }
     if (!res.ok) return { error: res.error, gone: !!res.gone };
     // Le serveur du jeu peut mettre quelques secondes à enregistrer l'enchère : on vérifie jusqu'à 6 fois avant de conclure à un échec.
