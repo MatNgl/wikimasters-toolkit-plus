@@ -12,6 +12,7 @@
   const { el, sleep } = WMX.dom;
   const H = WMX.logic.HOUR;
   const EVERY = 45000;
+  const PAUSE = 3 * 60000; // pause après une mise en vente que le jeu n'a pas enregistrée
   const S = { skip: {}, log: {}, fails: {}, leader: !navigator.locks?.request, busy: false, wanted: false, purged: new Set(), release: null, shared: null, painters: new Set() };
   const on = () => !!WMX.settings?.autoSell;
   const tags = () => String(WMX.settings?.autoSellTags || '').split(',').map((t) => t.trim()).filter(Boolean);
@@ -41,7 +42,7 @@
     const st = S.shared;
     if (!st || Date.now() - st.t > 4 * 60000) return { text: 'en attente d’un onglet actif… (gardez une page du jeu ouverte)', cls: 'wait' };
     const head = `${st.active ?? 0}/${st.target} en vente${st.queued ? ` · ${st.queued} en file` : ''}`;
-    return { text: `${head} · ${st.reason}`, cls: st.state === 'listed' ? 'go' : st.state === 'nothing' || st.state === 'no-inventory' ? 'warn' : 'ok' };
+    return { text: `${head} · ${st.reason}`, cls: st.state === 'listed' ? 'go' : st.state === 'nothing' || st.state === 'no-inventory' || st.state === 'paused' ? 'warn' : 'ok' };
   }
   const WAIT_HELP = 'Aucune page du jeu n’a lancé de passe depuis plus de 4 minutes. L’assistant tourne dans une page ouverte de wiki-masters.com : gardez-en une ouverte (n’importe laquelle). Si vous venez d’activer l’assistant ou de mettre l’extension à jour, actualisez la page (F5) : la première passe a lieu environ 20 secondes après le chargement. Une page en arrière-plan ou « en veille » (économiseur de mémoire de Chrome) ne travaille pas : affichez-la.';
   function paintAll() { S.painters.forEach((p) => { try { p(); } catch (_) { /* élément retiré */ } }); }
@@ -62,6 +63,7 @@
       const items = WMX.inventory.items(); // la liste en cache suffit : l'inventaire se recharge parfois pendant des minutes (jeu lent)
       if (!items.length) return done('no-inventory', WMX.inventory.isLoading() ? 'chargement de la collection en cours, reprise à la prochaine passe' : 'collection indisponible pour le moment, nouvelle tentative à la prochaine passe');
       if (WMX.quick.isRunning()) return done('queue-busy', 'file d’attente occupée, reprise à la fin', { queued: WMX.quick.queued() });
+      if (S.pauseUntil > now) return done('paused', `le jeu n’a pas enregistré la dernière mise en vente : nouvel essai à ${fmtAt(S.pauseUntil)} (page rechargée)`);
       await WMX.quick.refresh();
       const active = WMX.quick.count();
       const free = Math.min(st.target - active, WMX.quick.max() - active);
@@ -110,6 +112,7 @@
   async function runNow() {
     if (!on()) return WMX.toast?.('L’assistant de vente est désactivé : activez-le dans les Paramètres.', 5000);
     ensureLock();
+    S.pauseUntil = 0; // un lancement demandé à la main passe outre la pause
     if (S.leader) { await tick(); return WMX.toast?.(`Assistant de vente : ${line().text}`, 5000); }
     await WMX.store.set('autoSellForce', Date.now()); // l'onglet qui pilote l'assistant lance une passe
     WMX.toast?.('Demande envoyée à l’onglet qui pilote l’assistant…', 4000);
@@ -117,7 +120,7 @@
     return undefined;
   }
   async function resetSkips() {
-    S.skip = {}; S.log = {};
+    S.skip = {}; S.log = {}; S.pauseUntil = 0;
     await WMX.store.set('autoSellSkip', {}); await WMX.store.set('autoSellLog', {});
     WMX.toast?.('Écarts et compteurs journaliers remis à zéro : toutes les cartes étiquetées redeviennent éligibles.', 5000);
     if (S.leader) tick();
@@ -191,13 +194,14 @@
         if (c.wmxSettings?.newValue) { Object.assign(WMX.settings, c.wmxSettings.newValue); window.dispatchEvent(new CustomEvent('wmx:settings')); }
         if (c.autoSellStatus) { S.shared = c.autoSellStatus.newValue || null; paintAll(); }
         if (c.autoSellSkip) S.skip = c.autoSellSkip.newValue || {};
-        if (c.autoSellForce && S.leader && on()) tick();
+        if (c.autoSellForce && S.leader && on()) { S.pauseUntil = 0; tick(); }
       });
       window.addEventListener('wmx:settings', () => { ensureLock(); paintAll(); });
       WMX.quick.onResult((op, res) => {
         if (op.type === 'cancel') skipCard(op.item.card_id, 12 * H); // vente annulée par vous : l'assistant ne la relance pas
         if (op.type !== 'launch') return;
         if (res.ok) { delete S.fails[op.item.card_id]; return; }
+        if (res.unconfirmed) { S.pauseUntil = Date.now() + PAUSE; return; } // le jeu n'a rien enregistré : ce n'est pas la faute de la carte (pas d'écart), on réessaie après une pause
         if (res.gone) { skipCard(op.item.card_id, 24 * H); WMX.journal?.add('Assistant de vente', op.item.title + ' introuvable dans la collection : écartée 24 h', 'warn'); return; } // vendue entre-temps
         if (res.capped) { skipCard(op.item.card_id, 24 * H); return; } // trop chère pour l'assistant : on n'y revient pas avant demain
         if (res.skipped || res.limit) return;

@@ -49,7 +49,7 @@
       const u = new URL('/api/marketplace', location.origin);
       u.searchParams.set('page', '1'); u.searchParams.set('limit', '50'); u.searchParams.set('sort', 'recent'); u.searchParams.set('mine', '1');
       const res = await fetch(u);
-      if (!res.ok) return;
+      if (!res.ok) return false;
       const j = await res.json();
       S.max = j.maxConcurrentAuctions || 10;
       S.selling = new Map((j.selling || []).filter((a) => a.status === 'active').map((a) => [a.card_id, a]));
@@ -59,7 +59,8 @@
       for (const a of [...(j.selling || []), ...(j.history || [])]) if (typeof a.owned === 'boolean') owned.set(a.card_id, owned.get(a.card_id) || a.owned);
       S.notOwned = new Set([...owned].filter(([, o]) => !o).map(([id]) => id));
       notify();
-    } catch (_) { /* réseau : on garde l'état précédent */ }
+      return true;
+    } catch (_) { return false; /* réseau : on garde l'état précédent */ }
   }
 
   function setNumber(w, input, v) {
@@ -101,7 +102,14 @@
       if (Number(input.value) !== price) return { error: 'le prix saisi n’a pas été pris en compte' };
       launch.click();
       const closed = await waitFor(() => !/Lancer l.enchère/i.test(d.body.innerText), 9000, 150);
-      return closed ? { ok: true } : { error: 'le jeu n’a pas confirmé l’enchère' };
+      if (!closed) return { error: 'le jeu n’a pas confirmé l’enchère' };
+      // Après une mise en vente réussie, le jeu ouvre la page de l'enchère créée dans le cadre : c'est le signe le plus sûr.
+      const where = () => { try { return w.location.pathname; } catch (_) { return '?'; } };
+      if (await waitFor(() => /^\/marketplace\/[0-9a-f-]{8,}/i.test(where()), 4000, 150)) return { ok: true };
+      // Formulaire refermé sans que le jeu ouvre l'enchère : on garde de quoi comprendre (page du cadre, message affiché par le jeu).
+      let msg = '';
+      try { msg = (d.querySelector('[role="alert"], [role="status"], [data-sonner-toast], [class*="toast" i]')?.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 120); } catch (_) { /* cadre libéré */ }
+      return { ok: true, where: `page du cadre ${where()}${msg ? ` · message du jeu « ${msg} »` : ''}` };
     } finally {
       WMX.sheet.closeSheet('work');
     }
@@ -163,15 +171,19 @@
       try { return await driveForm(item, price, c.dur); } catch (e) { console.warn('[WMX] enchère', item.title, e); return { error: `${e?.name || 'Erreur'} : ${e?.message || e}` }; }
     };
     let res = await attempt();
-    if (!res.ok && !res.fatal) { await sleep(3000); res = await attempt(); } // un nouvel essai (le cadre est remis sur la collection)
+    // « Carte introuvable » peut venir d'un cadre resté ouvert trop longtemps : un nouvel essai avec un cadre neuf avant de conclure qu'elle a disparu.
+    if (res.gone) { WMX.releaseCardSheets?.('work'); await sleep(1500); res = await attempt(); }
+    else if (!res.ok && !res.fatal) { await sleep(3000); res = await attempt(); } // un nouvel essai (le cadre est remis sur la collection)
     if (!res.ok) return { error: res.error, gone: !!res.gone };
     // Le serveur du jeu peut mettre quelques secondes à enregistrer l'enchère : on vérifie jusqu'à 6 fois avant de conclure à un échec.
+    let read = false; // « Mes ventes » a-t-elle pu être lue au moins une fois ?
     for (let t = 0; t < 6; t++) {
       await sleep(t ? 2500 : 600);
-      await refresh();
+      if (await refresh()) read = true;
       if (S.selling.has(item.card_id)) return { ok: true, price };
     }
-    return { error: 'enchère non confirmée par le jeu (vérifiez « Mes ventes »)' };
+    WMX.releaseCardSheets?.('work'); // le prochain essai repart d'un cadre neuf (une session de cadre périmée ferait échouer toutes les suivantes)
+    return { unconfirmed: true, error: read ? `enchère non confirmée par le jeu (vérifiez « Mes ventes »)${res.where ? ` — ${res.where}` : ''}` : 'impossible de relire « Mes ventes » : le jeu ne répond pas' };
   }
 
   async function doCancel(item) {
@@ -315,6 +327,7 @@
     if (S.running) return;
     S.running = true;
     notify();
+    let unconfirmed = 0; // mises en vente de suite que le jeu n'a pas enregistrées
     try {
       while (S.queue.length) {
         const op = S.queue[0];
@@ -343,6 +356,16 @@
           S.batch.failed.push(`${rest} carte${rest > 1 ? 's' : ''} non lancée${rest > 1 ? 's' : ''} (limite de ${S.max} enchères)`);
           S.batch.total = S.batch.done + S.queue.length;
         } else if (res.error) S.batch.failed.push(`${op.item.title} : ${res.error}`);
+        unconfirmed = res.unconfirmed ? unconfirmed + 1 : 0;
+        if (unconfirmed >= 2) { // le jeu n'enregistre rien pour l'instant : inutile d'enchaîner les autres cartes (17 s chacune), elles seront reprises plus tard
+          const rest = S.queue.filter((o) => o.type === 'launch').length;
+          if (rest) {
+            S.queue = S.queue.filter((o) => o.type !== 'launch');
+            S.batch.failed.push(`${rest} autre${rest > 1 ? 's' : ''} carte${rest > 1 ? 's' : ''} non tentée${rest > 1 ? 's' : ''} (le jeu n’enregistre pas les mises en vente pour l’instant)`);
+            S.batch.total = S.batch.done + S.queue.length;
+            WMX.journal?.add('File', `${rest} mise${rest > 1 ? 's' : ''} en vente abandonnée${rest > 1 ? 's' : ''} : le jeu n’a pas enregistré les deux précédentes, reprise plus tard`, 'warn');
+          }
+        }
         persist(); updateChip(); notify();
       }
       const b = S.batch;
