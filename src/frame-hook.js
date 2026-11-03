@@ -11,8 +11,9 @@
   const note = (line) => {
     log.push(line);
     if (log.length > 4) log.shift();
-    try { document.documentElement.dataset.wmxNet = log.join(' ; '); } catch (_) { /* document pas encore prêt */ }
+    note.flush();
   };
+  note.flush = () => { try { document.documentElement.dataset.wmxNet = log.join(' ; '); } catch (_) { /* document pas encore prêt */ } };
   // L'extension remet le relevé à zéro avant chaque mise en vente : sans cela, les réponses des cartes précédentes y resteraient.
   document.addEventListener('wmx-net-reset', () => { log.length = 0; try { delete document.documentElement.dataset.wmxNet; } catch (_) { /* document pas prêt */ } });
   const realFetch = window.fetch;
@@ -22,7 +23,20 @@
     let path = '';
     try { path = new URL(typeof input === 'string' ? input : input.url, location.href).pathname; } catch (_) { /* adresse illisible */ }
     return realFetch.apply(this, arguments).then(
-      (res) => { note(`${method} ${path} → ${res.status}`); return res; },
+      (res) => {
+        note(`${method} ${path} → ${res.status}`);
+        if (!res.ok) { // un refus : on garde de quoi savoir QUI refuse (le jeu, ou un pare-feu devant lui) et pourquoi
+          const mine = log[log.length - 1];
+          const h = (n) => res.headers.get(n);
+          const meta = [h('server') && `serveur ${h('server')}`, h('cf-mitigated') && `cf-mitigated ${h('cf-mitigated')}`, h('retry-after') && `retry-after ${h('retry-after')}`].filter(Boolean).join(', ');
+          res.clone().text().then((t) => {
+            const body = String(t).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100);
+            const i = log.indexOf(mine);
+            if (i >= 0) { log[i] += ` [${meta}${meta && body ? ' · ' : ''}${body ? `« ${body} »` : ''}]`; note.flush(); }
+          }).catch(() => {});
+        }
+        return res;
+      },
       (err) => { note(`${method} ${path} → réseau (${(err && err.message) || err})`); throw err; });
   };
 })();

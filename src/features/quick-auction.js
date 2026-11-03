@@ -108,12 +108,12 @@
       try { d.dispatchEvent(new Event('wmx-net-reset')); } catch (_) { /* cadre libéré */ }
       launch.click();
       const closed = await waitFor(() => !/Lancer l.enchère/i.test(d.body.innerText) || refused(), 9000, 150);
-      if (refused()) return blocked();
+      if (refused()) { await sleep(600); return blocked(); } // le temps de lire la réponse du serveur (message, en-têtes)
       if (!closed) return { error: 'le jeu n’a pas confirmé l’enchère' };
       // Après une mise en vente réussie, le jeu ouvre la page de l'enchère créée dans le cadre : c'est le signe le plus sûr.
       const where = () => { try { return w.location.pathname; } catch (_) { return '?'; } };
       const navigated = await waitFor(() => (/^\/marketplace\/[0-9a-f-]{8,}/i.test(where()) ? 'nav' : refused() ? 'refused' : ''), 4000, 150);
-      if (navigated === 'refused') return blocked();
+      if (navigated === 'refused') { await sleep(600); return blocked(); }
       if (navigated) return { ok: true, where: net() ? `réponse du jeu : ${net()}` : '' };
       // Formulaire refermé sans que le jeu ouvre l'enchère : on garde de quoi comprendre (page du cadre, requête du jeu, message affiché).
       let msg = '';

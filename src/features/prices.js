@@ -51,7 +51,15 @@
     try {
       const res = await fetch(u, { signal: ctl.signal });
       // Le jeu freine par rafales : 429, mais aussi 403 sur ce point d'accès. On attend puis on réessaie.
-      if (res.status === 429 || res.status === 403) return { limited: true, status: res.status, retryAfter: Number(res.headers.get('retry-after')) || 0 };
+      if (res.status === 429 || res.status === 403) {
+        // Qui refuse (le jeu ou un pare-feu devant lui) et pourquoi : serveur, message — gardé pour le journal.
+        let who = '';
+        try {
+          const body = (await res.clone().text()).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100);
+          who = [res.headers.get('server') && `serveur ${res.headers.get('server')}`, res.headers.get('cf-mitigated') && `cf-mitigated ${res.headers.get('cf-mitigated')}`, body && `« ${body} »`].filter(Boolean).join(' · ');
+        } catch (_) { /* corps illisible */ }
+        return { limited: true, status: res.status, retryAfter: Number(res.headers.get('retry-after')) || 0, who };
+      }
       if (!res.ok) return { error: res.status };
       const j = await res.json();
       return { summary: j.summary || {} };
@@ -74,7 +82,7 @@
       lat = lat ? Math.round(lat * 0.7 + (Date.now() - t0) * 0.3) : Date.now() - t0;
       if (r.limited) {
         sched.blocks += 1;
-        if (sched.blocks === 1) WMX.journal?.add('Prix', `le jeu limite les requêtes (erreur ${r.status || 429}) : pause avant de reprendre`, 'warn');
+        if (sched.blocks === 1) WMX.journal?.add('Prix', `le jeu limite les requêtes (erreur ${r.status || 429}${r.who ? ` · ${r.who}` : ''}) : pause avant de reprendre`, 'warn');
         item.tries += 1;
         gap = L.nextGap(gap, true, BASE_GAP);
         lastStatus = r.status || 429;
