@@ -63,7 +63,8 @@
       const items = WMX.inventory.items(); // la liste en cache suffit : l'inventaire se recharge parfois pendant des minutes (jeu lent)
       if (!items.length) return done('no-inventory', WMX.inventory.isLoading() ? 'chargement de la collection en cours, reprise à la prochaine passe' : 'collection indisponible pour le moment, nouvelle tentative à la prochaine passe');
       if (WMX.quick.isRunning()) return done('queue-busy', 'file d’attente occupée, reprise à la fin', { queued: WMX.quick.queued() });
-      if (S.pauseUntil > now) return done('paused', S.blockedPause ? `le jeu bloque les requêtes (erreur 403) : l’assistant le laisse tranquille jusqu’à ${fmtAt(S.pauseUntil)}` : `le jeu n’a pas enregistré la dernière mise en vente : nouvel essai à ${fmtAt(S.pauseUntil)} (page rechargée)`);
+      if ((WMX.gameBlockedUntil || 0) > now) return done('paused', `le jeu bloque les requêtes (erreur 403) : l’assistant le laisse tranquille jusqu’à ${fmtAt(WMX.gameBlockedUntil)}`);
+      if (S.pauseUntil > now) return done('paused', `le jeu n’a pas enregistré la dernière mise en vente : nouvel essai à ${fmtAt(S.pauseUntil)} (page rechargée)`);
       await WMX.quick.refresh();
       const active = WMX.quick.count();
       const free = Math.min(st.target - active, WMX.quick.max() - active);
@@ -111,6 +112,12 @@
   /** « Lancer maintenant » : ce onglet s'il pilote l'assistant, sinon on le demande à l'onglet qui le pilote. */
   async function runNow() {
     if (!on()) return WMX.toast?.('L’assistant de vente est désactivé : activez-le dans les Paramètres.', 5000);
+    const blockedUntil = WMX.gameBlockedUntil || 0;
+    if (blockedUntil > Date.now()) { // insister pendant un blocage risque de le prolonger : on demande confirmation
+      if (!window.confirm(`Le jeu bloque les requêtes (erreur 403) : l’assistant attend jusqu’à ${fmtAt(blockedUntil)}. Insister peut prolonger le blocage. Lancer quand même ?`)) return undefined;
+      WMX.gameBlockedUntil = 0;
+      await WMX.store.set('gameBlockedUntil', 0);
+    }
     ensureLock();
     S.pauseUntil = 0; // un lancement demandé à la main passe outre la pause
     if (S.leader) { await tick(); return WMX.toast?.(`Assistant de vente : ${line().text}`, 5000); }
@@ -181,6 +188,7 @@
     name: 'auto-sell',
     match: /./,
     async init() {
+      WMX.gameBlockedUntil = await WMX.store.get('gameBlockedUntil', 0); // blocage du jeu en cours (403) : survit au rechargement de la page
       S.skip = await WMX.store.get('autoSellSkip', {});
       S.log = await WMX.store.get('autoSellLog', {});
       S.shared = await WMX.store.get('autoSellStatus', null);
@@ -190,6 +198,7 @@
         if (c.wmxSettings?.newValue) { Object.assign(WMX.settings, c.wmxSettings.newValue); window.dispatchEvent(new CustomEvent('wmx:settings')); }
         if (c.autoSellStatus) { S.shared = c.autoSellStatus.newValue || null; paintAll(); }
         if (c.autoSellSkip) S.skip = c.autoSellSkip.newValue || {};
+        if (c.gameBlockedUntil) { WMX.gameBlockedUntil = c.gameBlockedUntil.newValue || 0; paintAll(); }
         if (c.autoSellForce && S.leader && on()) { S.pauseUntil = 0; tick(); }
       });
       window.addEventListener('wmx:settings', () => { ensureLock(); paintAll(); });
@@ -197,8 +206,8 @@
         if (op.type === 'cancel') skipCard(op.item.card_id, 12 * H); // vente annulée par vous : l'assistant ne la relance pas
         if (op.type !== 'launch') return;
         if (res.ok) { delete S.fails[op.item.card_id]; return; }
-        if (res.blocked) { S.pauseUntil = Date.now() + 10 * 60000; S.blockedPause = true; return; } // le jeu bloque les requêtes (403) : longue pause, la carte n'y est pour rien
-        if (res.unconfirmed) { S.blockedPause = false; S.pauseUntil = Date.now() + PAUSE; return; } // le jeu n'a rien enregistré : ce n'est pas la faute de la carte (pas d'écart), on réessaie après une pause
+        if (res.blocked) return; // le jeu bloque les requêtes (403) : longue pause (WMX.gameBlockedUntil, posée par la file), la carte n'y est pour rien
+        if (res.unconfirmed) { S.pauseUntil = Date.now() + PAUSE; return; } // le jeu n'a rien enregistré : ce n'est pas la faute de la carte (pas d'écart), on réessaie après une pause
         if (res.gone) { skipCard(op.item.card_id, 24 * H); WMX.journal?.add('Assistant de vente', op.item.title + ' introuvable dans la collection : écartée 24 h', 'warn'); return; } // vendue entre-temps
         if (res.capped) { skipCard(op.item.card_id, 24 * H); return; } // trop chère pour l'assistant : on n'y revient pas avant demain
         if (res.skipped || res.limit) return;

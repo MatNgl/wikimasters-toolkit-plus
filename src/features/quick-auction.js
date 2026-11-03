@@ -185,6 +185,7 @@
     else if (!res.ok && !res.fatal) { await sleep(3000); res = await attempt(); } // un nouvel essai (le cadre est remis sur la collection)
     if (res.blocked) { // le jeu refuse (403/429) : insister prolongerait le blocage ; tout se met en pause (prix compris)
       WMX.gameBlockedUntil = Date.now() + BLOCK_PAUSE;
+      WMX.store.set('gameBlockedUntil', WMX.gameBlockedUntil); // partagé entre les onglets et gardé après un rechargement de la page
       WMX.releaseCardSheets?.('work');
       return { error: `${res.error} : pause de ${BLOCK_PAUSE / 60000} min`, blocked: true };
     }
