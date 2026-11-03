@@ -8,7 +8,9 @@
   const { el, sleep, waitFor } = WMX.dom;
   const LABELS = { '10min': '10 min', '30min': '30 min', '1h': '1 h', '3h': '3 h', '6h': '6 h', '12h': '12 h' };
   const MINUTES = { '10 min': 10, '30 min': 30, '1 h': 60, '3 h': 180, '6 h': 360, '12 h': 720 };
-  const BLOCK_PAUSE = 10 * 60000; // le jeu refuse la mise en vente (403/429) : on le laisse tranquille avant de réessayer
+  // Le jeu refuse la mise en vente (403/429, « trop de requêtes automatisées ») : pauses successives de 5 min, 7 min 30 puis 10 min (palier maximum)
+  // à chaque refus d'affilée, sans bloquer l'utilisateur plus qu'il ne faut ; retour au premier palier dès qu'une mise en vente passe.
+  const BLOCK_STEPS = [5 * 60000, 7.5 * 60000, 10 * 60000];
   const S = { fav: new Map(), selling: new Map(), notOwned: new Set(), max: 10, queue: [], current: null, running: false, batch: { done: 0, total: 0, ok: 0, failed: [] } };
   const listeners = new Set();
   const resultListeners = new Set(); // (op, résultat) après chaque opération de la file : l'assistant de vente en tire ses écarts
@@ -184,14 +186,15 @@
     if (res.gone) { WMX.releaseCardSheets?.('work'); await sleep(1500); res = await attempt(); }
     else if (!res.ok && !res.fatal) { await sleep(3000); res = await attempt(); } // un nouvel essai (le cadre est remis sur la collection)
     if (res.blocked) { // le jeu refuse (403/429) : insister prolongerait le blocage ; tout se met en pause (prix compris)
-      // Le jeu dit lui-même que l'automatisation n'est pas autorisée (« Trop de requêtes automatisées… voir le règlement ») : on s'arrête longtemps.
-      const refusedAutomation = /automatis|règlement/i.test(res.error || '');
-      const pause = refusedAutomation ? 6 * 3600000 : BLOCK_PAUSE;
-      if (refusedAutomation) WMX.toast?.('Le jeu refuse les mises en vente automatiques (« trop de requêtes automatisées »). L’assistant de vente est mis en pause 6 h : insister risque votre compte.', 15000);
+      // Recul progressif : 5 min, puis 7 min 30, puis 10 min tant que le jeu refuse. Le compteur repart de zéro dès qu'une mise en vente passe.
+      const n = (WMX.gameBlockN || 0) + 1;
+      const pause = BLOCK_STEPS[Math.min(n, BLOCK_STEPS.length) - 1];
+      WMX.gameBlockN = n;
+      WMX.store.set('gameBlockN', n);
       WMX.gameBlockedUntil = Date.now() + pause;
       WMX.store.set('gameBlockedUntil', WMX.gameBlockedUntil); // partagé entre les onglets et gardé après un rechargement de la page
       WMX.releaseCardSheets?.('work');
-      return { error: `${res.error} : pause de ${pause >= 3600000 ? pause / 3600000 + ' h' : pause / 60000 + ' min'}`, blocked: true };
+      return { error: `${res.error} : pause de ${Math.floor(pause / 60000)} min${pause % 60000 ? ` ${(pause % 60000) / 1000} s` : ''} (refus n° ${n})`, blocked: true };
     }
     if (!res.ok) return { error: res.error, gone: !!res.gone };
     // Le serveur du jeu peut mettre quelques secondes à enregistrer l'enchère : on vérifie jusqu'à 6 fois avant de conclure à un échec.
@@ -199,7 +202,10 @@
     for (let t = 0; t < 6; t++) {
       await sleep(t ? 2500 : 600);
       if (await refresh()) read = true;
-      if (S.selling.has(item.card_id)) return { ok: true, price };
+      if (S.selling.has(item.card_id)) {
+        if (WMX.gameBlockN) { WMX.gameBlockN = 0; WMX.store.set('gameBlockN', 0); } // le jeu accepte de nouveau : la pause repart de sa valeur de base
+        return { ok: true, price };
+      }
     }
     WMX.releaseCardSheets?.('work'); // le prochain essai repart d'un cadre neuf (une session de cadre périmée ferait échouer toutes les suivantes)
     return { unconfirmed: true, error: read ? `enchère non confirmée par le jeu (vérifiez « Mes ventes »)${res.where ? ` — ${res.where}` : ''}` : 'impossible de relire « Mes ventes » : le jeu ne répond pas' };
@@ -307,7 +313,8 @@
    */
   function updateChip() {
     let c = document.querySelector('.wmx-qchip');
-    if (!S.queue.length && !S.running) { c?.remove(); return; }
+    const bids = WMX.auctions?.queued?.() || []; // surenchères en cours / en attente (file des mises, cliquées vite dans le Marché)
+    if (!S.queue.length && !S.running && !bids.length) { c?.remove(); return; }
     if (!c) {
       c = el('div', { class: 'wmx-qchip' },
         el('div', { class: 'wmx-qbar' }, el('span', { class: 'wmx-qtext' }), el('button', { class: 'wmx-qclear', onclick: clearQueue }, 'Vider la file')),
@@ -315,8 +322,15 @@
       document.body.append(c);
     }
     const cur = S.current ? ` · ${(OP_LABEL[S.current.type] || '').toLowerCase()} : ${S.current.item.title}` : '';
-    c.querySelector('.wmx-qtext').textContent = `⚡ File ${S.batch.done}/${S.batch.total}${cur}`;
-    c.querySelector('.wmx-qrows').replaceChildren(...S.queue.map((op) => {
+    const bidText = bids.length ? `${bids.length} surenchère${bids.length > 1 ? 's' : ''}` : '';
+    c.querySelector('.wmx-qtext').textContent = S.queue.length || S.running ? `⚡ File ${S.batch.done}/${S.batch.total}${cur}${bidText ? ` · ${bidText}` : ''}` : `⚡ ${bidText}${bids[0]?.current ? ` · en cours : ${bids[0].title}` : ''}`;
+    const bidRows = bids.map((b) => el('div', { class: `wmx-qrow${b.current ? ' cur' : ''}` },
+      el('b', { style: `color:rgb(${WMX.RARITY_RGB?.[b.rarity] || '200 200 200'})` }, b.rarity || ''),
+      el('span', { class: 'wmx-qt', title: b.title }, b.title),
+      el('small', {}, `Surenchère${b.current ? ' · en cours' : ''}`),
+      b.current ? el('i', { class: 'wmx-qspin', title: 'En cours de traitement' })
+        : el('button', { class: 'wmx-qx', title: 'Retirer de la file', 'aria-label': 'Retirer de la file', onclick: () => { WMX.auctions?.removeQueued?.(b.id); updateChip(); } }, '×')));
+    c.querySelector('.wmx-qrows').replaceChildren(...bidRows, ...S.queue.map((op) => {
       const running = op === S.current;
       const r = op.item.rarity;
       return el('div', { class: `wmx-qrow${running ? ' cur' : ''}` },
@@ -329,6 +343,7 @@
   }
 
   function clearQueue() {
+    WMX.auctions?.clearQueued?.();
     S.queue = S.queue.filter((o) => o === S.current); // seul l'élément en cours de traitement ne peut pas être retiré
     S.batch.total = S.batch.done + S.queue.length;
     persist(); notify(); updateChip();
@@ -490,6 +505,8 @@
       return undefined;
     },
   };
+
+  window.addEventListener('wmx:bids', () => updateChip()); // la file des surenchères (auctions.js) change : la pastille la montre
 
   // Reprise : une file mémorisée (page rechargée en cours de route) repart toute seule.
   (async () => {

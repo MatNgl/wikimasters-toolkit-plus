@@ -230,6 +230,7 @@
     S.betting = a.id;
     renderAll();
     const jr = (text, level) => WMX.journal?.add(opts.auto ? 'Mise automatique' : 'Surenchère', `« ${cardTitle(a)} » : ${text}`, level);
+    const release = () => { if (S.betting === a.id) { S.betting = null; renderAll(); } }; // sans effet si une autre mise a déjà pris la place
     const t0 = Date.now();
     try {
       WMX.toast(`Mise sur « ${cardTitle(a)} »…`, 60000);
@@ -252,21 +253,35 @@
       const live = await liveState(a.id);
       if (live && live.status && live.status !== 'active') return opts.auto ? undefined : WMX.toast('Cette enchère est terminée.', 5000);
       if (live && D.me && live.bidder === D.me) return opts.auto ? undefined : WMX.toast('Vous menez déjà cette enchère.', 4000);
-      setNumber(input, min); // exactement le minimum proposé par le jeu
-      await sleep(250);
-      if (Number(input.value) !== min) return WMX.toast('Le montant saisi n’a pas été pris en compte : rien n’a été misé.', 6000);
+      // Le minimum peut avoir monté pendant la vérification ci-dessus (un rival vient de miser) : on relit celui de la page juste avant de saisir,
+      // sinon la mise serait inférieure au minimum et refusée.
+      let amount = Number(input.min);
+      if (!Number.isFinite(amount) || amount <= 0) amount = min;
+      if (opts.cap && amount > opts.cap) {
+        delete S.auto[a.id]; saveAuto();
+        jr(`le minimum est monté à ${fmt(amount)} W, au-dessus du plafond de ${fmt(opts.cap)} W : règle arrêtée`, 'warn');
+        alertUser('Mise automatique arrêtée', `« ${cardTitle(a)} » : le minimum (${fmt(amount)} W) dépasse votre plafond de ${fmt(opts.cap)} W.`, `${a.id}:cap`);
+        return;
+      }
+      setNumber(input, amount); // exactement le minimum proposé par le jeu
+      await sleep(200);
+      if (Number(input.value) !== amount) { jr(`le montant ${fmt(amount)} W n’a pas été pris en compte : rien n’a été misé`, 'error'); return WMX.toast('Le montant saisi n’a pas été pris en compte : rien n’a été misé.', 6000); }
       const before = Number(live?.bid) || 0;
       S.autoLast[a.id] = { bid: before, t: Date.now() };
       btn.click();
+      // Le clic est passé : l'exécuteur de mises est libéré tout de suite (la vérification qui suit peut durer plusieurs secondes et ne doit pas
+      // retarder la mise suivante, par exemple une autre enchère qui se termine au même moment).
+      await sleep(500);
+      release();
       // Le serveur du jeu peut mettre quelques secondes à enregistrer la mise : on vérifie jusqu'à 6 fois avant de conclure à un échec.
       // On regarde l'état réel de l'enchère (léger) : si on mène, c'est gagné ; si la mise a monté jusqu'à notre montant sans qu'on mène, elle est
       // passée et un autre joueur l'a déjà dépassée (ce n'est pas un échec : la règle continue de surenchérir).
       let now, l2 = null;
       for (let t = 0; t < 6; t++) {
-        await sleep(t ? 1500 : 1200);
+        await sleep(t ? 1500 : 700);
         l2 = await liveState(a.id);
         if (l2 && D.me && l2.bidder === D.me) break;
-        if (l2 && l2.bid >= min && l2.bid > before) break;
+        if (l2 && l2.bid >= amount && l2.bid > before) break;
         await refresh();
         now = D.bidding.find((x) => x.id === a.id);
         if (now && leading(now)) break;
@@ -274,18 +289,19 @@
       await refresh();
       now = D.bidding.find((x) => x.id === a.id);
       const won = !!(now && leading(now)) || !!(l2 && D.me && l2.bidder === D.me);
-      const placed = won || !!(l2 && l2.bid >= min && l2.bid > before);
+      const placed = won || !!(l2 && l2.bid >= amount && l2.bid > before);
+      const left = Math.max(0, Math.round(msLeft(a) / 1000));
+      jr(won ? `mise de ${fmt(amount)} W placée, on mène (il reste ${left} s)` : placed ? `mise de ${fmt(amount)} W placée mais déjà surenchérie (il reste ${left} s)` : `mise de ${fmt(amount)} W non confirmée (solde insuffisant, refus du jeu ou surenchère à la même seconde)`, won || placed ? 'info' : 'warn');
       WMX.toast(won
-        ? `${opts.auto ? 'Mise automatique' : 'Mise'} de ${fmt(min)} W placée sur « ${cardTitle(a)} » : vous menez.`
-        : placed ? `Mise de ${fmt(min)} W placée sur « ${cardTitle(a)} », mais déjà surenchérie.`
+        ? `${opts.auto ? 'Mise automatique' : 'Mise'} de ${fmt(amount)} W placée sur « ${cardTitle(a)} » : vous menez.`
+        : placed ? `Mise de ${fmt(amount)} W placée sur « ${cardTitle(a)} », mais déjà surenchérie.`
           : 'La mise n’est pas confirmée : solde insuffisant, ou quelqu’un a surenchéri entre-temps. Vérifiez la page de l’enchère.', 7000);
       if (opts.auto) { // 3 échecs de suite : on arrête pour ne pas boucler
         S.autoFails[a.id] = placed ? 0 : (S.autoFails[a.id] || 0) + 1;
         if (S.autoFails[a.id] >= 3) { delete S.auto[a.id]; saveAuto(); alertUser('Mise automatique arrêtée', `« ${cardTitle(a)} » : 3 mises sans effet (solde insuffisant ?).`, `${a.id}:fails`); }
       }
     } finally {
-      S.betting = null;
-      renderAll();
+      release();
     }
   }
 
@@ -494,7 +510,7 @@
         el('div', { class: 'wmx-auc-name' }, title, rarityTag(r)),
         el('span', { class: `wmx-auc-state ${lead ? 'ok' : 'ko'}` }, lead ? 'Vous menez' : 'Surenchéri'),
         timeEl(a),
-        rule ? el('span', { class: 'wmx-auc-autotag' }, WMX.logic.autoLabel(rule)) : '');
+        rule ? el('span', { class: 'wmx-auc-autotag', 'data-id': a.id }, WMX.logic.autoLabel(rule)) : '');
       side = el('div', { class: 'wmx-auc-side' },
         el('div', { class: 'wmx-auc-price' }, el('small', {}, 'Mise actuelle'), el('b', {}, `${fmt(a.current_bid || a.base_amount)} W`), avgChip(a, 'buy')),
         el('div', { class: 'wmx-auc-acts' }, autoBtn, act));
@@ -585,6 +601,18 @@
       const m = minOf(a);
       b.textContent = S.betting === a.id ? 'Mise en cours…' : leading(a) ? 'Vous menez' : (m ? `Surenchérir · ${fmt(m)} W` : 'Surenchérir');
       b.disabled = !!S.betting || leading(a) || msLeft(a) <= 0;
+    }
+    // Règle de mise automatique : le plafond en W, et pourquoi elle ne mise pas si le minimum du jeu le dépasse (le plafond vaut pour la mise PLACÉE).
+    for (const t of document.querySelectorAll('.wmx-auc-autotag[data-id]')) {
+      const a = D.bidding.find((x) => x.id === t.dataset.id);
+      const rule = a && S.auto[a.id];
+      if (!rule) continue;
+      const capW = WMX.logic.resolveCap(rule, avgOf(a));
+      const m = minOf(a);
+      const blocked = capW != null && m && m > capW && !leading(a);
+      t.textContent = `${WMX.logic.autoLabel(rule)}${capW != null ? ` (${fmt(capW)} W)` : ''}${blocked ? ` · ⛔ minimum ${fmt(m)} W au-dessus` : ''}`;
+      t.classList.toggle('warn', !!blocked);
+      t.title = 'Le plafond s’applique à la mise que l’extension placerait (le minimum demandé par le jeu), pas au prix actuel : elle ne mise jamais au-dessus.';
     }
     if (D.loaded) {
       const sig = listSig();
@@ -820,6 +848,14 @@
       return x ? 'outbid' : 'none';
     },
     busy: () => S.betting,
+    /** File des surenchères (pastille de la file d'attente) : la mise en cours, puis celles qui attendent. */
+    queued() {
+      const info = (a, current) => ({ id: a.id, title: cardTitle(a), rarity: a.card ? rarityOf(a) : '', current });
+      const cur = S.betting ? [info(D.bidding.find((x) => x.id === S.betting) || { id: S.betting }, true)] : [];
+      return [...cur, ...S.bidQueue.filter((a) => a.id !== S.betting).map((a) => info(a, false))];
+    },
+    removeQueued(id) { S.bidQueue = S.bidQueue.filter((a) => a.id !== id || a.id === S.betting); fire(); },
+    clearQueued() { S.bidQueue = S.bidQueue.filter((a) => a.id === S.betting); fire(); },
   };
 
   WMX.register({
@@ -828,14 +864,29 @@
       buildBubble();
       WMX.quick?.onChange(() => { clearTimeout(S.qT); S.qT = setTimeout(() => { if (WMX.alive()) refresh(); }, 900); });
       // Élection du « chef » : un seul onglet du jeu exécute les mises automatiques (sinon chaque onglet miserait de son côté).
-      if (navigator.locks?.request) navigator.locks.request('wmx-auto-leader', () => {
+      // L'onglet affiché prend le rôle (un onglet en arrière-plan voit ses minuteries ralenties par le navigateur : il ne tiendrait pas un délai de 15 s).
+      const takeLead = (steal) => navigator.locks.request('wmx-auto-leader', steal ? { steal: true } : {}, () => {
         S.leader = true;
         // Le rôle est rendu dès que ce script est orphelin (extension rechargée) : un onglet actualisé peut alors le reprendre.
-        return new Promise((done) => { const t = setInterval(() => { if (!WMX.alive()) { clearInterval(t); S.leader = false; done(); } }, 2000); });
-      }).catch(() => { S.leader = true; });
-      else S.leader = true;
+        return new Promise((done) => { const t = setInterval(() => { if (!WMX.alive() || !S.leader) { clearInterval(t); S.leader = false; done(); } }, 2000); });
+      }).catch((e) => { S.leader = e?.name === 'AbortError' ? false : true; }); // AbortError : un autre onglet, affiché, a pris le rôle
+      if (navigator.locks?.request) {
+        takeLead(false);
+        const claim = () => { if (!document.hidden && !S.leader && WMX.alive() && Object.keys(S.auto).length) takeLead(true); };
+        document.addEventListener('visibilitychange', claim);
+        setTimeout(claim, 4000); // onglet ouvert directement au premier plan alors qu'un onglet masqué tient déjà le rôle
+      } else S.leader = true;
       WMX.store.get('autoBids', {}).then((r) => { S.auto = r || {}; });
+      // Les règles créées ou modifiées dans un autre onglet arrivent ici : sans cela, l'onglet « chef » ignorerait les règles créées ailleurs.
+      WMX.onStorage((c) => {
+        if (!c.autoBids) return;
+        const next = c.autoBids.newValue || {};
+        if (JSON.stringify(next) === JSON.stringify(S.auto)) return;
+        S.auto = next; renderAll(); schedulePoll();
+      });
       setInterval(() => { if (WMX.alive()) tick(); }, 1000);
+      // Pas de requête ici : on décide seulement, plus souvent, avec les données déjà chargées (réaction plus rapide dans la dernière minute).
+      setInterval(() => { if (WMX.alive() && D.loaded && Object.keys(S.auto).length) runAuto(); }, 400);
       // Premier chargement : réessayé de plus en plus espacé tant qu'il échoue (jeu lent ou erreur passagère), au lieu d'attendre la minute suivante.
       setTimeout(async () => {
         for (let n = 0; n < 15 && !D.loaded && WMX.alive(); n++) { await refresh(); if (!D.loaded) await sleep(Math.min(30000, 4000 + n * 3000)); }

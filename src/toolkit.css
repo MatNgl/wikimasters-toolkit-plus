@@ -643,3 +643,6 @@ html.wmx-opening .wmx-cover { display: block; }
 /* ===== 0.22.4 : le panneau des enchères s'attrape aussi par sa ligne du bas (double-clic : au milieu de la fenêtre) ===== */
 .wmx-bubble-panel > .wmx-as-line { cursor: grab; user-select: none; }
 .wmx-bubble-panel.dragging > .wmx-as-line { cursor: grabbing; }
+
+/* ===== 0.22.10 : règle de mise automatique : plafond en W, et alerte quand le minimum du jeu le dépasse ===== */
+.wmx-auc-autotag.warn { color: #fbbf24; }

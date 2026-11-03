@@ -189,6 +189,7 @@
     match: /./,
     async init() {
       WMX.gameBlockedUntil = await WMX.store.get('gameBlockedUntil', 0); // blocage du jeu en cours (403) : survit au rechargement de la page
+      WMX.gameBlockN = await WMX.store.get('gameBlockN', 0);              // refus d'affilée (la pause grandit à chaque refus)
       S.skip = await WMX.store.get('autoSellSkip', {});
       S.log = await WMX.store.get('autoSellLog', {});
       S.shared = await WMX.store.get('autoSellStatus', null);
