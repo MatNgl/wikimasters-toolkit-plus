@@ -144,10 +144,12 @@ test('dealVerdict : bonne affaire / correct / trop cher / inconnu', () => {
 
 test('saleVerdict : bénéfice / prix du marché / à perte', () => {
   assert.deepEqual(L.saleVerdict(120, 100, 10), { kind: 'profit', label: 'Bénéfice', pct: 20, low: false });
-  assert.equal(L.saleVerdict(105, 100, 10).kind, 'profit');
-  assert.equal(L.saleVerdict(104, 100, 10).kind, 'even');
-  assert.equal(L.saleVerdict(95, 100, 10).kind, 'even');
-  assert.equal(L.saleVerdict(94, 100, 10).kind, 'loss');
+  assert.equal(L.saleVerdict(104, 100, 10).kind, 'profit', 'au-dessus de la moyenne : bénéfice, sans zone intermédiaire');
+  assert.equal(L.saleVerdict(101, 100, 10).kind, 'profit');
+  assert.equal(L.saleVerdict(100, 100, 10).kind, 'even', 'pile sur la moyenne');
+  assert.equal(L.saleVerdict(96, 100, 10).kind, 'loss', 'en dessous de la moyenne : à perte');
+  assert.equal(L.saleVerdict(96, 100, 10).label, 'À perte');
+  assert.notEqual(L.dealVerdict(96, 100, 10).label, 'À perte', 'achat et vente n’emploient pas les mêmes mots');
   assert.equal(L.saleVerdict(60, 100, 1).low, true);
   assert.equal(L.saleVerdict(60, null, 0).kind, 'unknown');
 });

@@ -151,7 +151,8 @@
     },
     /**
      * Verdict d'une de MES ventes : le prix (mise reçue ou, à défaut, prix de départ) comparé à la moyenne du marché.
-     * ≥ 105 % : bénéfice ; entre 95 % et 105 % : prix du marché ; en dessous : vendu sous la moyenne (à perte).
+     * Au-dessus de la moyenne : bénéfice ; en dessous : à perte ; pile sur la moyenne (écart arrondi à 0 %) : prix du marché.
+     * (Pour une enchère à ACHETER, les mots sont autres : voir dealVerdict.)
      */
     saleVerdict(price, avg, count) {
       const p = Number(price);
@@ -160,8 +161,8 @@
       const ratio = p / a;
       const pct = Math.round((ratio - 1) * 100);
       const low = Number(count) < 3;
-      if (ratio >= 1.05) return { kind: 'profit', label: 'Bénéfice', pct, low };
-      if (ratio >= 0.95) return { kind: 'even', label: 'Prix du marché', pct, low };
+      if (pct > 0) return { kind: 'profit', label: 'Bénéfice', pct, low };
+      if (pct === 0) return { kind: 'even', label: 'Prix du marché', pct, low };
       return { kind: 'loss', label: 'À perte', pct, low };
     },
     /**
