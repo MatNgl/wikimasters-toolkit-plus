@@ -96,7 +96,7 @@
   async function paintDetail() {
     if (!isDetail()) return;
     const id = location.pathname.split('/').filter(Boolean)[1];
-    const label = [...document.querySelectorAll('span, div')].find((e) => e.children.length === 0 && !e.closest('[class*="wmx-"]') && /^(mise actuelle|prix de départ|mise de départ)$/i.test(e.textContent.trim()));
+    const label = [...document.querySelectorAll('span, div')].find((e) => e.children.length === 0 && !e.closest('.wmx-bubble, .wmx-panel, .wmx-dk, .wmx-overlay, .wmx-modal-backdrop, .wmx-toast, .wmx-qchip') && /^(mise actuelle|prix de départ|mise de départ)$/i.test(e.textContent.trim()));
     const row = label?.parentElement;
     if (!row) return; // page pas encore affichée : repris au prochain passage
     let info = byAuction.get(id);

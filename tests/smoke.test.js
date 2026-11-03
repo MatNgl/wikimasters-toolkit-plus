@@ -813,6 +813,7 @@ test('page d\'une enchère : moyenne du marché et verdict sous « Mise actuelle
   const auctionJson = { auction: { id, seller_id: 'other', card_id: 'c-x', base_amount: 10, current_bid: 33, status: 'active', snapshot_rarity: 'L', end_at: inMin(10), card: { wikipedia_title: 'Carte X', rarity: 'L' } } };
   const env = createEnv({ fetchImpl: async () => json(auctionJson) });
   const { w, WMX } = env;
+  w.document.documentElement.classList.add('wmx-hide-desc', 'wmx-hide-stats'); // la balise <html> porte des classes de l'extension (réglages d'affichage) : ne doit rien empêcher
   w.history.pushState({}, '', '/marketplace/' + id);
   w.document.body.innerHTML = '<main><div class="box"><div class="flex"><span>Mise actuelle</span><span id="v">33</span></div><div>Meneur : X</div></div></main>';
   WMX.prices.get = () => ({ avg: 100, count: 5, last: 98 });
