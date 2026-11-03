@@ -105,11 +105,14 @@
       if (!closed) return { error: 'le jeu n’a pas confirmé l’enchère' };
       // Après une mise en vente réussie, le jeu ouvre la page de l'enchère créée dans le cadre : c'est le signe le plus sûr.
       const where = () => { try { return w.location.pathname; } catch (_) { return '?'; } };
-      if (await waitFor(() => /^\/marketplace\/[0-9a-f-]{8,}/i.test(where()), 4000, 150)) return { ok: true };
-      // Formulaire refermé sans que le jeu ouvre l'enchère : on garde de quoi comprendre (page du cadre, message affiché par le jeu).
+      // Réponse du serveur aux requêtes d'écriture du cadre (notée par frame-hook.js) : dit si le jeu a refusé la création.
+      const net = () => { try { return d.documentElement.dataset.wmxNet || ''; } catch (_) { return ''; } };
+      const navigated = await waitFor(() => /^\/marketplace\/[0-9a-f-]{8,}/i.test(where()), 4000, 150);
+      if (navigated) return { ok: true, where: net() ? `réponse du jeu : ${net()}` : '' };
+      // Formulaire refermé sans que le jeu ouvre l'enchère : on garde de quoi comprendre (page du cadre, requête du jeu, message affiché).
       let msg = '';
       try { msg = (d.querySelector('[role="alert"], [role="status"], [data-sonner-toast], [class*="toast" i]')?.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 120); } catch (_) { /* cadre libéré */ }
-      return { ok: true, where: `page du cadre ${where()}${msg ? ` · message du jeu « ${msg} »` : ''}` };
+      return { ok: true, where: `page du cadre ${where()}${net() ? ` · réponse du jeu : ${net()}` : ' · aucune requête d’écriture vue'}${msg ? ` · message du jeu « ${msg} »` : ''}` };
     } finally {
       WMX.sheet.closeSheet('work');
     }
