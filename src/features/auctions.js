@@ -618,7 +618,11 @@
       S.bubbleBody, WMX.autoSell?.footer());
     S.bubblePanel = panel;
     enableDrag(S.bubbleHead);
+    const foot = panel.querySelector('.wmx-as-line');
+    if (foot) enableDrag(foot, centerPanel); // on peut aussi attraper le panneau par le bas ; double-clic : au milieu de la fenêtre
     addGrips(panel);
+    window.addEventListener('resize', () => { applyPos(); keepReachable(); });
+    new ResizeObserver(() => keepReachable()).observe(panel); // le contenu qui grandit (ventes chargées) ne doit pas pousser l'en-tête hors de l'écran
     WMX.store.get('auctionBubbleSize').then((s) => { if (s && typeof s === 'object') { S.size = s; applySize(); } }).catch(() => {});
     WMX.store.get('auctionBubblePos').then((p) => { if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) S.pos = p; }).catch(() => {});
     S.bubble = el('div', { class: 'wmx-bubble', hidden: '' }, panel, S.pill);
@@ -655,6 +659,7 @@
       void p.offsetWidth; // force le point de départ de la transition
       p.classList.add('open');
       S.pill.classList.add('on');
+      setTimeout(keepReachable, 400); // après l'animation d'ouverture : l'en-tête doit être à l'écran
       refresh().then(prepareFrames); prepareFrames();
     } else {
       aimAtPill();
@@ -677,7 +682,23 @@
     p.classList.add('moved');
     p.style.left = `${c.x}px`; p.style.top = `${c.y}px`;
   }
-  function enableDrag(handle) {
+  /** Remet le panneau au milieu de la fenêtre (hauteur ramenée à la fenêtre si besoin) : sert quand l'en-tête est sorti de l'écran. */
+  function centerPanel() {
+    const p = S.bubblePanel;
+    if (!p || p.hidden) return;
+    if (p.offsetHeight > innerHeight - 16) { sizes().h = innerHeight - 16; applySize(); WMX.store.set('auctionBubbleSize', S.size); }
+    S.pos = clampPos((innerWidth - p.offsetWidth) / 2, (innerHeight - p.offsetHeight) / 2, p);
+    applyPos();
+    WMX.store.set('auctionBubblePos', S.pos);
+  }
+  /** En-tête sorti de l'écran (par le haut ou les côtés) : le panneau ne pourrait plus être attrapé, on le recentre. */
+  function keepReachable() {
+    const p = S.bubblePanel;
+    if (!p || p.hidden || !S.bubbleOpen) return;
+    const r = p.getBoundingClientRect();
+    if (r.width && (r.top < 0 || r.left < 0 || r.right > innerWidth + 1)) centerPanel();
+  }
+  function enableDrag(handle, onDoubleClick) {
     handle.addEventListener('pointerdown', (e) => {
       if (e.button !== 0 || e.target.closest('button')) return;
       const p = S.bubblePanel, r = p.getBoundingClientRect();
@@ -700,13 +721,15 @@
       handle.addEventListener('pointerup', up);
       handle.addEventListener('pointercancel', up);
     });
-    handle.addEventListener('dblclick', (e) => { // double-clic sur l'en-tête : retour à l'emplacement d'origine
+    handle.addEventListener('dblclick', (e) => {
       if (e.target.closest('button')) return;
+      if (onDoubleClick) return onDoubleClick();
+      // double-clic sur l'en-tête : retour à l'emplacement d'origine
       S.pos = null;
       WMX.store.set('auctionBubblePos', null);
       const p = S.bubblePanel; p.classList.remove('moved'); p.style.left = p.style.top = '';
+      setTimeout(keepReachable, 50);
     });
-    window.addEventListener('resize', applyPos);
   }
 
   // Taille réglable : on attrape un bord du panneau (gauche, droit, haut ou bas). La largeur est mémorisée par disposition (deux colonnes / une / vide),

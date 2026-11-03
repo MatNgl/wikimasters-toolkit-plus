@@ -639,3 +639,7 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-dk.deal, .wmx-dk.profit { background: rgb(45 212 160 / .14); border-color: rgb(45 212 160 / .5); } .wmx-dk.deal b, .wmx-dk.profit b { color: #2dd4a0; }
 .wmx-dk.fair, .wmx-dk.even { background: rgb(100 191 255 / .12); border-color: rgb(100 191 255 / .4); } .wmx-dk.fair b, .wmx-dk.even b { color: #7cc6ff; }
 .wmx-dk.high, .wmx-dk.loss { background: rgb(239 68 68 / .12); border-color: rgb(239 68 68 / .45); } .wmx-dk.high b, .wmx-dk.loss b { color: #fca5a5; }
+
+/* ===== 0.22.4 : le panneau des enchères s'attrape aussi par sa ligne du bas (double-clic : au milieu de la fenêtre) ===== */
+.wmx-bubble-panel > .wmx-as-line { cursor: grab; user-select: none; }
+.wmx-bubble-panel.dragging > .wmx-as-line { cursor: grabbing; }
