@@ -233,7 +233,7 @@
     const release = () => { if (S.betting === a.id) { S.betting = null; renderAll(); } }; // sans effet si une autre mise a déjà pris la place
     const t0 = Date.now();
     try {
-      WMX.toast(`Mise sur « ${cardTitle(a)} »…`, 60000);
+      WMX.toast(`Mise sur « ${cardTitle(a)} »…`, 60000, { key: `bid:${a.id}:go`, kind: 'info' });
       const preloaded = !!bidInput(S.frames.get(a.id) || {});
       const f = frameFor(a);
       const input = await waitFor(() => bidInput(f), 90000, 150);
@@ -268,6 +268,7 @@
       if (Number(input.value) !== amount) { jr(`le montant ${fmt(amount)} W n’a pas été pris en compte : rien n’a été misé`, 'error'); return WMX.toast('Le montant saisi n’a pas été pris en compte : rien n’a été misé.', 6000); }
       const before = Number(live?.bid) || 0;
       S.autoLast[a.id] = { bid: before, t: Date.now() };
+      try { f.contentDocument.dispatchEvent(new Event('wmx-net-reset')); } catch (_) { /* cadre libéré */ } // relevé des réponses du serveur remis à zéro (frame-hook.js)
       btn.click();
       // Le clic est passé : l'exécuteur de mises est libéré tout de suite (la vérification qui suit peut durer plusieurs secondes et ne doit pas
       // retarder la mise suivante, par exemple une autre enchère qui se termine au même moment).
@@ -291,16 +292,27 @@
       const won = !!(now && leading(now)) || !!(l2 && D.me && l2.bidder === D.me);
       const placed = won || !!(l2 && l2.bid >= amount && l2.bid > before);
       const left = Math.max(0, Math.round(msLeft(a) / 1000));
+      // Le jeu a-t-il REFUSÉ la mise (403/429, coupure) ? Alors on l'explique en rouge, au lieu d'un vague « non confirmée ».
+      let refusal = '';
+      try { const n = f.contentDocument.documentElement.dataset.wmxNet || ''; if (/→ (403|429|réseau)/.test(n)) refusal = n.split(' ; ').filter((x) => /→ (403|429|réseau)/.test(x)).pop(); } catch (_) { /* cadre libéré */ }
+      if (!placed && refusal) {
+        const why = WMX.explainRefusal(refusal);
+        jr(`le jeu a refusé la mise : ${refusal}`, 'error');
+        WMX.notify?.({ kind: 'alert', key: 'game-bid-refused', title: `Mise refusée : ${why.title.toLowerCase()}`, text: `« ${cardTitle(a)} » : ${why.text}` });
+      }
       jr(won ? `mise de ${fmt(amount)} W placée, on mène (il reste ${left} s)` : placed ? `mise de ${fmt(amount)} W placée mais déjà surenchérie (il reste ${left} s)` : `mise de ${fmt(amount)} W non confirmée (solde insuffisant, refus du jeu ou surenchère à la même seconde)`, won || placed ? 'info' : 'warn');
+      WMX.dismissNote?.(`bid:${a.id}:go`);
       WMX.toast(won
         ? `${opts.auto ? 'Mise automatique' : 'Mise'} de ${fmt(amount)} W placée sur « ${cardTitle(a)} » : vous menez.`
         : placed ? `Mise de ${fmt(amount)} W placée sur « ${cardTitle(a)} », mais déjà surenchérie.`
-          : 'La mise n’est pas confirmée : solde insuffisant, ou quelqu’un a surenchéri entre-temps. Vérifiez la page de l’enchère.', 7000);
+          : refusal ? `Mise sur « ${cardTitle(a)} » refusée par le jeu (voir l’alerte).`
+            : 'La mise n’est pas confirmée : solde insuffisant, ou quelqu’un a surenchéri entre-temps. Vérifiez la page de l’enchère.', 6000, { key: `bid:${a.id}`, kind: won ? 'ok' : 'warn' });
       if (opts.auto) { // 3 échecs de suite : on arrête pour ne pas boucler
         S.autoFails[a.id] = placed ? 0 : (S.autoFails[a.id] || 0) + 1;
         if (S.autoFails[a.id] >= 3) { delete S.auto[a.id]; saveAuto(); alertUser('Mise automatique arrêtée', `« ${cardTitle(a)} » : 3 mises sans effet (solde insuffisant ?).`, `${a.id}:fails`); }
       }
     } finally {
+      WMX.dismissNote?.(`bid:${a.id}:go`); // la notification « Mise sur… » ne reste pas si la mise s'arrête en route
       release();
     }
   }

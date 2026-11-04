@@ -646,3 +646,25 @@ html.wmx-opening .wmx-cover { display: block; }
 
 /* ===== 0.22.10 : règle de mise automatique : plafond en W, et alerte quand le minimum du jeu le dépasse ===== */
 .wmx-auc-autotag.warn { color: #fbbf24; }
+
+/* ===== 0.22.11 : notifications en bas à droite (temporaires avec anneau, alertes rouges persistantes avec croix) ===== */
+.wmx-notes { position: fixed; right: 18px; bottom: 76px; z-index: 10003; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; pointer-events: none; font-family: Outfit, system-ui, sans-serif; }
+.wmx-note { --c: #60a5fa; pointer-events: auto; display: flex; align-items: flex-start; gap: 10px; width: min(380px, calc(100vw - 36px)); padding: 10px 10px 10px 14px; border-radius: 14px; background: #0b1411f5; border: 1px solid #27493b; border-left: 4px solid var(--c); box-shadow: 0 10px 30px #000a; color: #e6efe9; font-size: 13px; line-height: 1.35; animation: wmx-note-in .22s ease; }
+.wmx-note.ok { --c: #2dd4a0; } .wmx-note.warn { --c: #fbbf24; }
+.wmx-note.alert { --c: #ef4444; background: #2a0f12f7; border-color: #ef4444aa; border-left-color: #ef4444; }
+.wmx-note.leaving { opacity: 0; transform: translateX(14px); transition: opacity .18s ease, transform .18s ease; }
+.wmx-note-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.wmx-note-body b { font-weight: 700; color: #fff; } .wmx-note.alert .wmx-note-body b { color: #fecaca; }
+.wmx-note-body span { color: #cfe0d6; } .wmx-note.alert .wmx-note-body span { color: #f5d0d0; }
+.wmx-note-act { align-self: flex-start; margin-top: 4px; padding: 5px 12px; border-radius: 999px; border: 1px solid #ef4444; background: transparent; color: #fecaca; font: 600 12px inherit; font-family: inherit; cursor: pointer; }
+.wmx-note-act:hover { background: #ef4444; color: #fff; }
+.wmx-note-side { display: flex; align-items: center; gap: 6px; flex: none; }
+.wmx-note-x { width: 22px; height: 22px; padding: 0; border-radius: 7px; border: 1px solid #ffffff20; background: transparent; color: #cbd5d0; font-size: 15px; line-height: 1; cursor: pointer; flex: none; }
+.wmx-note-x:hover { background: #ef4444; border-color: #ef4444; color: #fff; }
+.wmx-note-ring { width: 18px; height: 18px; transform: rotate(-90deg); }
+.wmx-note-ring circle { fill: none; stroke-width: 2.5; }
+.wmx-note-ring .bg { stroke: #ffffff1f; }
+.wmx-note-ring .fg { stroke: var(--c); stroke-dasharray: 100; stroke-dashoffset: 0; animation: wmx-note-ring var(--ms, 5000ms) linear forwards; }
+@keyframes wmx-note-ring { to { stroke-dashoffset: 100; } }
+@keyframes wmx-note-in { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .wmx-note { animation: none; } .wmx-note-ring .fg { animation-duration: 0.01ms; } }

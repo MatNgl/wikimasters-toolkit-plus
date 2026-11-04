@@ -194,6 +194,18 @@
       WMX.gameBlockedUntil = Date.now() + pause;
       WMX.store.set('gameBlockedUntil', WMX.gameBlockedUntil); // partagé entre les onglets et gardé après un rechargement de la page
       WMX.releaseCardSheets?.('work');
+      // Alerte rouge persistante, en clair : de quoi s'agit-il et que faire (la croix la ferme ; le bouton relance après une vérification).
+      const why = WMX.explainRefusal?.(res.error);
+      const at = new Date(WMX.gameBlockedUntil).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+      if (why) {
+        WMX.notify?.({ kind: 'alert', key: 'game-block', title: why.title, text: `${why.text} Prochain essai de l’assistant vers ${at}.`, action: {
+          label: 'C’est fait : reprendre maintenant',
+          onClick: () => {
+            WMX.gameBlockedUntil = 0; WMX.gameBlockN = 0;
+            WMX.store.set('gameBlockedUntil', 0); WMX.store.set('gameBlockN', 0);
+            WMX.autoSell?.runNow?.();
+          } } });
+      }
       return { error: `${res.error} : pause de ${Math.floor(pause / 60000)} min${pause % 60000 ? ` ${(pause % 60000) / 1000} s` : ''} (refus n° ${n})`, blocked: true };
     }
     if (!res.ok) return { error: res.error, gone: !!res.gone };
@@ -203,7 +215,11 @@
       await sleep(t ? 2500 : 600);
       if (await refresh()) read = true;
       if (S.selling.has(item.card_id)) {
-        if (WMX.gameBlockN) { WMX.gameBlockN = 0; WMX.store.set('gameBlockN', 0); } // le jeu accepte de nouveau : la pause repart de sa valeur de base
+        if (WMX.gameBlockN) { // le jeu accepte de nouveau : la pause repart de sa valeur de base
+          WMX.gameBlockN = 0; WMX.store.set('gameBlockN', 0);
+          WMX.dismissNote?.('game-block');
+          WMX.notify?.({ kind: 'ok', key: 'game-ok', text: 'Le jeu accepte de nouveau les mises en vente : l’assistant reprend.' });
+        }
         return { ok: true, price };
       }
     }

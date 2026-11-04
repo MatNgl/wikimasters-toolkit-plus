@@ -17,15 +17,87 @@
   const home = (kind) => (kind === 'work' ? '/collection#wmx-auto' : '/collection'); // le cadre d'automatisation garde sa marque #wmx-auto
   const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
 
-  function toast(text, ms = 4500) {
-    document.querySelector('.wmx-toast')?.remove();
-    clearTimeout(toastTimer);
-    if (!text) return;
-    const t = el('div', { class: 'wmx-toast' }, text);
-    document.body.append(t);
-    toastTimer = setTimeout(() => t.remove(), ms);
+  // --- Notifications : pile en bas à droite, au-dessus de la file d'attente --------------------------------------------------
+  // Temporaires (info, ok, warn) : disparaissent seules, un petit anneau se vide pour le montrer. Alertes (kind « alert », ou sticky) : rouges,
+  // elles restent jusqu'à la croix (vérification humaine demandée, limite du site…). Même clé = la notification est remplacée, pas empilée.
+  const NOTE_MAX = 5;
+  const notes = new Map(); // clé -> { node, timer }
+  let noteBox = null;
+  let noteSeq = 0;
+  function dismissNote(key) {
+    const n = notes.get(key);
+    if (!n) return;
+    clearTimeout(n.timer);
+    n.node.classList.add('leaving');
+    setTimeout(() => n.node.remove(), 180);
+    notes.delete(key);
   }
+  const ringSvg = (ms) => {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 20 20'); svg.setAttribute('class', 'wmx-note-ring'); svg.style.setProperty('--ms', `${ms}ms`);
+    svg.innerHTML = '<circle cx="10" cy="10" r="7" class="bg"/><circle cx="10" cy="10" r="7" class="fg" pathLength="100"/>';
+    return svg;
+  };
+  /** kind : info | ok | warn | alert. title : ligne en gras (facultative). action : { label, onClick } bouton dans la notification. */
+  function notify({ text, title = '', kind = 'info', ms = 5000, key = '', sticky = false, action = null }) {
+    if (!text) return undefined;
+    if (!noteBox?.isConnected) { noteBox = el('div', { class: 'wmx-notes' }); document.body.append(noteBox); }
+    key = key || `n${++noteSeq}`;
+    if (notes.has(key)) { clearTimeout(notes.get(key).timer); notes.get(key).node.remove(); notes.delete(key); }
+    const persistent = sticky || kind === 'alert';
+    const close = el('button', { class: 'wmx-note-x', title: 'Fermer', 'aria-label': 'Fermer', onclick: () => dismissNote(key) }, '×');
+    const act = action ? el('button', { class: 'wmx-note-act', onclick: () => { try { action.onClick(); } finally { dismissNote(key); } } }, action.label) : '';
+    const node = el('div', { class: `wmx-note ${kind}`, role: kind === 'alert' ? 'alert' : 'status' },
+      el('div', { class: 'wmx-note-body' }, title ? el('b', {}, title) : '', el('span', {}, text), act),
+      persistent ? close : el('div', { class: 'wmx-note-side' }, ringSvg(ms), close));
+    noteBox.append(node);
+    const entry = { node, timer: persistent ? null : setTimeout(() => dismissNote(key), ms) };
+    notes.set(key, entry);
+    // Trop de notifications : on retire les plus anciennes qui ne sont pas des alertes.
+    for (const [k, n] of notes) { if (notes.size <= NOTE_MAX) break; if (!n.node.classList.contains('alert')) dismissNote(k); }
+    return key;
+  }
+  const guessKind = (t) => (/échec|impossible|introuvable|refus|bloqu|limite|n’est pas confirmée|ne s’est pas|erreur|trop de|invalide|sans effet/i.test(t) ? 'warn'
+    : /placée|réussie|terminée?|lancée|annulée|mis à jour|copié|remis à zéro|menez/i.test(t) ? 'ok' : 'info');
+  /** Ancienne interface : WMX.toast(texte, durée en ms, { key, kind, title }). */
+  function toast(text, ms = 5000, opts = {}) { return notify({ text, ms: ms || 5000, kind: opts.kind || guessKind(String(text || '')), key: opts.key, title: opts.title }); }
   WMX.toast = toast;
+  WMX.notify = notify;
+  WMX.dismissNote = dismissNote;
+
+  /** Un refus du jeu (403/429, vérification humaine, limite d'automatisation) expliqué en clair ; `raw` = message du jeu ou réponse notée dans le cadre. */
+  WMX.explainRefusal = function explainRefusal(raw) {
+    const s = String(raw || '');
+    const said = (s.match(/«\s*([^»]{3,160}?)\s*»/) || [])[1];
+    const quote = said ? ` Le jeu dit : « ${said} »` : '';
+    if (/v[ée]rification|humain|captcha|turnstile|challenge/i.test(s)) return { title: 'Vérification humaine demandée', text: `Le jeu veut s’assurer que vous êtes une personne. Faites la vérification affichée sur la page du jeu : l’extension reprendra ensuite.${quote}` };
+    if (/automatis|trop de requêtes|règlement/i.test(s)) return { title: 'Limite du site atteinte', text: `Le jeu juge qu’il y a trop de requêtes automatisées. Évitez de cliquer en rafale : l’extension fait une pause, puis réessaie de plus en plus espacé.${quote}` };
+    return { title: 'Le jeu refuse la requête', text: `Le jeu a refusé la demande (erreur 403 ou 429). L’extension fait une pause, puis réessaie.${quote}` };
+  };
+
+  // Messages affichés par le jeu lui-même (bandeau en haut : « trop de requêtes », vérification humaine…) : on les reprend, rouges et
+  // persistants, avec ce qu'il faut faire. Seuls les éléments « notification » du jeu sont lus (jamais le texte des cartes).
+  const GAME_NOTICE = /trop de requêtes|automatis|vérification|v[ée]rifi\w* (que )?vous|captcha|turnstile|êtes (bien )?un(e)? (humain|personne)/i;
+  const NOTICE_SEL = '[role="alert"], [role="status"], [data-sonner-toast], [class*="toast" i], [aria-live]';
+  function watchGameNotices() {
+    try {
+      const seen = (n) => {
+        if (n.nodeType !== 1 || n.closest?.('.wmx-notes, .wmx-bubble, .wmx-qchip, .wmx-panel, .wmx-modal-backdrop, .wmx-sheet-frame')) return; // pas <html> : il porte des classes wmx-
+        const holder = n.matches?.(NOTICE_SEL) ? n : (n.childElementCount <= 30 ? n.querySelector?.(NOTICE_SEL) : null); // pas de parcours des gros rendus (listes de cartes)
+        const text = (holder?.textContent || '').replace(/\s+/g, ' ').trim();
+        if (!text || text.length > 400 || !GAME_NOTICE.test(text)) return;
+        const e = WMX.explainRefusal(text);
+        // Tant que le jeu affiche ce message, les fonctions automatiques attendent (5 min au moins).
+        WMX.gameBlockedUntil = Math.max(WMX.gameBlockedUntil || 0, Date.now() + 5 * 60000);
+        WMX.store.set('gameBlockedUntil', WMX.gameBlockedUntil);
+        notify({ kind: 'alert', key: 'game-notice', title: e.title, text: `${e.text.replace(/ Le jeu dit : .*$/, '')} Le jeu dit : « ${text.slice(0, 160)} »`, action: {
+          label: 'C’est fait : reprendre',
+          onClick: () => { WMX.gameBlockedUntil = 0; WMX.gameBlockN = 0; WMX.store.set('gameBlockedUntil', 0); WMX.store.set('gameBlockN', 0); WMX.autoSell?.runNow?.(); } } });
+      };
+      new MutationObserver((muts) => { for (const m of muts) m.addedNodes.forEach(seen); }).observe(document.documentElement, { childList: true, subtree: true });
+    } catch (_) { /* page sans DOM */ }
+  }
+  watchGameNotices();
 
   // Gestion des erreurs : message lisible (au plus un par domaine toutes les 30 s), trace dans la console et mémoire des 30 derniers.
   const lastShown = {};
@@ -38,7 +110,8 @@
     });
     if (Date.now() - (lastShown[scope] || 0) < 30000) return;
     lastShown[scope] = Date.now();
-    toast(msg + (detail ? ` (${detail})` : ''), 7000);
+    if (status === 403 || status === 429) { const e = WMX.explainRefusal(`${status} ${detail}`); notify({ kind: 'alert', key: 'game-limit', title: e.title, text: e.text }); return; }
+    toast(msg + (detail ? ` (${detail})` : ''), 7000, { kind: 'warn' });
   };
 
   const searchBox = (d) => [...d.querySelectorAll('input')].find((i) => /recherch/i.test(i.placeholder || ''));

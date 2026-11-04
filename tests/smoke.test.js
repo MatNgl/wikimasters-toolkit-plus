@@ -847,3 +847,55 @@ test('bulle des enchères : moyenne du marché et verdict à côté de la mise a
   assert.match(mk.textContent, /Moy\. 100 W/); assert.match(mk.textContent, /-40 % · Bonne affaire/);
   env.close();
 });
+
+test('notifications : temporaires avec anneau et disparition, alertes rouges persistantes avec croix, même clé = remplacement', async () => {
+  const env = createEnv({ fetchImpl: async () => json({ selling: [], bidding: [], won: [{ winner_id: ME }], history: [] }) });
+  const { w, WMX } = env;
+  const q = (s) => [...w.document.querySelectorAll(s)];
+  WMX.toast('Enchère lancée.', 300);
+  WMX.notify({ kind: 'alert', key: 'game-block', title: 'Vérification humaine demandée', text: 'Faites la vérification.' });
+  await sleep(30);
+  assert.equal(q('.wmx-note').length, 2);
+  assert.ok(q('.wmx-note')[0].querySelector('.wmx-note-ring'), 'la temporaire a son anneau');
+  assert.ok(!q('.wmx-note.alert')[0].querySelector('.wmx-note-ring'), 'l’alerte n’a pas d’anneau');
+  assert.ok(q('.wmx-note.alert')[0].querySelector('.wmx-note-x'), 'l’alerte a sa croix');
+  WMX.notify({ kind: 'alert', key: 'game-block', title: 'Limite du site atteinte', text: 'Pause.' });
+  await sleep(30);
+  assert.equal(q('.wmx-note.alert').length, 1, 'même clé : remplacée, pas empilée');
+  assert.match(q('.wmx-note.alert')[0].textContent, /Limite du site/);
+  await sleep(600);
+  assert.equal(q('.wmx-note:not(.alert)').length, 0, 'la temporaire a disparu');
+  assert.equal(q('.wmx-note.alert').length, 1, 'l’alerte reste');
+  q('.wmx-note.alert .wmx-note-x')[0].click();
+  await sleep(300);
+  assert.equal(q('.wmx-note').length, 0, 'la croix ferme l’alerte');
+  env.close();
+});
+
+test('refus du jeu : vérification humaine, limite d\'automatisation ou refus simple, expliqués en clair', async () => {
+  const env = createEnv({ fetchImpl: async () => json({ selling: [], bidding: [], won: [{ winner_id: ME }], history: [] }) });
+  const { WMX } = env;
+  assert.match(WMX.explainRefusal('POST /api/marketplace → 403 [« Vérification humaine requise »]').title, /Vérification humaine/);
+  const lim = WMX.explainRefusal('POST /api/marketplace → 403 [serveur x · « Trop de requêtes automatisées. L’automatisation n’est pas autorisée »]');
+  assert.match(lim.title, /Limite du site/);
+  assert.match(lim.text, /Le jeu dit : « Trop de requêtes automatisées/);
+  assert.match(WMX.explainRefusal('POST /api/marketplace → 403').title, /refuse/);
+  env.close();
+});
+
+test('notice du jeu (bandeau « trop de requêtes automatisées ») reprise en alerte rouge ; le texte d\'une carte ne déclenche rien', async () => {
+  const env = createEnv({ fetchImpl: async () => json({ selling: [], bidding: [], won: [{ winner_id: ME }], history: [] }) });
+  const { w } = env;
+  const d = w.document;
+  const card = d.createElement('div'); card.innerHTML = '<h3>Automatisation</h3><p>vérification humaine, trop de requêtes</p>'; d.body.append(card);
+  await sleep(50);
+  assert.equal(d.querySelectorAll('.wmx-note').length, 0, 'une carte n’est pas une notification du jeu');
+  const t = d.createElement('div'); t.setAttribute('role', 'alert'); t.textContent = 'Trop de requêtes automatisées. L’automatisation n’est pas autorisée — voir le règlement.'; d.body.append(t);
+  await sleep(50);
+  const a = d.querySelector('.wmx-note.alert');
+  assert.ok(a, 'alerte affichée');
+  assert.match(a.textContent, /Limite du site atteinte/);
+  assert.match(a.textContent, /voir le règlement/);
+  assert.ok(a.querySelector('.wmx-note-x') && a.querySelector('.wmx-note-act'));
+  env.close();
+});
