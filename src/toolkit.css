@@ -452,6 +452,8 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-sty-waves { position: absolute; inset: 0; z-index: 12; pointer-events: none; opacity: .2; mix-blend-mode: soft-light; background-image: var(--wmx-waves); background-size: 42px 15px; }
 .wmx-sty { transition: transform .25s ease, box-shadow .25s ease; }
 .wmx-sty:hover { transform: translateY(-3px); }
+/* Inclinaison 3D au passage de la souris, sur toutes les cartes (angles posés par card-style.js) */
+.wmx-sty:not(.wmx-face):hover { transform: perspective(620px) rotateX(var(--wmx-ty, 0deg)) rotateY(var(--wmx-tx, 0deg)) translateY(-4px) scale(1.04); transition: transform .12s ease-out, box-shadow .25s ease; }
 .wmx-sty .wmx-nt-price { background: rgb(8 12 10 / .72); backdrop-filter: blur(6px); border-color: rgb(var(--wmx-rgb) / .6); }
 
 /* Style de carte plein cadre (retenu) : l'illustration occupe toute la carte, le texte flotte sur un dégradé */
@@ -685,8 +687,7 @@ html.wmx-opening .wmx-cover { display: block; }
   animation: wmx-pu 3.6s ease-in-out infinite alternate;
   z-index: 2;
 }
-.wmx-sty[data-wmx-shiny]:hover { z-index: 10; transition: transform .12s ease-out, box-shadow .25s ease !important;
-  transform: perspective(620px) rotateX(var(--wmx-ty, 0deg)) rotateY(var(--wmx-tx, 0deg)) translateY(-4px) scale(1.04); }
+.wmx-sty[data-wmx-shiny]:hover { z-index: 10; }
 
 .wmx-sty-shiny { position: absolute; inset: 0; pointer-events: none; border-radius: inherit; }
 /* voile : liseré violet fin, bords assombris, pied de carte teinté de nuit (sans bande dure) */
@@ -717,5 +718,5 @@ html.wmx-opening .wmx-cover { display: block; }
   -webkit-text-fill-color: transparent; color: transparent !important; text-shadow: none !important; filter: drop-shadow(0 1px 4px #000) drop-shadow(0 0 6px rgb(120 76 210 / .45)); width: fit-content; }
 @media (prefers-reduced-motion: reduce) {
   .wmx-sty[data-wmx-shiny], .wmx-sty-motes, .wmx-sty-drift { animation: none; }
-  .wmx-sty[data-wmx-shiny]:hover { transform: translateY(-3px); }
 }
+@media (prefers-reduced-motion: reduce) { .wmx-sty:not(.wmx-face):hover { transform: translateY(-3px); } }

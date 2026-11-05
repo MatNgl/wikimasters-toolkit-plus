@@ -26,7 +26,7 @@
     return out;
   }
 
-  /** Exception shiny : voile sombre, points noirs qui tombent et dérivent, reflet doux qui suit le pointeur et légère inclinaison 3D. */
+  /** Exception shiny : voile sombre, points noirs qui tombent et dérivent, reflet doux qui suit le pointeur. */
   function setShiny(card, shiny) {
     if (!shiny) {
       if (card.dataset.wmxShiny) { delete card.dataset.wmxShiny; card.querySelectorAll('.wmx-sty-shiny').forEach((e) => e.remove()); }
@@ -36,26 +36,34 @@
     if (!card.querySelector(':scope > .wmx-sty-veil')) {
       card.append(...['veil', 'motes', 'drift', 'glare'].map((k) => el('span', { class: `wmx-sty-shiny wmx-sty-${k}` })));
     }
-    if (card._wmxTilt) return;
-    card._wmxTilt = true;
+  }
+
+  /** Inclinaison 3D de TOUTES les cartes stylées au passage de la souris (un seul écouteur pour la page, pas un par carte).
+   *  Le CSS lit --wmx-tx / --wmx-ty ; --wmx-mx / --wmx-my positionnent le reflet des cartes shiny. Jamais au doigt, ni sur les faces de la révélation (déjà en 3D). */
+  const TILT_VARS = ['--wmx-mx', '--wmx-my', '--wmx-tx', '--wmx-ty'];
+  function bindTilt() {
+    let cur = null;
     let raf = 0;
-    card.addEventListener('pointermove', (e) => {
-      if (e.pointerType === 'touch') return;
+    const reset = (c) => { if (c) for (const k of TILT_VARS) c.style.removeProperty(k); };
+    document.addEventListener('pointermove', (e) => {
+      if (e.pointerType === 'touch' || !isOn()) return;
+      const card = e.target?.closest?.('.wmx-sty:not(.wmx-face)') || null;
+      if (card !== cur) { cancelAnimationFrame(raf); reset(cur); cur = card; }
+      if (!card) return;
+      const { clientX, clientY } = e;
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
         const r = card.getBoundingClientRect();
-        const x = Math.min(1, Math.max(0, (e.clientX - r.left) / (r.width || 1)));
-        const y = Math.min(1, Math.max(0, (e.clientY - r.top) / (r.height || 1)));
+        const x = Math.min(1, Math.max(0, (clientX - r.left) / (r.width || 1)));
+        const y = Math.min(1, Math.max(0, (clientY - r.top) / (r.height || 1)));
         card.style.setProperty('--wmx-mx', `${(x * 100).toFixed(1)}%`);
         card.style.setProperty('--wmx-my', `${(y * 100).toFixed(1)}%`);
         card.style.setProperty('--wmx-tx', `${((x - 0.5) * 14).toFixed(2)}deg`);
         card.style.setProperty('--wmx-ty', `${((0.5 - y) * 14).toFixed(2)}deg`);
       });
-    });
-    card.addEventListener('pointerleave', () => {
-      cancelAnimationFrame(raf);
-      for (const k of ['--wmx-mx', '--wmx-my', '--wmx-tx', '--wmx-ty']) card.style.removeProperty(k);
-    });
+    }, { passive: true });
+    document.addEventListener('pointerleave', () => { cancelAnimationFrame(raf); reset(cur); cur = null; }, true);
+    window.addEventListener('blur', () => { cancelAnimationFrame(raf); reset(cur); cur = null; });
   }
 
   function apply(card) {
@@ -110,6 +118,7 @@
     match: /./,
     init() {
       scan();
+      bindTilt();
       new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
       window.addEventListener('wmx:settings', scan);
       // Le jeu peut réécrire la classe d'une carte (rendu React) et effacer notre style : un contrôle léger toutes les 3 s le rétablit.

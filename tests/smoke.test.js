@@ -460,6 +460,27 @@ test('style de carte : appliqué à toute carte du jeu (marché, échanges…), 
   env.close();
 });
 
+test('style de carte : inclinaison 3D sur toutes les cartes stylées au passage de la souris, remise à zéro en la quittant', async () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  const { w, WMX } = env;
+  const card = (r) => `<div class="relative rounded-2xl overflow-hidden"><img src="a.jpg"><div class="absolute h-[45%] z-20"></div><div class="absolute top-2 left-2 z-30">${r}</div><div class="absolute top-[45%] z-20"><h3>Titre</h3></div></div>`;
+  w.document.body.innerHTML = `<main>${card('C')}${card('UR')}</main>`;
+  WMX.features.find((f) => f.name === 'card-style').init(); // le harnais ne lance pas content.js : on démarre la fonction nous-mêmes
+  const [a, b] = [...w.document.querySelectorAll('main > div.rounded-2xl')];
+  const move = (el) => el.dispatchEvent(new w.MouseEvent('pointermove', { bubbles: true, clientX: 5, clientY: 5 }));
+  const wait = () => new Promise((r) => setTimeout(r, 80));
+  move(a); await wait();
+  assert.ok(a.style.getPropertyValue('--wmx-tx') && a.style.getPropertyValue('--wmx-ty'), 'une carte ordinaire reçoit ses angles d\'inclinaison');
+  move(b); await wait();
+  assert.equal(a.style.getPropertyValue('--wmx-tx'), '', 'la carte quittée est remise à plat');
+  assert.ok(b.style.getPropertyValue('--wmx-tx'), 'la nouvelle carte survolée s\'incline');
+  b.dispatchEvent(new w.MouseEvent('pointermove', { bubbles: true, clientX: 5, clientY: 5 }));
+  w.document.body.dispatchEvent(new w.MouseEvent('pointermove', { bubbles: true }));
+  await wait();
+  assert.equal(b.style.getPropertyValue('--wmx-tx'), '', 'en sortant des cartes, tout est remis à zéro');
+  env.close();
+});
+
 test('carte shiny (« L✦ shiny ») : rareté Légendaire reconnue, traitement d\'exception, retiré avec le style', async () => {
   const env = createEnv({ fetchImpl: async () => json({}) });
   const { w, WMX } = env;
