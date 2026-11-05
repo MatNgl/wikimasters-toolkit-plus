@@ -224,8 +224,8 @@
   const bid = (a, opts = {}) => withLock(`wmx-bid-${a.id}`, () => bidInner(a, opts));
   async function bidInner(a, opts = {}) {
     if (!D.me) await refresh(); // sans mon identifiant, on ne sait pas qui mène : pas de mise
-    if (!D.me) return opts.auto ? undefined : WMX.toast('Identifiant introuvable : actualisez la page puis réessayez.', 5000);
-    if (S.betting) return opts.auto ? undefined : WMX.toast('Une mise est déjà en cours…');
+    if (!D.me) return opts.auto ? undefined : WMX.toast('Je ne retrouve pas votre compte. Actualisez la page (F5) puis réessayez.', 6000, { kind: 'warn' });
+    if (S.betting) return opts.auto ? undefined : WMX.toast('Une autre mise est en cours : patientez un instant.');
     if (leading(a)) return opts.auto ? undefined : WMX.toast('Vous menez déjà cette enchère.');
     S.betting = a.id;
     renderAll();
@@ -237,11 +237,11 @@
       const preloaded = !!bidInput(S.frames.get(a.id) || {});
       const f = frameFor(a);
       const input = await waitFor(() => bidInput(f), 90000, 150);
-      if (!input) { jr(`la page de l’enchère ne s’est pas chargée (${Math.round((Date.now() - t0) / 1000)} s) : rien n’a été misé`, 'error'); return WMX.toast('La page de l’enchère ne s’est pas chargée.', 6000); }
+      if (!input) { jr(`la page de l’enchère ne s’est pas chargée (${Math.round((Date.now() - t0) / 1000)} s) : rien n’a été misé`, 'error'); return WMX.toast('La page de l’enchère n’a pas répondu : rien n’a été misé. Réessayez dans un instant.', 7000, { kind: 'warn' }); }
       const btn = bidButton(f);
-      if (!btn) { jr('bouton « Miser » introuvable sur la page de l’enchère', 'error'); return WMX.toast('Bouton « Miser » introuvable sur la page de l’enchère.', 6000); }
+      if (!btn) { jr('bouton « Miser » introuvable sur la page de l’enchère', 'error'); return WMX.toast('Le bouton « Miser » n’est pas apparu : rien n’a été misé. Le jeu a peut-être changé sa page.', 7000, { kind: 'warn' }); }
       const min = Number(input.min);
-      if (!Number.isFinite(min) || min <= 0) { jr('minimum de mise illisible : rien n’a été misé', 'error'); return WMX.toast('Minimum de mise illisible : rien n’a été misé.', 6000); }
+      if (!Number.isFinite(min) || min <= 0) { jr('minimum de mise illisible : rien n’a été misé', 'error'); return WMX.toast('Je n’ai pas pu lire la mise minimum : rien n’a été misé. Réessayez dans un instant.', 7000, { kind: 'warn' }); }
       if (opts.cap && min > opts.cap) { // plafond de la mise automatique dépassé : on s'arrête
         delete S.auto[a.id]; saveAuto();
         jr(`le minimum (${fmt(min)} W) dépasse le plafond de ${fmt(opts.cap)} W : règle arrêtée`, 'warn');
@@ -265,7 +265,7 @@
       }
       setNumber(input, amount); // exactement le minimum proposé par le jeu
       await sleep(200);
-      if (Number(input.value) !== amount) { jr(`le montant ${fmt(amount)} W n’a pas été pris en compte : rien n’a été misé`, 'error'); return WMX.toast('Le montant saisi n’a pas été pris en compte : rien n’a été misé.', 6000); }
+      if (Number(input.value) !== amount) { jr(`le montant ${fmt(amount)} W n’a pas été pris en compte : rien n’a été misé`, 'error'); return WMX.toast('Le montant n’a pas été accepté par la page : rien n’a été misé. Réessayez.', 7000, { kind: 'warn' }); }
       const before = Number(live?.bid) || 0;
       S.autoLast[a.id] = { bid: before, t: Date.now() };
       try { f.contentDocument.dispatchEvent(new Event('wmx-net-reset')); } catch (_) { /* cadre libéré */ } // relevé des réponses du serveur remis à zéro (frame-hook.js)
@@ -298,15 +298,15 @@
       if (!placed && refusal) {
         const why = WMX.explainRefusal(refusal);
         jr(`le jeu a refusé la mise : ${refusal}`, 'error');
-        WMX.notify?.({ kind: 'alert', key: 'game-bid-refused', title: `Mise refusée : ${why.title.toLowerCase()}`, text: `« ${cardTitle(a)} » : ${why.text}` });
+        WMX.notify?.({ kind: 'alert', key: 'game-bid-refused', title: `Mise refusée sur « ${cardTitle(a)} »`, text: `${why.title}. ${why.text}`, hint: why.hint });
       }
       jr(won ? `mise de ${fmt(amount)} W placée, on mène (il reste ${left} s)` : placed ? `mise de ${fmt(amount)} W placée mais déjà surenchérie (il reste ${left} s)` : `mise de ${fmt(amount)} W non confirmée (solde insuffisant, refus du jeu ou surenchère à la même seconde)`, won || placed ? 'info' : 'warn');
       WMX.dismissNote?.(`bid:${a.id}:go`);
       WMX.toast(won
         ? `${opts.auto ? 'Mise automatique' : 'Mise'} de ${fmt(amount)} W placée sur « ${cardTitle(a)} » : vous menez.`
         : placed ? `Mise de ${fmt(amount)} W placée sur « ${cardTitle(a)} », mais déjà surenchérie.`
-          : refusal ? `Mise sur « ${cardTitle(a)} » refusée par le jeu (voir l’alerte).`
-            : 'La mise n’est pas confirmée : solde insuffisant, ou quelqu’un a surenchéri entre-temps. Vérifiez la page de l’enchère.', 6000, { key: `bid:${a.id}`, kind: won ? 'ok' : 'warn' });
+          : refusal ? `Le jeu a refusé votre mise sur « ${cardTitle(a)} » (voir l’alerte rouge).`
+            : 'Votre mise n’est pas confirmée : soit vous n’avez pas assez de W, soit quelqu’un a surenchéri entre-temps. Regardez la page de l’enchère.', 7000, { key: `bid:${a.id}`, kind: won ? 'ok' : 'warn' });
       if (opts.auto) { // 3 échecs de suite : on arrête pour ne pas boucler
         S.autoFails[a.id] = placed ? 0 : (S.autoFails[a.id] || 0) + 1;
         if (S.autoFails[a.id] >= 3) { delete S.auto[a.id]; saveAuto(); alertUser('Mise automatique arrêtée', `« ${cardTitle(a)} » : 3 mises sans effet (solde insuffisant ?).`, `${a.id}:fails`); }
@@ -359,7 +359,7 @@
   async function cancelSale(a) {
     const item = { card_id: a.card_id, title: cardTitle(a), rarity: rarityOf(a), starred: false };
     await WMX.quick?.refresh();
-    if (!WMX.quick?.cancelItem(item)) WMX.toast('Cette vente n’est plus active.');
+    if (!WMX.quick?.cancelItem(item)) WMX.toast('Cette vente est déjà terminée.');
   }
 
   // --- Mise automatique -----------------------------------------------------------------------
@@ -436,8 +436,8 @@
       const save = el('button', { class: 'wmx-btn' }, cur ? 'Enregistrer' : 'Activer');
       save.addEventListener('click', () => {
         const rule = WMX.logic.parseAutoRule({ mode: d.mode, amount: d.amount, unit: d.unit, capMode: d.capMode, cap: d.cap, capPct: d.capPct });
-        if (!rule) return WMX.toast('Durée invalide.');
-        if (d.capMode === 'abs' && !rule.cap) return WMX.toast('Plafond invalide.');
+        if (!rule) return WMX.toast('La durée indiquée n’est pas valide : mettez par exemple 30 secondes.', 6000, { kind: 'warn' });
+        if (d.capMode === 'abs' && !rule.cap) return WMX.toast('Le plafond indiqué n’est pas valide : indiquez un nombre de W.', 6000, { kind: 'warn' });
         delete S.draft[a.id];
         setAuto(a, rule);
       });

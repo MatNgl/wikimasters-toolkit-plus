@@ -45,6 +45,7 @@
     key = key || `n${++noteSeq}`;
     if (notes.has(key)) { clearTimeout(notes.get(key).timer); notes.get(key).node.remove(); notes.delete(key); }
     const persistent = sticky || kind === 'alert';
+    if (!title) title = kind === 'warn' ? 'Ça n’a pas marché' : kind === 'alert' ? 'Attention' : ''; // titre commun aux problèmes : on les reconnaît d’un coup d’œil
     const close = el('button', { class: 'wmx-note-x', title: 'Fermer', 'aria-label': 'Fermer', onclick: () => dismissNote(key) }, '×');
     const act = action ? el('button', { class: 'wmx-note-act', onclick: () => { try { action.onClick(); } finally { dismissNote(key); } } }, action.label) : '';
     const node = el('div', { class: `wmx-note ${kind}`, role: kind === 'alert' ? 'alert' : 'status', ...(hint ? { title: `Détail technique : ${hint}` } : {}) },
@@ -142,7 +143,7 @@
     if (Date.now() - (lastShown[scope] || 0) < 30000) return;
     lastShown[scope] = Date.now();
     if (status === 403 || status === 429) { const e = WMX.explainRefusal(`${status} ${detail}`); notify({ kind: 'alert', key: 'game-limit', title: e.title, text: e.text, hint: e.hint }); return; }
-    toast(msg + (detail ? ` (${detail})` : ''), 7000, { kind: 'warn' });
+    notify({ kind: 'warn', text: msg, ms: 7000, hint: detail ? `${scope} : ${status} ${detail}` : `${scope} : ${status}` });
   };
 
   const searchBox = (d) => [...d.querySelectorAll('input')].find((i) => /recherch/i.test(i.placeholder || ''));
@@ -300,9 +301,9 @@
   };
 
   const ERRORS = {
-    frame: 'Impossible de charger la fiche pour le moment.',
-    notfound: 'Carte introuvable dans la recherche du jeu.',
-    nosheet: 'La fiche ne s’est pas ouverte.',
+    frame: 'La fiche de la carte n’a pas pu s’ouvrir pour le moment. Réessayez dans un instant.',
+    notfound: 'Le jeu ne retrouve pas cette carte dans votre collection.',
+    nosheet: 'La fiche de la carte ne s’est pas ouverte. Réessayez.',
   };
 
   /** Affiche la fiche du jeu par-dessus l'écran en cours. */
@@ -347,13 +348,13 @@
       const pv = showPreview(card, () => { cancelled = true; });
       preview = { isOpen: pv.isOpen, cancel: () => { cancelled = true; pv.remove(); } };
       const cold = !F.view.frame;
-      const slow = setTimeout(() => toast(cold ? 'Préparation de la fiche… la première ouverture charge la collection du jeu (jusqu’à ~30 s).' : 'Chargement de la fiche…', 90000), cold ? 600 : 500);
+      const slow = setTimeout(() => toast(cold ? 'Préparation de la fiche… la première fois, cela peut prendre jusqu’à 30 secondes.' : 'Chargement de la fiche…', 90000), cold ? 600 : 500);
       let r;
       try { r = await openInFrame(card, 'view'); } finally { clearTimeout(slow); pv.remove(); preview = null; }
       toast('');
       if (cancelled) { if (!r.error) closeSheet('view'); return undefined; } // aperçu fermé par l'utilisateur
       if (gen !== routeGen) { if (!r.error) closeSheet('view'); return undefined; } // l'utilisateur a changé de page entre-temps
-      if (r.error) return toast(ERRORS[r.error] || 'Fiche indisponible.');
+      if (r.error) return toast(ERRORS[r.error] || 'La fiche n’est pas disponible pour le moment.', 7000, { kind: 'warn' });
       const { d, w, root } = r;
       const frame = F.view.frame;
 

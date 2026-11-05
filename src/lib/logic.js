@@ -206,12 +206,12 @@
     },
     /** Message clair pour un échec réseau ou un code HTTP. */
     friendlyError(status) {
-      if (status === 0 || status == null) return 'Connexion impossible : vérifiez votre réseau.';
-      if (status === 401) return 'Session expirée : reconnectez-vous au jeu.';
-      if (status === 403 || status === 429) return 'Le jeu limite les requêtes : l’extension patiente avant de reprendre.';
-      if (status === 404) return 'Élément introuvable : le jeu a peut-être changé cette adresse.';
-      if (status >= 500) return 'Le serveur du jeu ne répond pas correctement (erreur ' + status + ').';
-      return 'Réponse inattendue du jeu (erreur ' + status + ').';
+      if (status === 0 || status == null) return 'Pas de connexion au jeu : vérifiez votre connexion internet.';
+      if (status === 401) return 'Votre connexion au jeu a expiré : reconnectez-vous.';
+      if (status === 403 || status === 429) return 'Le jeu trouve que ça va trop vite : l’extension patiente avant de reprendre.';
+      if (status === 404) return 'Le jeu ne retrouve pas cet élément : il a peut-être changé son site.';
+      if (status >= 500) return 'Le serveur du jeu a un souci en ce moment. Réessayez dans quelques minutes.';
+      return 'Le jeu a répondu de façon inattendue. Réessayez dans un instant.';
     },
   };
 

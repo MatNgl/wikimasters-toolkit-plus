@@ -106,7 +106,7 @@
         const cards = document.querySelectorAll('main h3').length;
         if (cards > 3 && !document.querySelector('.wmx-nt-price')) {
           WMX.journal?.add('Page', `${cards} titres de cartes trouvés mais aucun prix ni ⚡ posé : le jeu a probablement changé sa page.`, 'error');
-          WMX.toast?.('Le jeu semble avoir changé sa page de collection : prix et ⚡ indisponibles. Copiez le diagnostic (Paramètres) pour le signaler.', 12000);
+          WMX.toast?.('Le jeu a l’air d’avoir changé sa page Collection : les prix et le bouton ⚡ ne marchent plus. Copiez le diagnostic (Paramètres) pour me le signaler.', 12000, { kind: 'warn' });
         }
       }, 20000);
     },

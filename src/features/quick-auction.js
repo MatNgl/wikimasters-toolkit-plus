@@ -80,9 +80,9 @@
   };
 
   const SHEET_ERRORS = {
-    frame: 'impossible de charger la fiche',
-    notfound: 'carte introuvable dans la recherche du jeu',
-    nosheet: 'la fiche ne s’est pas ouverte',
+    frame: 'la fiche de la carte n’a pas pu s’ouvrir (le jeu est peut-être lent)',
+    notfound: 'le jeu ne retrouve pas cette carte dans votre collection',
+    nosheet: 'la fiche de la carte ne s’est pas ouverte',
   };
 
   /** Ouvre la fiche (cachée), le formulaire d'enchère, saisit le prix et la durée, puis lance. */
@@ -92,17 +92,17 @@
     const { d, w, root } = r;
     try {
       const open = [...root.querySelectorAll('button')].find((b) => /Mettre aux enchères/i.test(b.textContent));
-      if (!open || open.disabled) return { error: 'le jeu ne permet pas de la vendre (déjà en vente, favorite ou en échange ?)', fatal: true };
+      if (!open || open.disabled) return { error: 'le jeu ne permet pas de vendre cette carte (déjà en vente, en favori ou dans un échange ?)', fatal: true };
       open.click();
       const launch = await waitFor(() => [...d.querySelectorAll('button')].find((b) => /Lancer l.enchère/i.test(b.textContent)), 8000, 120);
-      if (!launch) return { error: 'le formulaire d’enchère ne s’est pas ouvert' };
+      if (!launch) return { error: 'le formulaire de mise en vente ne s’est pas ouvert' };
       const form = fixedAncestor(w, launch) || d.body;
       const input = form.querySelector('input[aria-label="Mise de départ"], input[type=number]');
-      if (!input) return { error: 'champ « Mise de départ » introuvable' };
+      if (!input) return { error: 'le jeu a changé son formulaire de mise en vente (le prix de départ n’est plus trouvé)' };
       setNumber(w, input, price);
       [...form.querySelectorAll('button')].find((b) => b.textContent.trim() === dur)?.click();
       await sleep(250);
-      if (Number(input.value) !== price) return { error: 'le prix saisi n’a pas été pris en compte' };
+      if (Number(input.value) !== price) return { error: 'le prix n’a pas pu être saisi dans le formulaire' };
       // Réponse du serveur aux requêtes d'écriture du cadre (notée par frame-hook.js) : dit si le jeu a refusé la création.
       const net = () => { try { return d.documentElement.dataset.wmxNet || ''; } catch (_) { return ''; } };
       const refused = () => /\/api\/marketplace → (403|429|réseau)/.test(net()); // le jeu bloque les requêtes (403/429) ou coupe la connexion
@@ -120,7 +120,7 @@
       launch.click();
       const closed = await waitFor(() => !/Lancer l.enchère/i.test(d.body.innerText) || refused(), 9000, 150);
       if (refused()) { await sleep(600); return await blocked(); } // le temps de lire la réponse du serveur (message, en-têtes)
-      if (!closed) return { error: 'le jeu n’a pas confirmé l’enchère' };
+      if (!closed) return { error: 'le jeu n’a pas confirmé la mise en vente' };
       // Après une mise en vente réussie, le jeu ouvre la page de l'enchère créée dans le cadre : c'est le signe le plus sûr.
       const where = () => { try { return w.location.pathname; } catch (_) { return '?'; } };
       const navigated = await waitFor(() => (/^\/marketplace\/[0-9a-f-]{8,}/i.test(where()) ? 'nav' : refused() ? 'refused' : ''), 4000, 150);
@@ -154,7 +154,7 @@
     try {
       const find = (re) => { try { return [...f.contentDocument.querySelectorAll('button')].find((b) => re.test(b.textContent)); } catch (_) { return null; } };
       const btn = await waitFor(() => find(/Annuler et récupérer/i), waitMs, 300);
-      if (!btn) return { error: 'bouton d’annulation introuvable (enchère déjà misée ou terminée ?)' };
+      if (!btn) return { error: 'le bouton d’annulation n’est pas disponible (enchère déjà misée par quelqu’un ou terminée ?)' };
       btn.click();
       const confirm = await waitFor(() => find(/^(Confirmer|Oui|Valider|Annuler la vente|Annuler l.enchère)/i), 2000, 120);
       confirm?.click();
@@ -184,11 +184,11 @@
     if (!p) { await WMX.prices.fetchOne(item.card_id); p = WMX.prices.get(item.card_id, item.rarity); }
     // Aucune vente sur le marché pour cette rareté (prix bien chargé, mais sans moyenne) : prix de départ par défaut (réglage, 10 W).
     // Si le prix n'a simplement pas pu être chargé (réseau), on n'invente rien : nouvel essai plus tard.
-    if (!p && !WMX.prices.has(item.card_id)) return { error: 'prix de la carte non chargé (serveur du jeu lent) : réessayez dans un instant' };
+    if (!p && !WMX.prices.has(item.card_id)) return { error: 'le prix de la carte n’a pas pu être chargé (le jeu est lent) : réessayez dans un instant' };
     const price = p ? startPrice(p) : c.noSale;
-    if (item.cap && price > item.cap) return { capped: true, error: `prix de départ ${price} W au-dessus du plafond de l’assistant (${item.cap} W)` };
+    if (item.cap && price > item.cap) return { capped: true, error: `le prix de départ serait de ${price} W, au-dessus de votre plafond de ${item.cap} W` };
     const attempt = async () => {
-      try { return await driveForm(item, price, c.dur); } catch (e) { console.warn('[WMX] enchère', item.title, e); return { error: `${e?.name || 'Erreur'} : ${e?.message || e}` }; }
+      try { return await driveForm(item, price, c.dur); } catch (e) { console.warn('[WMX] enchère', item.title, e); return { error: 'problème inattendu pendant la mise en vente (réessayez)', tech: `${e?.name || 'Erreur'} : ${e?.message || e}` }; }
     };
     let res = await attempt();
     if (res.verified) { // la personne a fait la vérification du jeu : il a peut-être relancé la mise en vente lui-même, sinon on la retente aussitôt (sans pause)
@@ -224,7 +224,7 @@
             WMX.autoSell?.runNow?.();
           } } });
       }
-      return { error: `${why?.short || 'le jeu refuse la mise en vente'} : pause de ${Math.floor(pause / 60000)} min${pause % 60000 ? ` ${(pause % 60000) / 1000} s` : ''} (refus n° ${n})`, blocked: true };
+      return { error: `${why?.short || 'le jeu refuse la mise en vente'} : pause de ${Math.floor(pause / 60000)} min${pause % 60000 ? ` ${(pause % 60000) / 1000} s` : ''} (refus n° ${n})`, tech: res.tech, blocked: true };
     }
     if (!res.ok) return { error: res.error, gone: !!res.gone };
     // Le serveur du jeu peut mettre quelques secondes à enregistrer l'enchère : on vérifie jusqu'à 6 fois avant de conclure à un échec.
@@ -242,7 +242,7 @@
       }
     }
     WMX.releaseCardSheets?.('work'); // le prochain essai repart d'un cadre neuf (une session de cadre périmée ferait échouer toutes les suivantes)
-    return { unconfirmed: true, error: read ? `enchère non confirmée par le jeu (vérifiez « Mes ventes »)${res.where ? ` — ${res.where}` : ''}` : 'impossible de relire « Mes ventes » : le jeu ne répond pas' };
+    return { unconfirmed: true, tech: res.where || '', error: read ? 'le jeu n’a pas confirmé la mise en vente (vérifiez « Mes ventes » dans le Marché)' : 'je n’arrive pas à relire « Mes ventes » : le jeu ne répond pas' };
   }
 
   async function doCancel(item) {
@@ -270,7 +270,7 @@
       await sleep(5000);
       if ((await stillActive()) === false) { await refresh(); return { ok: true }; }
     }
-    return { error: 'le jeu n’a pas annulé l’enchère (serveur du jeu surchargé, ou enchère déjà misée) : réessayez plus tard' };
+    return { error: 'le jeu n’a pas annulé la vente (il est peut-être surchargé, ou quelqu’un a déjà misé) : réessayez plus tard' };
   }
 
   /** Pose ou retire le favori en cliquant l'étoile de la fiche du jeu (cadre invisible), comme l'utilisateur. */
@@ -280,7 +280,7 @@
     const { root } = r;
     try {
       const star = [...root.querySelectorAll('button')].find((b) => /favoris/i.test(b.getAttribute('aria-label') || ''));
-      if (!star) return { error: 'étoile des favoris introuvable' };
+      if (!star) return { error: 'le jeu a changé l’étoile des favoris (introuvable sur la fiche)' };
       const before = star.getAttribute('aria-label');
       const wasStarred = !/^ajouter/i.test(before);
       if ((item.want === 'on' && wasStarred) || (item.want === 'off' && !wasStarred)) return { ok: true }; // déjà dans l'état voulu
@@ -313,12 +313,12 @@
       } else {
         if (chipBtn()) return { ok: true }; // déjà étiquetée
         const input = root.querySelector('input[placeholder^="Ajouter une étiquette"]');
-        if (!input) return { error: 'champ « Ajouter une étiquette » introuvable' };
+        if (!input) return { error: 'le jeu a changé le champ « Ajouter une étiquette » (introuvable sur la fiche)' };
         input.focus();
         setNumber(w, input, item.tag);
         // On ne choisit JAMAIS « Créer… » : seulement l'étiquette existante portant exactement ce nom.
         const opt = await waitFor(() => [...d.querySelectorAll('li[role=option] button')].find((b) => norm(b.textContent) === want), 6000, 150);
-        if (!opt) { setNumber(w, input, ''); return { error: `étiquette « ${item.tag} » introuvable dans les suggestions du jeu` }; }
+        if (!opt) { setNumber(w, input, ''); return { error: `le jeu ne propose pas l’étiquette « ${item.tag} » (vérifiez son nom)` }; }
         opt.click();
         if (!(await waitFor(() => chipBtn(), 6000, 150))) return { error: `l’étiquette « ${item.tag} » n’a pas été ajoutée` };
       }
@@ -388,7 +388,7 @@
     if (res.ok) WMX.journal?.add('File', `${what} — réussie${res.price ? ` (${res.price} W)` : ''}`);
     else if (res.skipped) WMX.journal?.add('File', `${what} — rien à faire (déjà fait)`);
     else if (res.limit) WMX.journal?.add('File', `${what} — limite d’enchères atteinte`, 'warn');
-    else WMX.journal?.add('File', `${what} — échec : ${res.error || 'inconnu'}`, 'error');
+    else WMX.journal?.add('File', `${what} — échec : ${res.error || 'inconnu'}${res.tech ? ` [détail technique : ${res.tech}]` : ''}`, 'error'); // le détail technique reste dans le journal, pas dans les notifications
   }
 
   async function process() {
@@ -409,7 +409,7 @@
         S.current = op;
         updateChip(); notify();
         let res;
-        try { res = op.type === 'launch' ? await doLaunch(op.item) : op.type === 'cancel' ? await doCancel(op.item) : op.type === 'tag' ? await doTag(op.item) : await doFavorite(op.item); } catch (e) { console.warn('[WMX] file d’enchères', op.type, op.item.title, e); res = { error: `${e?.name || 'Erreur'} : ${e?.message || e}` }; }
+        try { res = op.type === 'launch' ? await doLaunch(op.item) : op.type === 'cancel' ? await doCancel(op.item) : op.type === 'tag' ? await doTag(op.item) : await doFavorite(op.item); } catch (e) { console.warn('[WMX] file d’enchères', op.type, op.item.title, e); res = { error: 'problème inattendu (réessayez)', tech: `${e?.name || 'Erreur'} : ${e?.message || e}` }; }
         S.queue = S.queue.filter((o) => o !== op);
         S.current = null;
         journalOp(op, res);
@@ -431,14 +431,17 @@
             S.queue = S.queue.filter((o) => o.type !== 'launch');
             S.batch.failed.push(`${rest} autre${rest > 1 ? 's' : ''} carte${rest > 1 ? 's' : ''} non tentée${rest > 1 ? 's' : ''} (le jeu n’enregistre pas les mises en vente pour l’instant)`);
             S.batch.total = S.batch.done + S.queue.length;
-            WMX.journal?.add('File', `${rest} mise${rest > 1 ? 's' : ''} en vente abandonnée${rest > 1 ? 's' : ''} : ${res.blocked ? 'le jeu bloque les requêtes' : 'le jeu n’a pas enregistré les deux précédentes'}, reprise plus tard`, 'warn');
+            WMX.journal?.add('File', `${rest} mise${rest > 1 ? 's' : ''} en vente abandonnée${rest > 1 ? 's' : ''} : ${res.blocked ? 'le jeu a refusé les demandes' : 'le jeu n’a pas enregistré les deux précédentes'}, reprise plus tard`, 'warn');
           }
         }
         persist(); updateChip(); notify();
       }
       const b = S.batch;
       if (b.total > 1 || b.failed.length) {
-        WMX.toast(`File terminée : ${b.ok} réussie${b.ok > 1 ? 's' : ''}${b.failed.length ? ` · ${b.failed.length} à vérifier (${b.failed.slice(0, 2).join(' ; ')})` : ''}.`, 9000);
+        if (b.failed.length) {
+          const more = b.failed.length > 2 ? ` Et ${b.failed.length - 2} autre${b.failed.length > 3 ? 's' : ''} : voir le journal.` : '';
+          WMX.notify?.({ kind: 'warn', ms: 12000, title: `${b.ok} réussie${b.ok > 1 ? 's' : ''}, ${b.failed.length} à revoir`, text: `${b.failed.slice(0, 2).join(' · ')}.${more}` });
+        } else WMX.toast(`C’est terminé : ${b.ok} opération${b.ok > 1 ? 's' : ''} réussie${b.ok > 1 ? 's' : ''}.`, 6000);
       } else if (b.ok) {
         WMX.toast({ launch: 'Enchère lancée. Recliquez sur ⚡ pour l’annuler.', cancel: 'Enchère annulée : la carte est de retour dans votre collection.', favorite: 'Favori mis à jour.', tag: 'Étiquette mise à jour.' }[S.lastOpType] || 'Terminé.', 5000);
       }
@@ -530,8 +533,8 @@
         return undefined;
       }
       if (st === 'live') return enqueue({ type: 'cancel', item: slim(item) });
-      if (isStarred(item)) return WMX.toast('Carte favorite : le jeu la verrouille, impossible de la vendre.');
-      if (S.selling.size + WMX.quick.queued() >= S.max) return WMX.toast(`Limite de ${S.max} enchères actives : ${S.selling.size} en vente, ${WMX.quick.queued()} en file.`);
+      if (isStarred(item)) return WMX.toast('Cette carte est en favori : le jeu la verrouille. Retirez l’étoile pour pouvoir la vendre.', 6000, { kind: 'warn' });
+      if (S.selling.size + WMX.quick.queued() >= S.max) return WMX.toast(`Vous ne pouvez pas avoir plus de ${S.max} ventes en même temps : ${S.selling.size} en cours, ${WMX.quick.queued()} en attente.`, 6000, { kind: 'warn' });
       const ahead = S.queue.length; // opérations déjà en attente (assistant de vente, autres cartes…)
       enqueue({ type: 'launch', item: slim(item) });
       // Retour immédiat : sans lui, le clic sur ⚡ ne semblait rien faire (la mise en vente prend plusieurs secondes, la file peut être occupée).

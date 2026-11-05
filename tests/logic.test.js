@@ -79,11 +79,12 @@ test('crownCount / crownIndexes : 1 couronne (<8 cartes), 2 (<15), 3 ensuite', (
 });
 
 test('friendlyError : messages lisibles', () => {
-  assert.match(L.friendlyError(0), /réseau/);
-  assert.match(L.friendlyError(401), /Session expirée/);
-  assert.match(L.friendlyError(429), /limite/);
-  assert.match(L.friendlyError(503), /503/);
-  assert.match(L.friendlyError(418), /418/);
+  assert.match(L.friendlyError(0), /connexion internet/);
+  assert.match(L.friendlyError(401), /expiré/);
+  assert.match(L.friendlyError(429), /trop vite/);
+  assert.match(L.friendlyError(503), /serveur du jeu/);
+  assert.match(L.friendlyError(418), /inattendue/);
+  for (const s of [0, 401, 403, 404, 429, 500, 503, 418]) assert.ok(!/\d{3}|erreur/i.test(L.friendlyError(s)), `statut ${s} : aucun code d’erreur dans le message`);
 });
 
 test('parseAutoRule : normalise et refuse les valeurs invalides', () => {

@@ -948,6 +948,25 @@ test('refus du jeu : vérification humaine, limite d\'automatisation ou refus si
   env.close();
 });
 
+test('toutes les notifications de problème : titre commun, texte sans code ni jargon, détail technique seulement en info-bulle', async () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  const { w, WMX } = env;
+  const q = (s) => [...w.document.querySelectorAll(s)];
+  WMX.toast('Le bouton « Miser » n’est pas apparu : rien n’a été misé.', 6000, { kind: 'warn' });
+  WMX.reportError('prix', 503, 'GET /api/cards/abc/sales');
+  WMX.reportError('marché', 0);
+  await sleep(50);
+  const notes = q('.wmx-note.warn');
+  assert.equal(notes.length, 3);
+  for (const n of notes) {
+    assert.match(n.querySelector('b').textContent, /Ça n’a pas marché/, 'un problème a toujours le même titre');
+    assert.ok(!/\b(40\d|50\d|429|403|http|api|json|post|get)\b/i.test(n.querySelector('span').textContent), `texte lisible, sans code : « ${n.querySelector('span').textContent} »`);
+  }
+  const withHint = notes.find((n) => /serveur/.test(n.textContent));
+  assert.match(withHint.title, /sales/, 'le détail technique est en info-bulle');
+  env.close();
+});
+
 test('vérification humaine du jeu dans le cadre d’automatisation : montrée au centre de l’écran, puis l’extension reprend quand elle est faite', async () => {
   const env = createEnv({ fetchImpl: async () => json({}) });
   const { w, WMX } = env;

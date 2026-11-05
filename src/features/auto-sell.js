@@ -63,7 +63,7 @@
       const items = WMX.inventory.items(); // la liste en cache suffit : l'inventaire se recharge parfois pendant des minutes (jeu lent)
       if (!items.length) return done('no-inventory', WMX.inventory.isLoading() ? 'chargement de la collection en cours, reprise à la prochaine passe' : 'collection indisponible pour le moment, nouvelle tentative à la prochaine passe');
       if (WMX.quick.isRunning()) return done('queue-busy', 'file d’attente occupée, reprise à la fin', { queued: WMX.quick.queued() });
-      if ((WMX.gameBlockedUntil || 0) > now) return done('paused', `le jeu a refusé les dernières demandes : l’assistant le laisse tranquille jusqu’à${fmtAt(WMX.gameBlockedUntil)}`);
+      if ((WMX.gameBlockedUntil || 0) > now) return done('paused', `le jeu a refusé les dernières demandes : l’assistant le laisse tranquille jusqu’à ${fmtAt(WMX.gameBlockedUntil)}`);
       if (S.pauseUntil > now) return done('paused', `le jeu n’a pas enregistré la dernière mise en vente : nouvel essai à ${fmtAt(S.pauseUntil)} (page rechargée)`);
       await WMX.quick.refresh();
       const active = WMX.quick.count();
@@ -122,8 +122,8 @@
     S.pauseUntil = 0; // un lancement demandé à la main passe outre la pause
     if (S.leader) { await tick(); return WMX.toast?.(`Assistant de vente : ${line().text}`, 5000); }
     await WMX.store.set('autoSellForce', Date.now()); // l'onglet qui pilote l'assistant lance une passe
-    WMX.toast?.('Demande envoyée à l’onglet qui pilote l’assistant…', 4000);
-    setTimeout(() => { if (!S.shared || Date.now() - S.shared.t > 15000) WMX.toast?.('Aucun onglet du jeu ne pilote l’assistant pour l’instant : gardez un onglet du jeu ouvert.', 7000); }, 8000);
+    WMX.toast?.('Demande transmise à votre autre onglet du jeu…', 4000);
+    setTimeout(() => { if (!S.shared || Date.now() - S.shared.t > 15000) WMX.toast?.('L’assistant ne tourne dans aucun onglet pour l’instant : gardez un onglet du jeu ouvert.', 7000, { kind: 'warn' }); }, 8000);
     return undefined;
   }
   async function resetSkips() {

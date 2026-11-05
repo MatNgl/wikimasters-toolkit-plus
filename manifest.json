@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WikiMasters Toolkit+",
-  "version": "0.22.17",
+  "version": "0.22.18",
   "description": "Prix du marché, ouverture de paquets en un clic, enchères automatiques et style de cartes pour WikiMasters.",
   "permissions": [
     "storage",
@@ -77,7 +77,7 @@
       "world": "MAIN"
     }
   ],
-  "version_name": "0.22.17 · messages du jeu en français simple, vérification humaine montrée à l’écran, plus de zoom sur le marché",
+  "version_name": "0.22.18 · toutes les notifications d’erreur en français simple, sans code ni jargon",
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",
