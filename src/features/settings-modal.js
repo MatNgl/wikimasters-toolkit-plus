@@ -8,7 +8,7 @@
     speed: 'normal', order: 'rarity', images: true,
     stopOn: 'off', reserve: 0, fullStockOpen: true, anticipate: true,
     quickCoef: 0.9, quickDuration: '1h', quickPrudent: false, auctionBubble: true, auctionNotify: true, autoReload: true,
-    autoDefaultMode: 'time', autoDefaultSecs: 35, autoCapMode: 'avg', autoCapW: 100, autoCapPct: 20, autoDefaultOn: false, autoSell: false, autoSellTags: 'VENTE', autoSellMax: 3, autoSellCap: 500, quickNoSalePrice: 10, cardStyle: true, cardShowDesc: true, cardShowStats: true,
+    autoDefaultMode: 'time', autoDefaultSecs: 35, autoCapMode: 'avg', autoCapW: 100, autoCapPct: 20, autoDefaultOn: false, watchMax: 12, autoSell: false, autoSellTags: 'VENTE', autoSellMax: 3, autoSellCap: 500, quickNoSalePrice: 10, cardStyle: true, cardShowDesc: true, cardShowStats: true,
   };
 
   // La mise à jour automatique n'existe que dans la version de développement (permission « alarms ») : absente de la version publiée.
@@ -80,6 +80,7 @@
           options: [['avg', 'Selon la moyenne du marché'], ['abs', 'Valeur fixe en W'], ['none', 'Aucun plafond']] },
         { key: 'autoCapPct', type: 'number', min: -90, max: 500, step: 5, label: 'Écart à la moyenne (%)', desc: 'Pour le plafond « selon la moyenne » : +30 = jusqu’à 30 % au-dessus de la moyenne, 0 = à la moyenne, −10 = en dessous.' },
         { key: 'autoCapW', type: 'number', min: 1, max: 100000, step: 1, label: 'Plafond fixe (W)', desc: 'Pour le plafond « valeur fixe ».' },
+        { key: 'watchMax', type: 'number', min: 1, max: 50, step: 1, label: 'Surveillances en même temps (maximum)', desc: 'Nombre d’enchères que vous pouvez surveiller avec « Surveiller ». Chaque enchère surveillée est relue régulièrement auprès du jeu : plus il y en a, plus l’extension envoie de requêtes (12 par défaut, prudent).' },
         { key: 'autoDefaultOn', type: 'toggle', label: 'Appliquer aux nouvelles mises', desc: 'Programme automatiquement ces réglages sur chaque nouvelle mise que vous placez (désactivé par défaut).' },
       ],
     },

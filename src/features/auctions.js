@@ -955,7 +955,13 @@
         return 'none';
       }
       if (cur) { WMX.toast(`Une mise automatique est déjà réglée sur « ${name} » (à modifier dans « Mes enchères »).`); return 'auto'; }
-      if (Object.values(S.auto).filter((r) => r?.watch).length >= MAX_WATCH) { WMX.toast(`Vous surveillez déjà ${MAX_WATCH} enchères : arrêtez-en une avant d’en ajouter.`, 6000, { kind: 'warn' }); return 'none'; }
+      const max = Math.min(50, Math.max(1, Number(WMX.settings?.watchMax) || MAX_WATCH));
+      if (Object.values(S.auto).filter((r) => r?.watch).length >= max) {
+        WMX.notify?.({ kind: 'warn', key: 'watch-limit', ms: 9000, title: 'Limite de surveillances atteinte',
+          text: `Vous surveillez déjà ${max} enchères. Arrêtez-en une, ou augmentez la limite dans les réglages (chaque surveillance ajoute des requêtes vers le jeu).`,
+          action: { label: 'Modifier la limite', onClick: () => WMX.openSettings?.('Mises automatiques') } });
+        return 'none';
+      }
       const rule = watchRule();
       if (!rule) { WMX.toast('Je n’ai pas pu préparer la veille : vérifiez les réglages des mises automatiques (Paramètres).', 6000, { kind: 'warn' }); return 'none'; }
       S.auto[id] = { ...rule, watch: true };
