@@ -669,58 +669,53 @@ html.wmx-opening .wmx-cover { display: block; }
 @keyframes wmx-note-in { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .wmx-note { animation: none; } .wmx-note-ring .fg { animation-duration: 0.01ms; } }
 
-/* ===== Carte « shiny » (0.22.12) : la plus rare du jeu. Aura noire, cadre holographique, feuille irisée, éclats, reflet au pointeur ===== */
-@property --wmx-ang { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+/* ===== Carte « shiny » (0.22.13) : la plus rare du jeu. Thème sombre et gothique : aura noir-violet, voile sombre, points noirs qui tombent et dérivent ===== */
 @property --wmx-pu { syntax: '<number>'; inherits: true; initial-value: 0; }
-@keyframes wmx-ang { to { --wmx-ang: 360deg; } }
 @keyframes wmx-pu { from { --wmx-pu: 0; } to { --wmx-pu: 1; } }
-@keyframes wmx-foil { from { background-position: 0% 20%; } to { background-position: 100% 80%; } }
-@keyframes wmx-twinkle { 0%, 100% { opacity: .1; transform: scale(.7); } 50% { opacity: 1; transform: scale(1.12); } }
+@keyframes wmx-fall { from { background-position: 0 0, 0 0, 0 0; } to { background-position: 7px 131px, -5px 97px, 11px 173px; } }
+@keyframes wmx-wander { from { background-position: 0 0, 0 0; } to { background-position: -151px 197px, 127px 163px; } }
+@keyframes wmx-sway { from { transform: translateX(-9px); } to { transform: translateX(9px); } }
 
 .wmx-sty[data-wmx-shiny] {
-  /* l'aura : liseré d'or, halo doré qui respire, puis un halo noir profond teinté de violet autour de la carte */
+  /* l'aura : halo violet sombre qui respire, entouré d'un halo noir profond */
   box-shadow:
-    inset 0 0 0 1.5px rgb(255 212 90 / calc(.75 + var(--wmx-pu) * .25)),
-    0 0 calc(16px + var(--wmx-pu) * 14px) rgb(255 200 80 / calc(.42 + var(--wmx-pu) * .28)),
+    0 0 calc(14px + var(--wmx-pu) * 12px) rgb(118 72 205 / calc(.3 + var(--wmx-pu) * .22)),
     0 0 44px 10px rgb(0 0 0 / .92),
-    0 0 96px 22px rgb(92 58 170 / calc(.1 + var(--wmx-pu) * .14)) !important;
-  animation: wmx-pu 3.2s ease-in-out infinite alternate;
+    0 0 96px 22px rgb(58 24 112 / calc(.12 + var(--wmx-pu) * .12)) !important;
+  animation: wmx-pu 3.6s ease-in-out infinite alternate;
   z-index: 2;
 }
 .wmx-sty[data-wmx-shiny]:hover { z-index: 10; transition: transform .12s ease-out, box-shadow .25s ease !important;
   transform: perspective(620px) rotateX(var(--wmx-ty, 0deg)) rotateY(var(--wmx-tx, 0deg)) translateY(-4px) scale(1.04); }
 
 .wmx-sty-shiny { position: absolute; inset: 0; pointer-events: none; border-radius: inherit; }
-/* cadre holographique qui tourne en continu */
-.wmx-sty-holo { z-index: 47; padding: 2px; opacity: .95;
-  background: conic-gradient(from var(--wmx-ang), #ffd45a, #ff5fa8, #7c5cff, #3de3ff, #7dffb0, #ffd45a);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
-  animation: wmx-ang 7s linear infinite; }
-/* feuille irisée : couleurs de l'arc-en-ciel qui glissent sur la carte, plus vives au survol */
-.wmx-sty-foil { z-index: 44; mix-blend-mode: overlay; opacity: .5;
-  background: linear-gradient(115deg, #ff2d95 0%, #ffd45a 18%, #3de3ff 38%, #7c5cff 58%, #ff2d95 78%, #ffd45a 100%); background-size: 300% 300%;
-  animation: wmx-foil 9s ease-in-out infinite alternate; transition: opacity .3s ease; }
-.wmx-sty[data-wmx-shiny]:hover .wmx-sty-foil { opacity: .62; background-position: var(--wmx-mx, 50%) var(--wmx-my, 50%); animation: none; }
-/* éclats : petites étoiles qui scintillent à tour de rôle */
-.wmx-sty-glint, .wmx-sty-glint::after { z-index: 48; content: ""; position: absolute; inset: 0; border-radius: inherit; }
-.wmx-sty-glint { background:
-  radial-gradient(circle at 16% 20%, #fff 0, #fff 1px, rgb(255 230 150 / .85) 1.6px, transparent 3.4px),
-  radial-gradient(circle at 82% 34%, #fff 0, #fff 1px, rgb(255 230 150 / .85) 1.6px, transparent 3px),
-  radial-gradient(circle at 44% 12%, #fff 0, #fff .8px, rgb(255 230 150 / .85) 1.4px, transparent 2.8px);
-  animation: wmx-twinkle 3.4s ease-in-out infinite; }
-.wmx-sty-glint::after { background:
-  radial-gradient(circle at 70% 70%, #fff 0, #fff 1px, rgb(255 230 150 / .85) 1.6px, transparent 3.4px),
-  radial-gradient(circle at 26% 58%, #fff 0, #fff .8px, rgb(255 230 150 / .85) 1.4px, transparent 3px),
-  radial-gradient(circle at 90% 84%, #fff 0, #fff 1px, rgb(255 230 150 / .85) 1.6px, transparent 3px);
-  animation: wmx-twinkle 3.4s ease-in-out 1.7s infinite; }
-/* reflet blanc qui suit le pointeur */
-.wmx-sty-glare { z-index: 46; mix-blend-mode: soft-light; opacity: 0; transition: opacity .3s ease;
-  background: radial-gradient(circle at var(--wmx-mx, 50%) var(--wmx-my, 30%), rgb(255 255 255 / .85), rgb(255 255 255 / .15) 34%, transparent 58%); }
+/* voile : liseré violet fin, bords assombris, pied de carte teinté de nuit (sans bande dure) */
+.wmx-sty-veil { z-index: 43;
+  box-shadow: inset 0 0 0 1.5px rgb(142 100 214 / .7), inset 0 0 30px rgb(16 4 34 / .7);
+  background: radial-gradient(ellipse at 50% 38%, transparent 52%, rgb(14 4 30 / .5) 100%), linear-gradient(to top, rgb(20 6 42 / .45), transparent 38%); }
+/* points noirs : une couche qui tombe, une couche plus lente qui se balade de droite à gauche */
+.wmx-sty-motes { z-index: 46;
+  background:
+    radial-gradient(circle at 30% 40%, #05010a 0 1.3px, rgb(160 124 255 / .55) 1.9px, transparent 2.6px),
+    radial-gradient(circle at 70% 25%, #05010a 0 1px, rgb(160 124 255 / .5) 1.5px, transparent 2.2px),
+    radial-gradient(circle at 50% 70%, #05010a 0 1.8px, rgb(160 124 255 / .5) 2.4px, transparent 3.2px);
+  background-size: 83px 131px, 59px 97px, 107px 173px; animation: wmx-fall 22s linear infinite; }
+.wmx-sty-drift { z-index: 46; inset: -10px;
+  background:
+    radial-gradient(circle at 40% 35%, #05010a 0 2px, rgb(160 124 255 / .45) 2.8px, transparent 3.8px),
+    radial-gradient(circle at 65% 65%, #05010a 0 1.5px, rgb(160 124 255 / .45) 2.2px, transparent 3.2px);
+  background-size: 151px 197px, 127px 163px; opacity: .85; animation: wmx-wander 70s linear infinite, wmx-sway 7s ease-in-out infinite alternate; }
+/* reflet doux qui suit le pointeur */
+.wmx-sty-glare { z-index: 45; mix-blend-mode: soft-light; opacity: 0; transition: opacity .3s ease;
+  background: radial-gradient(circle at var(--wmx-mx, 50%) var(--wmx-my, 30%), rgb(220 205 255 / .6), rgb(220 205 255 / .1) 34%, transparent 58%); }
 .wmx-sty[data-wmx-shiny]:hover .wmx-sty-glare { opacity: 1; }
-/* nom en or irisé */
-.wmx-sty[data-wmx-shiny] h3 { background: linear-gradient(100deg, #fff3c4 0%, #ffd45a 38%, #fff 52%, #e9c15a 70%, #ffe9a6 100%); -webkit-background-clip: text; background-clip: text;
-  -webkit-text-fill-color: transparent; color: transparent !important; text-shadow: none !important; filter: drop-shadow(0 1px 4px #000); width: fit-content; }
+/* plus de bande noire sous le texte : le calque « wash » du jeu est retiré, le dégradé est doux */
+.wmx-sty[data-wmx-shiny] .shiny-onyx-wash { display: none !important; }
+.wmx-sty[data-wmx-shiny] > div[class*="top-[45%]"] { background: linear-gradient(to top, rgb(6 2 14 / .78), rgb(6 2 14 / .32) 62%, transparent) !important; }
+/* nom en argent pâle, léger halo violet */
+.wmx-sty[data-wmx-shiny] h3 { background: linear-gradient(100deg, #f6f1ff 0%, #cfbdfb 45%, #fff 56%, #bba6ee 100%); -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent !important; text-shadow: none !important; filter: drop-shadow(0 1px 4px #000) drop-shadow(0 0 6px rgb(120 76 210 / .45)); width: fit-content; }
 @media (prefers-reduced-motion: reduce) {
-  .wmx-sty[data-wmx-shiny], .wmx-sty-holo, .wmx-sty-foil, .wmx-sty-glint, .wmx-sty-glint::after { animation: none; }
+  .wmx-sty[data-wmx-shiny], .wmx-sty-motes, .wmx-sty-drift { animation: none; }
   .wmx-sty[data-wmx-shiny]:hover { transform: translateY(-3px); }
 }

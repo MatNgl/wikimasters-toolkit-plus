@@ -474,10 +474,10 @@ test('carte shiny (« L✦ shiny ») : rareté Légendaire reconnue, traitement 
   const [shiny, plain] = [...w.document.querySelectorAll('main > div.rounded-2xl')];
   assert.equal(shiny.dataset.wmxR, 'L', 'la carte shiny est une Légendaire (pas une Commune)');
   assert.equal(shiny.dataset.wmxShiny, '1');
-  assert.ok(['holo', 'foil', 'glint', 'glare'].every((k) => shiny.querySelector(`.wmx-sty-${k}`)), 'cadre holographique, feuille, éclats et reflet');
+  assert.ok(['veil', 'motes', 'drift', 'glare'].every((k) => shiny.querySelector(`.wmx-sty-${k}`)), 'voile sombre, points noirs (deux couches) et reflet');
   assert.equal(plain.dataset.wmxShiny, undefined, 'une Légendaire ordinaire n\'a pas le traitement shiny');
   WMX.cardStyle.scan();
-  assert.equal(shiny.querySelectorAll('.wmx-sty-holo').length, 1, 'rien n\'est ajouté en double au balayage suivant');
+  assert.equal(shiny.querySelectorAll('.wmx-sty-veil').length, 1, 'rien n\'est ajouté en double au balayage suivant');
   WMX.settings.cardStyle = false;
   WMX.cardStyle.scan();
   assert.equal(w.document.querySelectorAll('.wmx-sty-shiny, [data-wmx-shiny]').length, 0, 'style désactivé : tout est retiré');

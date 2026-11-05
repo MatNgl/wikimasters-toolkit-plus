@@ -26,15 +26,15 @@
     return out;
   }
 
-  /** Exception shiny : cadre holographique tournant, feuille irisée, éclats, reflet qui suit le pointeur et légère inclinaison 3D. */
+  /** Exception shiny : voile sombre, points noirs qui tombent et dérivent, reflet doux qui suit le pointeur et légère inclinaison 3D. */
   function setShiny(card, shiny) {
     if (!shiny) {
       if (card.dataset.wmxShiny) { delete card.dataset.wmxShiny; card.querySelectorAll('.wmx-sty-shiny').forEach((e) => e.remove()); }
       return;
     }
     card.dataset.wmxShiny = '1';
-    if (!card.querySelector(':scope > .wmx-sty-holo')) {
-      card.append(...['holo', 'foil', 'glint', 'glare'].map((k) => el('span', { class: `wmx-sty-shiny wmx-sty-${k}` })));
+    if (!card.querySelector(':scope > .wmx-sty-veil')) {
+      card.append(...['veil', 'motes', 'drift', 'glare'].map((k) => el('span', { class: `wmx-sty-shiny wmx-sty-${k}` })));
     }
     if (card._wmxTilt) return;
     card._wmxTilt = true;
