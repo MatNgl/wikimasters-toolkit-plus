@@ -106,16 +106,25 @@
       // Réponse du serveur aux requêtes d'écriture du cadre (notée par frame-hook.js) : dit si le jeu a refusé la création.
       const net = () => { try { return d.documentElement.dataset.wmxNet || ''; } catch (_) { return ''; } };
       const refused = () => /\/api\/marketplace → (403|429|réseau)/.test(net()); // le jeu bloque les requêtes (403/429) ou coupe la connexion
-      const blocked = () => ({ error: `le jeu refuse la mise en vente (${net().split(' ; ').pop()})`, blocked: true, fatal: true });
+      // Refus du jeu. Si c'est une vérification humaine, le jeu l'affiche dans ce cadre (normalement invisible) : on le montre à la personne, qui la fait
+      // sans quitter la page, puis la mise en vente est retentée (`verified`). Sinon (ou si rien ne s'affiche), pause progressive de l'appelant.
+      const blocked = async () => {
+        const tech = net().split(' ; ').pop();
+        const human = /human_verification|anti-?bot/i.test(tech);
+        const base = { error: `le jeu refuse la mise en vente (${tech})`, tech, blocked: true, fatal: true, human };
+        if (!human || !WMX.askHumanCheck) return base;
+        const v = await WMX.askHumanCheck('work', d);
+        return v === 'done' ? { ...base, verified: true, blocked: false, fatal: false } : { ...base, humanResult: v };
+      };
       try { d.dispatchEvent(new Event('wmx-net-reset')); } catch (_) { /* cadre libéré */ }
       launch.click();
       const closed = await waitFor(() => !/Lancer l.enchère/i.test(d.body.innerText) || refused(), 9000, 150);
-      if (refused()) { await sleep(600); return blocked(); } // le temps de lire la réponse du serveur (message, en-têtes)
+      if (refused()) { await sleep(600); return await blocked(); } // le temps de lire la réponse du serveur (message, en-têtes)
       if (!closed) return { error: 'le jeu n’a pas confirmé l’enchère' };
       // Après une mise en vente réussie, le jeu ouvre la page de l'enchère créée dans le cadre : c'est le signe le plus sûr.
       const where = () => { try { return w.location.pathname; } catch (_) { return '?'; } };
       const navigated = await waitFor(() => (/^\/marketplace\/[0-9a-f-]{8,}/i.test(where()) ? 'nav' : refused() ? 'refused' : ''), 4000, 150);
-      if (navigated === 'refused') { await sleep(600); return blocked(); }
+      if (navigated === 'refused') { await sleep(600); return await blocked(); }
       if (navigated) return { ok: true, where: net() ? `réponse du jeu : ${net()}` : '' };
       // Formulaire refermé sans que le jeu ouvre l'enchère : on garde de quoi comprendre (page du cadre, requête du jeu, message affiché).
       let msg = '';
@@ -182,6 +191,14 @@
       try { return await driveForm(item, price, c.dur); } catch (e) { console.warn('[WMX] enchère', item.title, e); return { error: `${e?.name || 'Erreur'} : ${e?.message || e}` }; }
     };
     let res = await attempt();
+    if (res.verified) { // la personne a fait la vérification du jeu : il a peut-être relancé la mise en vente lui-même, sinon on la retente aussitôt (sans pause)
+      WMX.gameBlockN = 0; WMX.gameBlockedUntil = 0;
+      WMX.store.set('gameBlockN', 0); WMX.store.set('gameBlockedUntil', 0);
+      WMX.dismissNote?.('game-block'); WMX.dismissNote?.('game-notice');
+      await sleep(2500);
+      if ((await refresh()) && S.selling.has(item.card_id)) return { ok: true, price };
+      res = await attempt();
+    }
     // « Carte introuvable » peut venir d'un cadre resté ouvert trop longtemps : un nouvel essai avec un cadre neuf avant de conclure qu'elle a disparu.
     if (res.gone) { WMX.releaseCardSheets?.('work'); await sleep(1500); res = await attempt(); }
     else if (!res.ok && !res.fatal) { await sleep(3000); res = await attempt(); } // un nouvel essai (le cadre est remis sur la collection)
@@ -197,8 +214,9 @@
       // Alerte rouge persistante, en clair : de quoi s'agit-il et que faire (la croix la ferme ; le bouton relance après une vérification).
       const why = WMX.explainRefusal?.(res.error);
       const at = new Date(WMX.gameBlockedUntil).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+      console.warn('[WMX] refus du jeu :', res.tech || res.error);
       if (why) {
-        WMX.notify?.({ kind: 'alert', key: 'game-block', title: why.title, text: `${why.text} Prochain essai de l’assistant vers ${at}.`, action: {
+        WMX.notify?.({ kind: 'alert', key: 'game-block', title: why.title, hint: why.hint, text: `${why.text} Prochain essai de l’assistant vers ${at}.`, action: {
           label: 'C’est fait : reprendre maintenant',
           onClick: () => {
             WMX.gameBlockedUntil = 0; WMX.gameBlockN = 0;
@@ -206,7 +224,7 @@
             WMX.autoSell?.runNow?.();
           } } });
       }
-      return { error: `${res.error} : pause de ${Math.floor(pause / 60000)} min${pause % 60000 ? ` ${(pause % 60000) / 1000} s` : ''} (refus n° ${n})`, blocked: true };
+      return { error: `${why?.short || 'le jeu refuse la mise en vente'} : pause de ${Math.floor(pause / 60000)} min${pause % 60000 ? ` ${(pause % 60000) / 1000} s` : ''} (refus n° ${n})`, blocked: true };
     }
     if (!res.ok) return { error: res.error, gone: !!res.gone };
     // Le serveur du jeu peut mettre quelques secondes à enregistrer l'enchère : on vérifie jusqu'à 6 fois avant de conclure à un échec.

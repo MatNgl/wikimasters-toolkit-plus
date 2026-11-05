@@ -720,3 +720,10 @@ html.wmx-opening .wmx-cover { display: block; }
   .wmx-sty[data-wmx-shiny], .wmx-sty-motes, .wmx-sty-drift { animation: none; }
 }
 @media (prefers-reduced-motion: reduce) { .wmx-tilt .wmx-sty:not(.wmx-face):hover { transform: translateY(-3px); } }
+
+/* Pages calmes (listes du marché, profil…) : aucun zoom au survol, y compris celui que le jeu applique lui-même à ses cartes (0.22.16) */
+.wmx-calm div[class*="rounded-2xl"][class*="hover:scale"]:hover, .wmx-calm .wmx-sty:not(.wmx-face):hover { scale: none !important; transform: none !important; }
+
+/* Vérification humaine du jeu montrée à la personne (0.22.17) : le cadre d'automatisation devient une fenêtre au centre de l'écran */
+.wmx-sheet-frame.wmx-human { inset: auto; top: 50%; left: 50%; width: min(560px, 94vw); height: min(560px, 90vh); transform: translate(-50%, -50%);
+  border: 1px solid #ffffff2e; border-radius: 16px; box-shadow: 0 24px 80px #000d, 0 0 0 100vmax #000a; background: #0b0f0d; z-index: 10002; }

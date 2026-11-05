@@ -39,7 +39,7 @@
     return svg;
   };
   /** kind : info | ok | warn | alert. title : ligne en gras (facultative). action : { label, onClick } bouton dans la notification. */
-  function notify({ text, title = '', kind = 'info', ms = 5000, key = '', sticky = false, action = null }) {
+  function notify({ text, title = '', kind = 'info', ms = 5000, key = '', sticky = false, action = null, hint = '' }) {
     if (!text) return undefined;
     if (!noteBox?.isConnected) { noteBox = el('div', { class: 'wmx-notes' }); document.body.append(noteBox); }
     key = key || `n${++noteSeq}`;
@@ -47,7 +47,7 @@
     const persistent = sticky || kind === 'alert';
     const close = el('button', { class: 'wmx-note-x', title: 'Fermer', 'aria-label': 'Fermer', onclick: () => dismissNote(key) }, '×');
     const act = action ? el('button', { class: 'wmx-note-act', onclick: () => { try { action.onClick(); } finally { dismissNote(key); } } }, action.label) : '';
-    const node = el('div', { class: `wmx-note ${kind}`, role: kind === 'alert' ? 'alert' : 'status' },
+    const node = el('div', { class: `wmx-note ${kind}`, role: kind === 'alert' ? 'alert' : 'status', ...(hint ? { title: `Détail technique : ${hint}` } : {}) },
       el('div', { class: 'wmx-note-body' }, title ? el('b', {}, title) : '', el('span', {}, text), act),
       persistent ? close : el('div', { class: 'wmx-note-side' }, ringSvg(ms), close));
     noteBox.append(node);
@@ -66,13 +66,44 @@
   WMX.dismissNote = dismissNote;
 
   /** Un refus du jeu (403/429, vérification humaine, limite d'automatisation) expliqué en clair ; `raw` = message du jeu ou réponse notée dans le cadre. */
+  // Messages en français simple, sans code ni JSON : `title` et `text` pour la notification, `short` pour une ligne de journal, `hint` (détail technique du jeu)
+  // en info-bulle seulement, `kind` pour réagir selon le cas (human = vérification humaine, limit = trop de requêtes, refused = refus sans précision).
   WMX.explainRefusal = function explainRefusal(raw) {
     const s = String(raw || '');
-    const said = (s.match(/«\s*([^»]{3,160}?)\s*»/) || [])[1];
-    const quote = said ? ` Le jeu dit : « ${said} »` : '';
-    if (/v[ée]rification|humain|captcha|turnstile|challenge/i.test(s)) return { title: 'Vérification humaine demandée', text: `Le jeu veut s’assurer que vous êtes une personne. Faites la vérification affichée sur la page du jeu : l’extension reprendra ensuite.${quote}` };
-    if (/automatis|trop de requêtes|règlement/i.test(s)) return { title: 'Limite du site atteinte', text: `Le jeu juge qu’il y a trop de requêtes automatisées. Évitez de cliquer en rafale : l’extension fait une pause, puis réessaie de plus en plus espacé.${quote}` };
-    return { title: 'Le jeu refuse la requête', text: `Le jeu a refusé la demande (erreur 403 ou 429). L’extension fait une pause, puis réessaie.${quote}` };
+    const said = (s.match(/«\s*([^»]{3,300}?)\s*»/) || [])[1] || '';
+    const hint = s.replace(/\s+/g, ' ').trim().slice(0, 300);
+    if (/human_verification|anti-?bot|v[ée]rification|humain|captcha|turnstile|challenge/i.test(s)) {
+      return { kind: 'human', hint, short: 'le jeu demande une vérification humaine', title: 'Le jeu veut vérifier que vous êtes humain',
+        text: 'Une petite vérification (une case à cocher) est demandée. Faites-la dès qu’elle s’affiche : l’extension reprend ensuite toute seule. Si rien ne s’affiche, lancez une mise en vente à la main sur le jeu.' };
+    }
+    if (/automatis|trop de requêtes|règlement|too many|\b429\b/i.test(s)) {
+      return { kind: 'limit', hint, short: 'le jeu trouve qu’il y a trop de demandes', title: 'Le jeu trouve que ça va trop vite',
+        text: 'Trop de demandes en peu de temps. L’extension se met en pause, puis réessaie de plus en plus tard : inutile d’insister.' };
+    }
+    const plain = said && !/^[{[]/.test(said) ? ` Le jeu dit : « ${said.slice(0, 160)} »` : '';
+    return { kind: 'refused', hint, short: 'le jeu a refusé la demande', title: 'Le jeu a refusé la demande',
+      text: `Le jeu a dit non pour le moment. L’extension réessaiera un peu plus tard.${plain}` };
+  };
+
+  /** Le jeu demande sa vérification humaine dans le cadre d'automatisation (invisible d'habitude) : on le montre au centre de l'écran pour que la personne
+   *  la fasse, puis l'appelant reprend. Renvoie 'done' (faite), 'cancel' (bouton Annuler), 'timeout' (3 min sans réponse) ou 'none' (aucune vérification
+   *  trouvée dans le cadre : le jeu n'a affiché qu'un message). */
+  WMX.askHumanCheck = async function askHumanCheck(kind = 'work', doc = null) {
+    const frame = F[kind]?.frame;
+    let d = doc;
+    try { d = d || frame?.contentDocument; } catch (_) { d = null; }
+    if (!frame || !d) return 'none';
+    const dialog = () => { try { return /vérification rapide/i.test(d.body.innerText ?? d.body.textContent) || !!d.querySelector('iframe[src*="challenges.cloudflare.com"]'); } catch (_) { return false; } };
+    if (!(await waitFor(dialog, 3500, 150))) return 'none';
+    let cancelled = false;
+    frame.classList.add('wmx-on', 'wmx-human');
+    notify({ kind: 'alert', key: 'game-human', title: 'Vérification demandée par le jeu',
+      text: 'Cochez la case dans la fenêtre au centre de l’écran. L’extension reprend toute seule dès que c’est fait.',
+      action: { label: 'Annuler', onClick: () => { cancelled = true; } } });
+    const ok = await waitFor(() => cancelled || !dialog(), 180000, 400);
+    frame.classList.remove('wmx-on', 'wmx-human');
+    dismissNote('game-human');
+    return cancelled ? 'cancel' : ok ? 'done' : 'timeout';
   };
 
   // Messages affichés par le jeu lui-même (bandeau en haut : « trop de requêtes », vérification humaine…) : on les reprend, rouges et
@@ -90,7 +121,7 @@
         // Tant que le jeu affiche ce message, les fonctions automatiques attendent (5 min au moins).
         WMX.gameBlockedUntil = Math.max(WMX.gameBlockedUntil || 0, Date.now() + 5 * 60000);
         WMX.store.set('gameBlockedUntil', WMX.gameBlockedUntil);
-        notify({ kind: 'alert', key: 'game-notice', title: e.title, text: `${e.text.replace(/ Le jeu dit : .*$/, '')} Le jeu dit : « ${text.slice(0, 160)} »`, action: {
+        notify({ kind: 'alert', key: 'game-notice', title: e.title, text: e.text, hint: text.slice(0, 200), action: {
           label: 'C’est fait : reprendre',
           onClick: () => { WMX.gameBlockedUntil = 0; WMX.gameBlockN = 0; WMX.store.set('gameBlockedUntil', 0); WMX.store.set('gameBlockN', 0); WMX.autoSell?.runNow?.(); } } });
       };
@@ -110,7 +141,7 @@
     });
     if (Date.now() - (lastShown[scope] || 0) < 30000) return;
     lastShown[scope] = Date.now();
-    if (status === 403 || status === 429) { const e = WMX.explainRefusal(`${status} ${detail}`); notify({ kind: 'alert', key: 'game-limit', title: e.title, text: e.text }); return; }
+    if (status === 403 || status === 429) { const e = WMX.explainRefusal(`${status} ${detail}`); notify({ kind: 'alert', key: 'game-limit', title: e.title, text: e.text, hint: e.hint }); return; }
     toast(msg + (detail ? ` (${detail})` : ''), 7000, { kind: 'warn' });
   };
 

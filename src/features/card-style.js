@@ -103,6 +103,7 @@
   const syncFlags = () => {
     const s = WMX.settings || {};
     document.documentElement.classList.toggle('wmx-tilt', isOn() && tiltPage());
+    document.documentElement.classList.toggle('wmx-calm', !tiltPage()); // pages calmes : on coupe aussi le zoom au survol que le jeu applique lui-même (hover:scale-105)
     document.documentElement.classList.toggle('wmx-hide-desc', s.cardShowDesc === false);
     document.documentElement.classList.toggle('wmx-hide-stats', s.cardShowStats === false);
   };

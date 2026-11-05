@@ -63,7 +63,7 @@
       const items = WMX.inventory.items(); // la liste en cache suffit : l'inventaire se recharge parfois pendant des minutes (jeu lent)
       if (!items.length) return done('no-inventory', WMX.inventory.isLoading() ? 'chargement de la collection en cours, reprise à la prochaine passe' : 'collection indisponible pour le moment, nouvelle tentative à la prochaine passe');
       if (WMX.quick.isRunning()) return done('queue-busy', 'file d’attente occupée, reprise à la fin', { queued: WMX.quick.queued() });
-      if ((WMX.gameBlockedUntil || 0) > now) return done('paused', `le jeu bloque les requêtes (erreur 403) : l’assistant le laisse tranquille jusqu’à ${fmtAt(WMX.gameBlockedUntil)}`);
+      if ((WMX.gameBlockedUntil || 0) > now) return done('paused', `le jeu a refusé les dernières demandes : l’assistant le laisse tranquille jusqu’à${fmtAt(WMX.gameBlockedUntil)}`);
       if (S.pauseUntil > now) return done('paused', `le jeu n’a pas enregistré la dernière mise en vente : nouvel essai à ${fmtAt(S.pauseUntil)} (page rechargée)`);
       await WMX.quick.refresh();
       const active = WMX.quick.count();
@@ -114,7 +114,7 @@
     if (!on()) return WMX.toast?.('L’assistant de vente est désactivé : activez-le dans les Paramètres.', 5000);
     const blockedUntil = WMX.gameBlockedUntil || 0;
     if (blockedUntil > Date.now()) { // insister pendant un blocage risque de le prolonger : on demande confirmation
-      if (!window.confirm(`Le jeu bloque les requêtes (erreur 403) : l’assistant attend jusqu’à ${fmtAt(blockedUntil)}. Insister peut prolonger le blocage. Lancer quand même ?`)) return undefined;
+      if (!window.confirm(`Le jeu a refusé les dernières demandes : l’assistant attend jusqu’à ${fmtAt(blockedUntil)}. Insister peut rallonger l’attente. Lancer quand même ?`)) return undefined;
       WMX.gameBlockedUntil = 0;
       await WMX.store.set('gameBlockedUntil', 0);
     }

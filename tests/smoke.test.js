@@ -481,10 +481,16 @@ test('style de carte : inclinaison 3D sur toutes les cartes stylées au passage 
   assert.ok(w.document.documentElement.classList.contains('wmx-tilt'), 'collection : mouvement au survol actif');
   // Le marché (listes) reste calme ; la fiche d'une enchère précise, les échanges et les paquets bougent.
   const goes = async (p) => { w.history.pushState({}, '', p); WMX.cardStyle.scan(); await wait(); return w.document.documentElement.classList.contains('wmx-tilt'); };
-  for (const p of ['/marketplace', '/marketplace?tab=mine', '/marketplace/history']) assert.equal(await goes(p), false, `${p} : pas de mouvement`);
+  for (const p of ['/marketplace', '/marketplace?tab=mine', '/marketplace/history']) {
+    assert.equal(await goes(p), false, `${p} : pas de mouvement`);
+    assert.ok(w.document.documentElement.classList.contains('wmx-calm'), `${p} : le zoom natif du jeu est coupé (classe wmx-calm)`);
+  }
   move(a); await wait();
   assert.equal(a.style.getPropertyValue('--wmx-tx'), '', 'sur le marché, le pointeur n\'incline rien');
-  for (const p of ['/marketplace/3f9c2a10-5b7e-4c11-9d2a-0a1b2c3d4e5f', '/trades', '/pulls', '/collection']) assert.equal(await goes(p), true, `${p} : mouvement actif`);
+  for (const p of ['/marketplace/3f9c2a10-5b7e-4c11-9d2a-0a1b2c3d4e5f', '/trades', '/pulls', '/collection']) {
+    assert.equal(await goes(p), true, `${p} : mouvement actif`);
+    assert.equal(w.document.documentElement.classList.contains('wmx-calm'), false, `${p} : pas de page calme`);
+  }
   env.close();
 });
 
@@ -927,11 +933,40 @@ test('notifications : temporaires avec anneau et disparition, alertes rouges per
 test('refus du jeu : vérification humaine, limite d\'automatisation ou refus simple, expliqués en clair', async () => {
   const env = createEnv({ fetchImpl: async () => json({ selling: [], bidding: [], won: [{ winner_id: ME }], history: [] }) });
   const { WMX } = env;
-  assert.match(WMX.explainRefusal('POST /api/marketplace → 403 [« Vérification humaine requise »]').title, /Vérification humaine/);
+  assert.match(WMX.explainRefusal('POST /api/marketplace → 403 [« Vérification humaine requise »]').title, /vérifier que vous êtes humain/);
+  const hv = WMX.explainRefusal('POST /api/marketplace → 403 [serveur Vercel · « {"error":"Vérification anti-bot requise.","code":"human_verification_required"} »]');
+  assert.equal(hv.kind, 'human');
+  assert.ok(!/[{}]|code|403|human_verification/.test(`${hv.title} ${hv.text} ${hv.short}`), 'aucun JSON, code ni numéro d’erreur dans le texte lu par la personne');
+  assert.match(hv.hint, /human_verification_required/, 'le détail technique reste disponible (info-bulle)');
   const lim = WMX.explainRefusal('POST /api/marketplace → 403 [serveur x · « Trop de requêtes automatisées. L’automatisation n’est pas autorisée »]');
-  assert.match(lim.title, /Limite du site/);
-  assert.match(lim.text, /Le jeu dit : « Trop de requêtes automatisées/);
-  assert.match(WMX.explainRefusal('POST /api/marketplace → 403').title, /refuse/);
+  assert.equal(lim.kind, 'limit');
+  assert.match(lim.title, /trop vite/);
+  assert.match(lim.hint, /Trop de requêtes automatisées/, 'le message du jeu reste en détail technique');
+  const plain = WMX.explainRefusal('POST /api/marketplace → 403 [« Désolé, réessayez plus tard »]');
+  assert.match(plain.text, /Le jeu dit : « Désolé, réessayez plus tard »/, 'un message simple du jeu est repris');
+  assert.match(WMX.explainRefusal('POST /api/marketplace → 403').title, /refusé/);
+  env.close();
+});
+
+test('vérification humaine du jeu dans le cadre d’automatisation : montrée au centre de l’écran, puis l’extension reprend quand elle est faite', async () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  const { w, WMX } = env;
+  assert.equal(await WMX.askHumanCheck('work'), 'none', 'pas de cadre : rien à montrer');
+  WMX.prepareCardSheets('work'); // crée le cadre (jsdom ne charge pas la page : on y met nous-mêmes la fenêtre de vérification du jeu)
+  const frame = w.document.querySelector('iframe.wmx-work');
+  const fd = frame.contentDocument;
+  if (!fd.body) (fd.documentElement || fd.appendChild(fd.createElement('html'))).append(fd.createElement('body')); // jsdom : cadre vide sans <body>
+  assert.equal(await WMX.askHumanCheck('work'), 'none', 'cadre sans vérification (le jeu n’a affiché qu’un message) : none');
+  fd.body.textContent = 'Vérification rapide — cochez la case';
+  const pending = WMX.askHumanCheck('work');
+  await sleep(400);
+  assert.ok(frame.classList.contains('wmx-on') && frame.classList.contains('wmx-human'), 'le cadre devient visible, en fenêtre');
+  assert.match(w.document.querySelector('.wmx-note.alert').textContent, /Cochez la case/);
+  fd.body.textContent = ''; // la personne a fait la vérification : la fenêtre du jeu disparaît
+  assert.equal(await pending, 'done');
+  assert.ok(!frame.classList.contains('wmx-on') && !frame.classList.contains('wmx-human'), 'le cadre est de nouveau caché');
+  await sleep(300); // la notification joue sa sortie (180 ms) avant d'être retirée
+  assert.equal(w.document.querySelector('.wmx-note.alert'), null, 'la notification disparaît');
   env.close();
 });
 
@@ -946,8 +981,8 @@ test('notice du jeu (bandeau « trop de requêtes automatisées ») reprise en a
   await sleep(50);
   const a = d.querySelector('.wmx-note.alert');
   assert.ok(a, 'alerte affichée');
-  assert.match(a.textContent, /Limite du site atteinte/);
-  assert.match(a.textContent, /voir le règlement/);
+  assert.match(a.textContent, /trop vite/);
+  assert.match(a.title, /voir le règlement/, 'le texte exact du jeu est en info-bulle');
   assert.ok(a.querySelector('.wmx-note-x') && a.querySelector('.wmx-note-act'));
   env.close();
 });
