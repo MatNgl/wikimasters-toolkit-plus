@@ -451,9 +451,9 @@ html.wmx-opening .wmx-cover { display: block; }
   background: linear-gradient(115deg, transparent 34%, rgb(255 255 255 / .55) 46%, rgb(var(--wmx-rgb) / .6) 52%, transparent 62%); background-size: 260% 100%; background-position: 170% 0; animation: wmx-sheen 6s ease-in-out infinite; }
 .wmx-sty-waves { position: absolute; inset: 0; z-index: 12; pointer-events: none; opacity: .2; mix-blend-mode: soft-light; background-image: var(--wmx-waves); background-size: 42px 15px; }
 .wmx-sty { transition: transform .25s ease, box-shadow .25s ease; }
-.wmx-sty:hover { transform: translateY(-3px); }
+.wmx-tilt .wmx-sty:hover { transform: translateY(-3px); } /* mouvement au survol : seulement sur les pages « calmes » (classe posée par card-style.js) */
 /* Inclinaison 3D au passage de la souris, sur toutes les cartes (angles posés par card-style.js) */
-.wmx-sty:not(.wmx-face):hover { transform: perspective(620px) rotateX(var(--wmx-ty, 0deg)) rotateY(var(--wmx-tx, 0deg)) translateY(-4px) scale(1.04); transition: transform .12s ease-out, box-shadow .25s ease; }
+.wmx-tilt .wmx-sty:not(.wmx-face):hover { transform: perspective(620px) rotateX(var(--wmx-ty, 0deg)) rotateY(var(--wmx-tx, 0deg)) translateY(-4px) scale(1.04); transition: transform .12s ease-out, box-shadow .25s ease; }
 .wmx-sty .wmx-nt-price { background: rgb(8 12 10 / .72); backdrop-filter: blur(6px); border-color: rgb(var(--wmx-rgb) / .6); }
 
 /* Style de carte plein cadre (retenu) : l'illustration occupe toute la carte, le texte flotte sur un dégradé */
@@ -498,7 +498,7 @@ html.wmx-opening .wmx-cover { display: block; }
 
 /* Reflet : en continu sur les Légendaires, au survol pour les autres raretés (économise le rendu sur 50 cartes) */
 .wmx-sty:not([data-wmx-r="L"]) .wmx-sty-sheen { animation: none; opacity: 0; transition: opacity .3s ease; }
-.wmx-sty:not([data-wmx-r="L"]):hover .wmx-sty-sheen { opacity: 1; animation: wmx-sheen 2.4s ease-in-out infinite; }
+.wmx-tilt .wmx-sty:not([data-wmx-r="L"]):hover .wmx-sty-sheen { opacity: 1; animation: wmx-sheen 2.4s ease-in-out infinite; }
 
 /* Description et attaque/défense masquables (Paramètres → Aspect des cartes) */
 .wmx-hide-desc .wmx-sty p { display: none !important; }
@@ -719,4 +719,4 @@ html.wmx-opening .wmx-cover { display: block; }
 @media (prefers-reduced-motion: reduce) {
   .wmx-sty[data-wmx-shiny], .wmx-sty-motes, .wmx-sty-drift { animation: none; }
 }
-@media (prefers-reduced-motion: reduce) { .wmx-sty:not(.wmx-face):hover { transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) { .wmx-tilt .wmx-sty:not(.wmx-face):hover { transform: translateY(-3px); } }

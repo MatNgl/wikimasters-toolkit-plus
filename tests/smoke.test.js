@@ -478,6 +478,13 @@ test('style de carte : inclinaison 3D sur toutes les cartes stylées au passage 
   w.document.body.dispatchEvent(new w.MouseEvent('pointermove', { bubbles: true }));
   await wait();
   assert.equal(b.style.getPropertyValue('--wmx-tx'), '', 'en sortant des cartes, tout est remis à zéro');
+  assert.ok(w.document.documentElement.classList.contains('wmx-tilt'), 'collection : mouvement au survol actif');
+  // Le marché (listes) reste calme ; la fiche d'une enchère précise, les échanges et les paquets bougent.
+  const goes = async (p) => { w.history.pushState({}, '', p); WMX.cardStyle.scan(); await wait(); return w.document.documentElement.classList.contains('wmx-tilt'); };
+  for (const p of ['/marketplace', '/marketplace?tab=mine', '/marketplace/history']) assert.equal(await goes(p), false, `${p} : pas de mouvement`);
+  move(a); await wait();
+  assert.equal(a.style.getPropertyValue('--wmx-tx'), '', 'sur le marché, le pointeur n\'incline rien');
+  for (const p of ['/marketplace/3f9c2a10-5b7e-4c11-9d2a-0a1b2c3d4e5f', '/trades', '/pulls', '/collection']) assert.equal(await goes(p), true, `${p} : mouvement actif`);
   env.close();
 });
 

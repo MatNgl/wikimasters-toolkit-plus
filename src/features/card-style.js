@@ -46,7 +46,7 @@
     let raf = 0;
     const reset = (c) => { if (c) for (const k of TILT_VARS) c.style.removeProperty(k); };
     document.addEventListener('pointermove', (e) => {
-      if (e.pointerType === 'touch' || !isOn()) return;
+      if (e.pointerType === 'touch' || !isOn() || !tiltPage()) return;
       const card = e.target?.closest?.('.wmx-sty:not(.wmx-face)') || null;
       if (card !== cur) { cancelAnimationFrame(raf); reset(cur); cur = card; }
       if (!card) return;
@@ -98,8 +98,11 @@
   }
 
   /** Description et attaque/défense : affichées ou masquées selon les Paramètres (classes sur la page, lues par le CSS). */
+  /** Mouvement au survol (inclinaison 3D, zoom, reflet) : collection, échanges, paquets et fiche d'une enchère précise ; pas sur les listes du marché. */
+  const tiltPage = () => /^\/(collection|trades|pulls)(\/|$)/.test(location.pathname) || /^\/marketplace\/[0-9a-f-]{8,}\/?$/i.test(location.pathname);
   const syncFlags = () => {
     const s = WMX.settings || {};
+    document.documentElement.classList.toggle('wmx-tilt', isOn() && tiltPage());
     document.documentElement.classList.toggle('wmx-hide-desc', s.cardShowDesc === false);
     document.documentElement.classList.toggle('wmx-hide-stats', s.cardShowStats === false);
   };
