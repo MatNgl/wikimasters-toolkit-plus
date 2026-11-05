@@ -57,9 +57,11 @@
   function capNotice(a, price, capW, rule, { starting = false } = {}) {
     const name = cardTitle(a);
     const title = 'Prix au-dessus de votre plafond';
+    const current = a.current_bid || a.base_amount || price;
+    // Le plafond s'applique à la mise que l'extension placerait (le minimum demandé par le jeu), pas au prix actuel : on donne les deux pour que ce soit clair.
     const text = starting
-      ? `« ${name} » est déjà à ${fmt(price)} W, alors que votre plafond est de ${fmt(capW)} W (${capSource(rule, a)}). L’extension ne la surveillera pas : elle ne miserait jamais. Relevez le plafond si vous voulez quand même tenter.`
-      : `« ${name} » est monté à ${fmt(price)} W, au-dessus de votre plafond de ${fmt(capW)} W (${capSource(rule, a)}). L’extension ne mise donc pas (ou plus) sur cette carte. Relevez le plafond si vous voulez quand même tenter.`;
+      ? `« ${name} » est déjà à ${fmt(current)} W, alors que votre plafond est de ${fmt(capW)} W (${capSource(rule, a)}). L’extension ne la surveillera pas : elle ne miserait jamais. Relevez le plafond si vous voulez quand même tenter.`
+      : `« ${name} » : la prochaine mise doit être d’au moins ${fmt(price)} W (prix actuel : ${fmt(current)} W), ce qui dépasse votre plafond de ${fmt(capW)} W (${capSource(rule, a)}). L’extension ne mise donc pas (ou plus) sur cette carte. Relevez le plafond si vous voulez quand même tenter.`;
     WMX.notify?.({ kind: 'warn', ms: 20000, key: `cap:${a.id}`, title, text, action: { label: 'Modifier le plafond', onClick: () => WMX.openSettings?.('Mises automatiques') } });
     alertUser(title, `« ${name} » : ${fmt(price)} W pour un plafond de ${fmt(capW)} W.`, `${a.id}:cap`, { toast: false });
   }

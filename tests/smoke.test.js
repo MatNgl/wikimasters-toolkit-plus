@@ -242,6 +242,7 @@ test('veille : un prix déjà au-dessus du plafond arrête la veille sans rien m
   assert.equal(env.mem.autoBids.w2, undefined, 'la veille est supprimée');
   assert.match(w.document.body.textContent, /Prix au-dessus de votre plafond/);
   assert.match(w.document.body.textContent, /Modifier le plafond/, 'avec un bouton vers les réglages');
+  assert.match(w.document.body.textContent, /prochaine mise doit être d’au moins 31 W \(prix actuel : 30 W\)/, 'on distingue la mise minimum du prix actuel');
   env.close();
 });
 

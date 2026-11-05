@@ -268,8 +268,8 @@
     if (sectionTitle) {
       const sec = [...content.querySelectorAll('section.wmx-sec')].find((s) => s.querySelector('h3')?.textContent === sectionTitle);
       if (sec) {
-        sec.scrollIntoView({ block: 'start' });
         sec.classList.add('wmx-sec-hl');
+        sec.scrollIntoView?.({ block: 'start' });
         setTimeout(() => sec.classList.remove('wmx-sec-hl'), 2600);
       }
     }
