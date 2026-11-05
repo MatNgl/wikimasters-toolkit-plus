@@ -9,14 +9,18 @@
 // mise » et on clique « Miser », comme l'utilisateur. On mise toujours exactement le minimum proposé.
 (() => {
   const { el, sleep, waitFor } = WMX.dom;
-  const D = { selling: [], bidding: [], me: null, loaded: false };
+  const D = { selling: [], bidding: [], watching: [], me: null, loaded: false };
   const S = { bubble: null, bubbleOpen: false, betting: null, timer: null, lists: [], frames: new Map() };
   const fmt = (n) => Math.round(n).toLocaleString('fr-FR');
   const cardTitle = (a) => a.card?.wikipedia_title || '?';
   const rarityOf = (a) => WMX.normRarity(a.snapshot_rarity || a.card?.rarity) || 'C';
   const leading = (a) => !!D.me && a.current_bidder_id === D.me;
   const msLeft = (a) => new Date(a.end_at).getTime() - Date.now();
-  const msLeftById = (id) => { const a = D.bidding.find((x) => x.id === id); return a ? msLeft(a) : 9e9; };
+  // « Surveiller » : une enchère sur laquelle je n'ai pas (encore) misé mais qui porte une règle de mise automatique marquée `watch` : l'extension
+  // attend le dernier moment (ex. sous 35 s) et ne mise que si le prix reste sous le plafond. Dès que j'ai misé, elle devient une mise automatique ordinaire.
+  const allBids = () => [...D.bidding, ...D.watching.filter((w) => !D.bidding.some((b) => b.id === w.id))];
+  const msLeftById = (id) => { const a = allBids().find((x) => x.id === id); return a ? msLeft(a) : 9e9; };
+  const MAX_WATCH = 12; // au-delà : trop de requêtes de suivi
   const { fmtLeft, timeState } = WMX.logic; // sous 5 min : chronomètre rouge ; sous 2 min : alerte
   S.auto = {};                              // mises automatiques : { idEnchère: règle } (mémorisées)
   S.autoTry = {};                           // dernier essai de mise automatique par enchère
@@ -115,6 +119,38 @@
   }
 
   // --- Données ---------------------------------------------------------------------------------
+  const isWatch = (a) => !!S.auto[a.id]?.watch && !D.bidding.some((b) => b.id === a.id);
+  S.watchT = {}; // dernière lecture de chaque enchère surveillée
+  /** Relit les enchères surveillées (GET /api/marketplace/{id}) : peu souvent tant que c'est loin, toutes les 2,5 s près du moment de miser. */
+  async function refreshWatching(force = false) {
+    const ids = Object.keys(S.auto).filter((id) => S.auto[id]?.watch && !D.bidding.some((b) => b.id === id));
+    const next = [];
+    for (const id of ids) {
+      const prev = D.watching.find((w) => w.id === id);
+      const rule = S.auto[id];
+      const left = prev ? msLeft(prev) : 9e9;
+      const near = left <= (rule.secs || 60) * 1000 + 20000;
+      const every = !prev ? 0 : near ? 2500 : left <= 5 * 60000 ? 15000 : 60000;
+      if (!force && prev && Date.now() - (S.watchT[id] || 0) < every) { next.push(prev); continue; }
+      S.watchT[id] = Date.now();
+      let a = null;
+      let gone = false;
+      try {
+        const res = await fetch(`/api/marketplace/${id}`, { cache: 'no-store' });
+        if (res.status === 404) gone = true;
+        else if (res.ok) a = (await res.json())?.auction || null;
+      } catch (_) { /* réseau : on garde la dernière lecture */ }
+      if (gone || (a && (a.status !== 'active' || msLeft(a) < -GRACE_MS))) { // terminée sans que j'aie misé : la veille s'arrête
+        delete S.auto[id]; delete S.autoTry[id]; saveAuto();
+        const title = a ? cardTitle(a) : (prev ? cardTitle(prev) : 'cette carte');
+        if (!gone) alertUser('Veille terminée', `« ${title} » est terminée : l’extension n’a pas misé (le prix est resté trop haut pour votre plafond, ou le moment de miser n’est pas arrivé).`, `${id}:watchend`);
+        continue;
+      }
+      if (a) next.push(a); else if (prev) next.push(prev);
+    }
+    D.watching = next;
+  }
+
   async function refresh() {
     try {
       const u = new URL('/api/marketplace', location.origin);
@@ -137,11 +173,18 @@
       D.loaded = true;
       checkOutbid(first);
       applyDefaults(first);
+      await refreshWatching();
       let dirty = false;
-      for (const id of Object.keys(S.auto)) if (!D.bidding.some((x) => x.id === id)) { delete S.auto[id]; delete S.autoTry[id]; dirty = true; } // enchère terminée
+      for (const id of Object.keys(S.auto)) {
+        const inBids = D.bidding.some((x) => x.id === id);
+        if (S.auto[id]?.watch && inBids) { delete S.auto[id].watch; dirty = true; continue; } // j'ai misé : la veille devient une mise automatique ordinaire
+        if (!inBids && !S.auto[id]?.watch) { delete S.auto[id]; delete S.autoTry[id]; dirty = true; } // enchère terminée
+      }
       if (dirty) saveAuto();
       // Page prête à l'avance (miser sans attendre) pour les règles dont l'enchère finit le plus tôt : jamais plus de pages que MAX_FRAMES.
-      Object.keys(S.auto).map((id) => D.bidding.find((b) => b.id === id)).filter(Boolean).sort((x, y) => msLeft(x) - msLeft(y)).slice(0, MAX_FRAMES).forEach(frameFor);
+      // Une veille n'a besoin de sa page que dans la dernière minute et demie avant le moment de miser.
+      Object.keys(S.auto).map((id) => allBids().find((b) => b.id === id)).filter((a) => a && (!isWatch(a) || msLeft(a) <= (S.auto[a.id].secs || 60) * 1000 + 90000))
+        .sort((x, y) => msLeft(x) - msLeft(y)).slice(0, MAX_FRAMES).forEach(frameFor);
       pruneFrames();
       renderAll();
       window.dispatchEvent(new CustomEvent('wmx:bids'));
@@ -155,7 +198,9 @@
   /** Cadence : 8 s si la bulle est ouverte, sinon 1 min ; rien quand l'onglet est caché. */
   function schedulePoll() {
     clearTimeout(S.timer);
-    const fast = WMX.logic.autoPollMs(Object.entries(S.auto).map(([id, rule]) => ({ rule, msLeft: msLeftById(id) })));
+    // Une veille encore lointaine (plus de 5 min avant le moment de miser) ne demande pas l'actualisation rapide des règles.
+    const fast = WMX.logic.autoPollMs(Object.entries(S.auto).filter(([id, rule]) => !rule.watch || msLeftById(id) <= 5 * 60000 + (rule.secs || 60) * 1000)
+      .map(([id, rule]) => ({ rule, msLeft: msLeftById(id) })));
     const nearEnd = [...D.bidding, ...D.selling].some((x) => msLeft(x) < 12000 && msLeft(x) > -GRACE_MS);
     const ms = fast || (nearEnd ? 3000 : (S.bubbleOpen ? 8000 : 60000));
     S.timer = setTimeout(async () => {
@@ -185,7 +230,7 @@
     return f;
   }
   function pruneFrames() {
-    const keep = new Set(D.bidding.map((a) => a.id));
+    const keep = new Set(allBids().map((a) => a.id));
     for (const [id, f] of S.frames) if (!keep.has(id) && id !== S.betting) { f.remove(); S.frames.delete(id); }
   }
   function prepareFrames() {
@@ -364,7 +409,7 @@
 
   // --- Mise automatique -----------------------------------------------------------------------
   function setAuto(a, rule) {
-    if (rule) { S.auto[a.id] = rule; S.autoFails[a.id] = 0; frameFor(a); } else { delete S.auto[a.id]; delete S.autoTry[a.id]; }
+    if (rule) { if (isWatch(a)) rule.watch = true; S.auto[a.id] = rule; S.autoFails[a.id] = 0; if (!isWatch(a)) frameFor(a); } else { delete S.auto[a.id]; delete S.autoTry[a.id]; D.watching = D.watching.filter((w) => w.id !== a.id); }
     saveAuto();
     S.autoOpen = null;
     renderAll();
@@ -454,10 +499,12 @@
   /** Chaque seconde : une règle est-elle à déclencher ? (une seule mise à la fois, 6 s minimum entre deux essais) */
   function runAuto() {
     if (!S.leader || S.betting || !D.loaded) return; // un seul onglet (le « chef ») exécute les mises automatiques
-    for (const a of D.bidding) {
+    for (const a of allBids()) {
       const rule = S.auto[a.id];
       if (!rule) continue;
-      const m = minOf(a);
+      const watching = isWatch(a);
+      // Minimum de mise : lu sur la page de l'enchère ; pour une veille dont la page n'est pas encore chargée, on prend la borne basse connue (mise actuelle + 1).
+      const m = minOf(a) || (watching ? (a.current_bid ? a.current_bid + 1 : a.base_amount) || null : null);
       // Plafond en W : valeur fixe, ou moyenne du marché de la carte (+/− un pourcentage). Moyenne inconnue : on la demande et on attend.
       const capW = WMX.logic.resolveCap(rule, avgOf(a));
       if (rule.capMode === 'avg' && capW == null) {
@@ -467,7 +514,8 @@
       }
       if (capW != null && m && m > capW && !leading(a)) { // le minimum dépasse le plafond : la règle s'arrête (et on prévient)
         delete S.auto[a.id]; saveAuto(); renderAll();
-        alertUser('Mise automatique arrêtée', `« ${cardTitle(a)} » : le minimum (${fmt(m)} W) dépasse votre plafond de ${fmt(capW)} W.`, `${a.id}:cap`);
+        if (watching) alertUser('Veille arrêtée', `« ${cardTitle(a)} » : le prix (${fmt(m)} W) a dépassé votre plafond de ${fmt(capW)} W. L’extension ne misera pas.`, `${a.id}:cap`);
+        else alertUser('Mise automatique arrêtée', `« ${cardTitle(a)} » : le minimum (${fmt(m)} W) dépasse votre plafond de ${fmt(capW)} W.`, `${a.id}:cap`);
         continue;
       }
       // Ma dernière mise automatique n'est pas encore visible (serveur lent) : on attend qu'une mise PLUS HAUTE apparaisse (vraie
@@ -520,13 +568,14 @@
       autoBtn.addEventListener('click', () => { S.autoOpen = S.autoOpen === a.id ? null : a.id; renderAll(); });
       main = el('div', { class: 'wmx-auc-main' },
         el('div', { class: 'wmx-auc-name' }, title, rarityTag(r)),
-        el('span', { class: `wmx-auc-state ${lead ? 'ok' : 'ko'}` }, lead ? 'Vous menez' : 'Surenchéri'),
+        isWatch(a) ? el('span', { class: 'wmx-auc-state watch', title: 'Vous n’avez pas misé : l’extension misera au dernier moment si le prix reste sous votre plafond.' }, 'Surveillance')
+          : el('span', { class: `wmx-auc-state ${lead ? 'ok' : 'ko'}` }, lead ? 'Vous menez' : 'Surenchéri'),
         timeEl(a),
         rule ? el('span', { class: 'wmx-auc-autotag', 'data-id': a.id }, WMX.logic.autoLabel(rule)) : '');
       side = el('div', { class: 'wmx-auc-side' },
         el('div', { class: 'wmx-auc-price' }, el('small', {}, 'Mise actuelle'), el('b', {}, `${fmt(a.current_bid || a.base_amount)} W`), avgChip(a, 'buy')),
         el('div', { class: 'wmx-auc-acts' }, autoBtn, act));
-      return el('div', { class: 'wmx-auc-row', style: `--rgb:${WMX.RARITY_RGB[r]}` }, img, main, side, S.autoOpen === a.id ? autoForm(a) : '');
+      return el('div', { class: `wmx-auc-row${isWatch(a) ? ' watch' : ''}`, style: `--rgb:${WMX.RARITY_RGB[r]}` }, img, main, side, S.autoOpen === a.id ? autoForm(a) : '');
     } else {
       const act = a.current_bid || msLeft(a) <= 0 ? '' : el('button', { class: 'wmx-btn wmx-btn--ghost wmx-auc-cancel', 'data-card': a.card_id, title: 'Annuler la vente et récupérer la carte' }, 'Annuler');
       if (act) {
@@ -560,11 +609,11 @@
     const tab = await waitFor(() => [...document.querySelectorAll('button, [role=tab], a')].find((x) => !x.closest('.wmx-bubble') && tabRe.test(x.textContent.trim())), 20000, 200);
     tab?.click();
   }
-  const column = (label, rows, tabRe) => el('div', { class: 'wmx-auc-col' },
+  const column = (label, rows, tabRe, count = rows.length) => el('div', { class: 'wmx-auc-col' },
     el('h3', {}, el('a', { class: 'wmx-auc-h3link', href: '/marketplace', title: `Voir « ${label} » dans le Marché`, onclick: (e) => {
       if (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1) return; // laisse le navigateur ouvrir un onglet
       e.preventDefault(); goMarket(tabRe);
-    } }, `${label} (${rows.length}) ↗`)),
+    } }, `${label} (${count}) ↗`)),
     el('div', { class: 'wmx-auc-list' }, ...rows));
   const note = (text) => el('p', { class: 'wmx-auc-note' }, text);
 
@@ -573,16 +622,22 @@
   const shown = (a) => msLeft(a) > -GRACE_MS;
   const liveBids = () => D.bidding.filter((x) => msLeft(x) > 0);
   const liveSales = () => D.selling.filter((x) => msLeft(x) > 0);
-  const listSig = () => [...D.bidding, ...D.selling].filter(shown).map((x) => x.id).join();
+  const listSig = () => [...allBids(), ...D.selling].filter(shown).map((x) => x.id).join();
 
   function content() {
-    const bids = D.bidding.filter(shown).sort((a, b) => msLeft(a) - msLeft(b)).map((a) => row(a, 'bid'));
+    // Dans « Mes enchères » : d'abord celles où j'ai misé, puis, sous un petit titre, les cartes que je surveille sans avoir misé (pas de troisième colonne).
+    const byEnd = (a, b) => msLeft(a) - msLeft(b);
+    const mineList = D.bidding.filter(shown).sort(byEnd);
+    const watchList = allBids().filter((a) => isWatch(a) && shown(a)).sort(byEnd);
+    const bids = [...mineList.map((a) => row(a, 'bid')),
+      ...(watchList.length ? [el('p', { class: 'wmx-auc-sep', title: 'Vous n’avez pas misé sur ces cartes : l’extension misera au dernier moment, si le prix reste sous votre plafond.' }, 'Sous surveillance (rien de misé pour l’instant)'), ...watchList.map((a) => row(a, 'bid'))] : [])];
+    const bidCount = mineList.length + watchList.length;
     const sells = D.selling.filter(shown).sort((a, b) => msLeft(a) - msLeft(b)).map((a) => row(a, 'sell'));
     // Panneau adaptatif : deux colonnes quand il y a des enchères ET des ventes ; une seule (plus étroite) avec une note sur l'autre sinon.
     const mode = bids.length && sells.length ? 'two' : (bids.length || sells.length ? 'one' : 'none');
     if (S.bubblePanel) { S.bubblePanel.dataset.mode = mode; applySize(); }
     const out = [];
-    if (bids.length) out.push(column('Mes enchères', bids, /^Mes ench/i));
+    if (bids.length) out.push(column('Mes enchères', bids, /^Mes ench/i, bidCount));
     if (sells.length) out.push(column('Mes ventes', sells, /^Mes ventes/i));
     if (!bids.length) out.push(note('Aucune enchère en cours.'));
     if (!sells.length) out.push(note('Aucune vente en cours.'));
@@ -608,7 +663,7 @@
     }
     for (const b of document.querySelectorAll('.wmx-auc-cancel')) paintCancel(b);
     for (const b of document.querySelectorAll('.wmx-auc-bid')) {
-      const a = D.bidding.find((x) => x.id === b.dataset.id);
+      const a = allBids().find((x) => x.id === b.dataset.id);
       if (!a) continue;
       const m = minOf(a);
       b.textContent = S.betting === a.id ? 'Mise en cours…' : leading(a) ? 'Vous menez' : (m ? `Surenchérir · ${fmt(m)} W` : 'Surenchérir');
@@ -616,11 +671,11 @@
     }
     // Règle de mise automatique : le plafond en W, et pourquoi elle ne mise pas si le minimum du jeu le dépasse (le plafond vaut pour la mise PLACÉE).
     for (const t of document.querySelectorAll('.wmx-auc-autotag[data-id]')) {
-      const a = D.bidding.find((x) => x.id === t.dataset.id);
+      const a = allBids().find((x) => x.id === t.dataset.id);
       const rule = a && S.auto[a.id];
       if (!rule) continue;
       const capW = WMX.logic.resolveCap(rule, avgOf(a));
-      const m = minOf(a);
+      const m = minOf(a) || (isWatch(a) ? (a.current_bid ? a.current_bid + 1 : a.base_amount) || null : null);
       const blocked = capW != null && m && m > capW && !leading(a);
       t.textContent = `${WMX.logic.autoLabel(rule)}${capW != null ? ` (${fmt(capW)} W)` : ''}${blocked ? ` · ⛔ minimum ${fmt(m)} W au-dessus` : ''}`;
       t.classList.toggle('warn', !!blocked);
@@ -846,9 +901,55 @@
     grip.addEventListener('pointercancel', up);
   }
 
-  /** Utilisé par la page Marché : miser le minimum sur une enchère sans ouvrir sa page. */
+  /** Règle d'une veille : les réglages par défaut des mises automatiques, mais toujours « sous un délai » (jamais « dès surenchère », qui miserait aussitôt)
+   *  et toujours avec un plafond (par défaut : moyenne du marché −20 %). */
+  function watchRule() {
+    const base = defaultInput();
+    const input = { ...base, mode: 'time', amount: base.mode === 'time' ? base.amount : 30, unit: 's' };
+    if (input.capMode === 'none') { input.capMode = 'avg'; input.capPct = -20; }
+    return WMX.logic.parseAutoRule(input);
+  }
+
+  /** Utilisé par la page Marché : miser le minimum sur une enchère sans ouvrir sa page, ou la surveiller pour miser au dernier moment. */
   WMX.auctions = {
     refresh,
+    /** 'watch' (surveillée), 'auto' (mise automatique ordinaire déjà réglée) ou 'none'. */
+    watchState(id) { const r = S.auto[id]; return r ? (r.watch ? 'watch' : 'auto') : 'none'; },
+    /** Texte court de la règle d'une veille, ex. « sous 35 s · max 120 W ». */
+    watchInfo(id) {
+      const r = S.auto[id];
+      if (!r) return '';
+      const a = allBids().find((x) => x.id === id);
+      const capW = a ? WMX.logic.resolveCap(r, avgOf(a)) : null;
+      return `${r.secs < 120 ? `sous ${r.secs} s` : `sous ${Math.round(r.secs / 60)} min`}${capW != null ? ` · max ${fmt(capW)} W` : (WMX.logic.capLabel(r) ? ` · ${WMX.logic.capLabel(r)}` : '')}`;
+    },
+    /** Démarre ou arrête la veille d'une enchère. Renvoie le nouvel état. */
+    async toggleWatch(id, title = '') {
+      const name = title || 'cette carte';
+      const cur = S.auto[id];
+      if (cur?.watch) {
+        delete S.auto[id]; delete S.autoTry[id]; D.watching = D.watching.filter((w) => w.id !== id);
+        saveAuto(); fire(); renderAll(); schedulePoll();
+        WMX.toast(`Veille arrêtée sur « ${name} » : rien ne sera misé.`);
+        return 'none';
+      }
+      if (cur) { WMX.toast(`Une mise automatique est déjà réglée sur « ${name} » (à modifier dans « Mes enchères »).`); return 'auto'; }
+      if (Object.values(S.auto).filter((r) => r?.watch).length >= MAX_WATCH) { WMX.toast(`Vous surveillez déjà ${MAX_WATCH} enchères : arrêtez-en une avant d’en ajouter.`, 6000, { kind: 'warn' }); return 'none'; }
+      const rule = watchRule();
+      if (!rule) { WMX.toast('Je n’ai pas pu préparer la veille : vérifiez les réglages des mises automatiques (Paramètres).', 6000, { kind: 'warn' }); return 'none'; }
+      S.auto[id] = { ...rule, watch: true };
+      S.autoFails[id] = 0;
+      saveAuto();
+      await refreshWatching(true);
+      const a = D.watching.find((w) => w.id === id);
+      if (a && !WMX.prices.has(a.card_id)) WMX.prices.fetchOne(a.card_id).then(() => { if (S.bubbleOpen) renderAll(); });
+      const capW = a ? WMX.logic.resolveCap(rule, avgOf(a)) : null;
+      const secs = rule.secs < 120 ? `${rule.secs} s` : `${Math.round(rule.secs / 60)} min`;
+      WMX.notify?.({ kind: 'ok', ms: 9000, key: `watch:${id}`, title: `« ${a ? cardTitle(a) : name} » est surveillée`,
+        text: `Je ne mise pas maintenant. Je miserai quand il restera ${secs}, seulement si le prix reste sous ${capW != null ? `${fmt(capW)} W` : `votre plafond (${WMX.logic.capLabel(rule)})`}. Sinon, je laisse tomber.` });
+      fire(); renderAll(); schedulePoll();
+      return 'watch';
+    },
     state: () => D,
     bidById(id, title) { enqueueBid(D.bidding.find((x) => x.id === id) || { id, card: { wikipedia_title: title } }); },
     warm(id) { if (id && !S.betting) frameFor({ id }); },
@@ -888,13 +989,14 @@
         document.addEventListener('visibilitychange', claim);
         setTimeout(claim, 4000); // onglet ouvert directement au premier plan alors qu'un onglet masqué tient déjà le rôle
       } else S.leader = true;
-      WMX.store.get('autoBids', {}).then((r) => { S.auto = r || {}; });
+      WMX.store.get('autoBids', {}).then((r) => { S.auto = r || {}; refreshWatching(true).then(() => { renderAll(); fire(); }).catch(() => {}); });
       // Les règles créées ou modifiées dans un autre onglet arrivent ici : sans cela, l'onglet « chef » ignorerait les règles créées ailleurs.
       WMX.onStorage((c) => {
         if (!c.autoBids) return;
         const next = c.autoBids.newValue || {};
         if (JSON.stringify(next) === JSON.stringify(S.auto)) return;
         S.auto = next; renderAll(); schedulePoll();
+        refreshWatching().then(() => { renderAll(); fire(); }).catch(() => {}); // une veille créée dans un autre onglet : on lit tout de suite l'enchère
       });
       setInterval(() => { if (WMX.alive()) tick(); }, 1000);
       // Pas de requête ici : on décide seulement, plus souvent, avec les données déjà chargées (réaction plus rapide dans la dernière minute).

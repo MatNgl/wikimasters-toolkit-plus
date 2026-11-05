@@ -91,7 +91,7 @@
       if (!rule) return '';
       const when = rule.mode === 'outbid' ? 'dès surenchère' : rule.secs < 120 ? `sous ${rule.secs} s` : `sous ${Math.round(rule.secs / 60)} min`;
       const cap = L.capLabel(rule);
-      return `Auto · ${when}${cap ? ` · ${cap}` : ''}`;
+      return `${rule.watch ? 'Veille' : 'Auto'} · ${when}${cap ? ` · ${cap}` : ''}`;
     },
     /** Part de la fenêtre restante (1 = au moins `windowMs` restantes, 0 = terminée). */
     ringFraction(ms, windowMs = 3600000) {

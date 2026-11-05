@@ -727,3 +727,22 @@ html.wmx-opening .wmx-cover { display: block; }
 /* Vérification humaine du jeu montrée à la personne (0.22.17) : le cadre d'automatisation devient une fenêtre au centre de l'écran */
 .wmx-sheet-frame.wmx-human { inset: auto; top: 50%; left: 50%; width: min(560px, 94vw); height: min(560px, 90vh); transform: translate(-50%, -50%);
   border: 1px solid #ffffff2e; border-radius: 16px; box-shadow: 0 24px 80px #000d, 0 0 0 100vmax #000a; background: #0b0f0d; z-index: 10002; }
+
+/* ===== Veille : bouton « Surveiller » (0.23.0) ===== */
+/* Marché : « Miser » et « Surveiller » côte à côte sous chaque carte */
+.wmx-mk-acts { display: flex; gap: 6px; width: 100%; margin-top: 6px; }
+.wmx-mk-acts .wmx-btn { margin: 0; flex: 1 1 0; min-width: 0; padding: 7px 4px; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wmx-mk-watch.on { background: rgb(124 198 255 / .16); color: #8fd0ff; border-color: rgb(124 198 255 / .55); }
+.wmx-mk-watch:disabled { opacity: .6; cursor: default; }
+/* Page d'une enchère : bouton au-dessus de la ligne « Miser » du jeu */
+.wmx-dw { display: flex; flex-direction: column; gap: 4px; }
+.wmx-dw-btn { width: 100%; padding: 9px 12px; font-size: 13px; background: transparent; color: #8fd0ff; border: 1px solid rgb(124 198 255 / .5); }
+.wmx-dw-btn:hover:not(:disabled) { background: rgb(124 198 255 / .12); }
+.wmx-dw-btn.on { background: rgb(124 198 255 / .18); border-color: rgb(124 198 255 / .8); }
+.wmx-dw-btn:disabled { opacity: .6; cursor: default; }
+.wmx-dw-note { margin: 0; font-size: 11px; line-height: 1.35; color: #8a9a92; }
+/* Bulle « Mes enchères » : une enchère simplement surveillée */
+.wmx-auc-state.watch { color: #8fd0ff; }
+/* Bulle « Mes enchères » : sous-titre et lignes des cartes simplement surveillées */
+.wmx-auc-sep { margin: 8px 2px 2px; font: 700 10px Outfit, system-ui, sans-serif; text-transform: uppercase; letter-spacing: .05em; color: #8fd0ff; }
+.wmx-auc-row.watch { border-style: dashed; border-color: rgb(124 198 255 / .35); }

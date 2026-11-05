@@ -35,13 +35,15 @@
   const anchors = () => [...document.querySelectorAll('a.card-frame[href^="/marketplace/"]')];
   const idOf = (a) => a.getAttribute('href').split('/').pop().split(/[?#]/)[0];
 
-  const BID_LABEL = { none: 'Miser le minimum', outbid: 'Surenchérir (minimum)', leading: '✓ Vous menez', queued: '⏳ En file d’attente', betting: 'Mise en cours…' };
-  /** Bouton de mise : pose le minimum proposé par le jeu sans ouvrir la page de l'enchère (page préchargée au survol). */
+  const BID_LABEL = { none: 'Miser', outbid: 'Surenchérir', leading: '✓ En tête', queued: '⏳ En file', betting: 'Mise…' };
+  const BID_TITLE = { none: 'Miser le minimum maintenant', outbid: 'Surenchérir du minimum maintenant', leading: 'Vous menez cette enchère', queued: 'Mise en file d’attente', betting: 'Mise en cours' };
+  const WATCH_HINT = 'Surveiller : vous ne misez pas maintenant. L’extension miserait au dernier moment, seulement si le prix reste sous votre plafond (réglages dans Paramètres → Mises automatiques).';
+  /** Deux boutons côte à côte : « Miser » (le minimum proposé par le jeu, sans ouvrir la page ; page préchargée au survol) et « Surveiller » (mise au dernier moment). */
   function ensureBid(a, info) {
     const id = idOf(a);
-    let btn = a.querySelector(':scope > .wmx-mk-bid');
-    if (!btn) {
-      btn = el('button', { class: 'wmx-btn wmx-mk-bid', type: 'button' });
+    let row = a.querySelector(':scope > .wmx-mk-acts');
+    if (!row) {
+      const btn = el('button', { class: 'wmx-btn wmx-mk-bid', type: 'button' });
       btn.addEventListener('pointerenter', () => WMX.auctions?.warm(id));
       btn.addEventListener('click', (e) => {
         e.preventDefault(); e.stopPropagation(); // le bouton est dans un lien : pas de navigation
@@ -49,24 +51,72 @@
         WMX.auctions.bidById(id, info.title); // mis en file : on peut cliquer sur d'autres cartes sans attendre
         paintBid(a);
       });
-      a.append(btn);
+      const watch = el('button', { class: 'wmx-btn wmx-btn--ghost wmx-mk-watch', type: 'button' });
+      watch.addEventListener('click', async (e) => {
+        e.preventDefault(); e.stopPropagation();
+        if (!WMX.auctions) return;
+        watch.disabled = true;
+        try { await WMX.auctions.toggleWatch(id, info.title); } finally { paintBid(a); }
+      });
+      row = el('div', { class: 'wmx-mk-acts' }, btn, watch);
+      a.append(row);
     }
     paintBid(a);
   }
   function paintBid(a) {
-    const btn = a.querySelector(':scope > .wmx-mk-bid');
+    const btn = a.querySelector(':scope .wmx-mk-bid');
     if (!btn || !WMX.auctions) return;
-    const st = WMX.auctions.stateOf(idOf(a));
+    const id = idOf(a);
+    const st = WMX.auctions.stateOf(id);
     btn.textContent = BID_LABEL[st];
+    btn.title = BID_TITLE[st];
     btn.classList.toggle('ok', st === 'leading');
     btn.disabled = st === 'leading' || st === 'queued' || st === 'betting';
+    const watch = a.querySelector(':scope .wmx-mk-watch');
+    if (watch) {
+      const w = WMX.auctions.watchState(id);
+      watch.textContent = w === 'watch' ? 'Surveillée' : w === 'auto' ? 'Mise auto' : 'Surveiller';
+      watch.classList.toggle('on', w === 'watch');
+      watch.disabled = w === 'auto';
+      watch.title = w === 'watch' ? `Veille active (${WMX.auctions.watchInfo(id)}) : cliquer pour l’arrêter` : w === 'auto' ? 'Une mise automatique est déjà réglée sur cette enchère (voir « Mes enchères »)' : WATCH_HINT;
+    }
+  }
+
+  // --- Page d'UNE enchère : bouton « Surveiller », au-dessus de la ligne « Miser » du jeu ---------------------------------------------
+  function paintDetailWatch() {
+    if (!isDetail() || !WMX.auctions) return;
+    const id = location.pathname.split('/').filter(Boolean)[1];
+    const miser = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Miser' && !b.closest('.wmx-bubble, .wmx-panel, .wmx-modal-backdrop'));
+    const mine = document.querySelector('.wmx-dw');
+    if (!miser) { mine?.remove(); return; } // enchère terminée ou la mienne : pas de mise, donc pas de veille
+    const row = miser.parentElement; // la ligne « champ de mise + Miser »
+    let box = mine;
+    if (!box || !box.isConnected || box.nextElementSibling !== row) {
+      box?.remove();
+      const btn = el('button', { class: 'wmx-btn wmx-dw-btn', type: 'button' });
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        const title = byAuction.get(id)?.title || document.querySelector('h1')?.textContent?.trim() || '';
+        try { await WMX.auctions.toggleWatch(id, title); } finally { paintDetailWatch(); }
+      });
+      box = el('div', { class: 'wmx-dw' }, btn, el('p', { class: 'wmx-dw-note' }));
+      row.before(box);
+    }
+    const w = WMX.auctions.watchState(id);
+    const btn = box.querySelector('.wmx-dw-btn');
+    btn.textContent = w === 'watch' ? `Surveillée · ${WMX.auctions.watchInfo(id)} — arrêter` : w === 'auto' ? 'Mise automatique déjà réglée' : 'Surveiller (mise au dernier moment)';
+    btn.classList.toggle('on', w === 'watch');
+    btn.disabled = w === 'auto';
+    box.querySelector('.wmx-dw-note').textContent = w === 'watch'
+      ? 'Vous ne misez pas maintenant : l’extension misera au dernier moment, sauf si le prix dépasse votre plafond.'
+      : w === 'auto' ? 'Modifiez-la dans la bulle « Mes enchères ».' : 'Rien n’est misé tout de suite : cela évite de faire monter les enchères. Plafond et délai : Paramètres → Mises automatiques.';
   }
 
   function paint(a) {
     const info = byAuction.get(idOf(a));
     if (!info) return;
     const role = roleOf(idOf(a), info);
-    if (role === 'buy') ensureBid(a, info); else a.querySelector(':scope > .wmx-mk-bid')?.remove(); // pas de mise sur mes ventes ni sur une enchère terminée
+    if (role === 'buy') ensureBid(a, info); else a.querySelector(':scope > .wmx-mk-acts')?.remove(); // pas de mise sur mes ventes ni sur une enchère terminée
     let b = a.querySelector(':scope > .wmx-mk');
     if (!b) { b = el('div', { class: 'wmx-mk' }); a.append(b); }
     const p = WMX.prices.get(info.card_id, info.rarity);
@@ -123,7 +173,7 @@
   }
 
   async function scan() {
-    if (isDetail()) { paintDetail(); return; }
+    if (isDetail()) { paintDetail(); paintDetailWatch(); return; }
     if (!/^\/marketplace\/?$/.test(location.pathname)) return;
     const list = anchors();
     if (!list.length) return;
@@ -156,7 +206,7 @@
       }, { rootMargin: '200px' });
       const schedule = () => { clearTimeout(timer); timer = setTimeout(scan, 250); };
       new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
-      window.addEventListener('wmx:bids', () => anchors().forEach(paintBid));
+      window.addEventListener('wmx:bids', () => { anchors().forEach(paintBid); paintDetailWatch(); });
       WMX.prices.onProgress(() => anchors().forEach((a) => { if (a.querySelector(':scope > .wmx-mk')) paint(a); }));
       schedule();
     },

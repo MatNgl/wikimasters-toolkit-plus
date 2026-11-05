@@ -171,6 +171,88 @@ test('mise automatique : jamais si on mène déjà, et le plafond arrête la rè
   r2.env.close();
 });
 
+/** Environnement « veille » : enchères détaillées par identifiant (GET /api/marketplace/{id}), aucune mise à moi, pages de mise factices (minimum `min`). */
+async function watchEnv({ rules = {}, auctions = [], min = 7, route = '', body = '' }) {
+  const byId = Object.fromEntries(auctions.map((a) => [a.id, a]));
+  const payload = { auctions, selling: [], bidding: [], won: [{ winner_id: ME }], history: [] };
+  const env = createEnv({ fetchImpl: async (u) => {
+    const m = String(u).match(/\/api\/marketplace\/([\w-]+)/);
+    return m ? (byId[m[1]] ? json({ auction: byId[m[1]] }) : json({}, 404)) : json(payload);
+  } });
+  const { w, WMX } = env;
+  if (route) w.history.pushState({}, '', route);
+  if (body) w.document.body.innerHTML = body;
+  const clicks = fakeBidPages(w, min);
+  env.mem.autoBids = rules;
+  for (const f of WMX.features) await f.init?.();
+  return { env, w, WMX, clicks };
+}
+
+test('veille (« Surveiller ») : rien n\'est misé avant le dernier moment, puis une seule mise du minimum', async () => {
+  const a = auction('w1', { seller_id: 'other', current_bid: 8, current_bidder_id: 'rival', end_at: new Date(Date.now() + 33000).toISOString() });
+  const { env, clicks } = await watchEnv({ auctions: [a], rules: { w1: { mode: 'time', secs: 30, capMode: 'abs', cap: 20, watch: true } } });
+  await sleep(2500);
+  assert.deepEqual(clicks, [], 'avant le délai : aucune mise');
+  await sleep(4500);
+  assert.deepEqual(clicks, ['7'], 'sous 30 s : une mise du minimum proposé par le jeu');
+  env.close();
+});
+
+test('veille : un prix déjà au-dessus du plafond arrête la veille sans rien miser, et on prévient', async () => {
+  const a = auction('w2', { seller_id: 'other', current_bid: 30, current_bidder_id: 'rival', end_at: inMin(60) });
+  const { env, w, clicks } = await watchEnv({ auctions: [a], rules: { w2: { mode: 'time', secs: 30, capMode: 'abs', cap: 20, watch: true } } });
+  await sleep(5000);
+  assert.deepEqual(clicks, []);
+  assert.equal(env.mem.autoBids.w2, undefined, 'la veille est supprimée');
+  assert.match(w.document.body.textContent, /Veille arrêtée/);
+  env.close();
+});
+
+test('veille : bouton « Surveiller » sur le marché (à côté de « Miser »), puis dans la bulle « Mes enchères » sous un petit titre', async () => {
+  const a = auction('m1', { seller_id: 'other', base_amount: 50, end_at: inMin(90) });
+  const { env, w, WMX } = await watchEnv({ auctions: [a], route: '/marketplace', body: '<a class="card-frame block" href="/marketplace/m1"><div>m1</div></a>' });
+  for (let i = 0; i < 60 && !w.document.querySelector('.wmx-mk-acts'); i++) await sleep(150);
+  const acts = w.document.querySelector('.wmx-mk-acts');
+  assert.ok(acts && acts.querySelector('.wmx-mk-bid') && acts.querySelector('.wmx-mk-watch'), '« Miser » et « Surveiller » côte à côte');
+  assert.match(acts.querySelector('.wmx-mk-watch').textContent, /Surveiller/);
+  acts.querySelector('.wmx-mk-watch').click();
+  for (let i = 0; i < 40 && WMX.auctions.watchState('m1') !== 'watch'; i++) await sleep(100);
+  assert.equal(WMX.auctions.watchState('m1'), 'watch');
+  assert.equal(env.mem.autoBids.m1.watch, true, 'la règle de veille est mémorisée');
+  assert.equal(env.mem.autoBids.m1.mode, 'time', 'toujours « sous un délai » (jamais une mise immédiate)');
+  assert.ok(env.mem.autoBids.m1.capMode, 'et toujours avec un plafond');
+  await sleep(300);
+  assert.match(acts.querySelector('.wmx-mk-watch').textContent, /Surveillée/);
+  assert.match(w.document.body.textContent, /est surveillée/, 'notification claire');
+  WMX.auctions.openBubble?.();
+  w.document.querySelector('.wmx-pill, .wmx-dial')?.click();
+  await sleep(300);
+  const text = w.document.querySelector('.wmx-bubble')?.textContent || '';
+  assert.match(text, /Sous surveillance/, 'la carte surveillée apparaît dans « Mes enchères », sous un petit titre');
+  acts.querySelector('.wmx-mk-watch').click(); // second clic : on arrête
+  for (let i = 0; i < 40 && WMX.auctions.watchState('m1') !== 'none'; i++) await sleep(100);
+  assert.equal(WMX.auctions.watchState('m1'), 'none');
+  assert.equal(env.mem.autoBids.m1, undefined);
+  env.close();
+});
+
+test('veille : bouton « Surveiller » sur la page d\'une enchère, juste au-dessus de la ligne « Miser » du jeu', async () => {
+  const id = '3f9c2a10-5b7e-4c11-9d2a-0a1b2c3d4e5f';
+  const a = auction(id, { seller_id: 'other', base_amount: 100, end_at: inMin(45) });
+  const body = '<main><h1>Carte X</h1><div class="card-frame"><div>Votre solde</div><div class="flex gap-2"><div><input aria-label="Montant de la mise" type="number" min="100"></div><button>Miser</button></div></div></main>';
+  const { env, w, WMX } = await watchEnv({ auctions: [a], route: `/marketplace/${id}`, body });
+  for (let i = 0; i < 60 && !w.document.querySelector('.wmx-dw'); i++) await sleep(150);
+  const box = w.document.querySelector('.wmx-dw');
+  assert.ok(box, 'bouton ajouté');
+  assert.equal(box.nextElementSibling.querySelector('button').textContent, 'Miser', 'juste au-dessus de la ligne « Miser »');
+  assert.match(box.querySelector('.wmx-dw-btn').textContent, /Surveiller \(mise au dernier moment\)/);
+  box.querySelector('.wmx-dw-btn').click();
+  for (let i = 0; i < 40 && WMX.auctions.watchState(id) !== 'watch'; i++) await sleep(100);
+  await sleep(300);
+  assert.match(w.document.querySelector('.wmx-dw-btn').textContent, /Surveillée · sous \d+ s/);
+  env.close();
+});
+
 test('marché : badge de moyenne et verdict sous chaque enchère visible', async () => {
   const mk = (id, cardId, price) => ({ id, card_id: cardId, snapshot_rarity: 'UR', base_amount: price, current_bid: null, card: { wikipedia_title: id, rarity: 'UR' } });
   const list = [mk('m1', 'k1', 70), mk('m2', 'k2', 100), mk('m3', 'k3', 300), mk('m4', 'k4', 50)];
@@ -207,7 +289,7 @@ test('marché : « Miser le minimum » pose le minimum de la page d\'enchère, s
   for (let i = 0; i < 60 && !w.document.querySelector('.wmx-mk-bid'); i++) await sleep(150);
   const btn = w.document.querySelector('.wmx-mk-bid');
   assert.ok(btn, 'bouton présent');
-  assert.equal(btn.textContent, 'Miser le minimum');
+  assert.equal(btn.textContent, 'Miser');
   btn.click();
   for (let i = 0; i < 40 && !clicks.length; i++) await sleep(150);
   assert.deepEqual(clicks, ['11']);
@@ -256,8 +338,8 @@ test('marché : plusieurs « Miser le minimum » de suite se mettent en file et 
   const btns = [...w.document.querySelectorAll('.wmx-mk-bid')];
   assert.equal(btns.length, 3);
   btns.forEach((b) => b.click()); // trois clics d'affilée, sans attendre
-  assert.match(btns[1].textContent, /file d’attente/);
-  assert.match(btns[2].textContent, /file d’attente/);
+  assert.match(btns[1].textContent, /En file/);
+  assert.match(btns[2].textContent, /En file/);
   for (let i = 0; i < 160 && clicks.length < 3; i++) await sleep(150);
   assert.deepEqual(clicks, ['11', '11', '11']);
   env.close();

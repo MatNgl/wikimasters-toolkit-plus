@@ -232,6 +232,7 @@ test('autoBidDue : sous le délai, on surenchérit à CHAQUE fois qu\'un autre n
   assert.equal(L.autoBidDue(rule, { ...st, msLeft: 36_000 }), false, 'avant le délai : rien');
   assert.equal(L.autoBidDue(rule, { ...st, minBid: 14, capW: 13 }), false, 'le plafond reste la seule autre condition');
   assert.equal(L.autoLabel(rule), 'Auto · sous 35 s');
+  assert.equal(L.autoLabel({ ...rule, watch: true }), 'Veille · sous 35 s', 'une veille est annoncée comme telle');
 });
 
 test('priceNote : moyenne et verdict prêts à afficher (achat, vente, sans vente)', () => {
