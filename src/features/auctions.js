@@ -34,14 +34,34 @@
   const notified = new Set();               // alertes déjà envoyées (une seule fois chacune)
 
   // --- Alertes ----------------------------------------------------------------------------
-  /** Message dans la page + notification du navigateur (si autorisée et activée dans les paramètres). */
-  function alertUser(title, body, tag) {
-    WMX.toast?.(`${title} — ${body}`, 9000);
+  /** Message dans la page + notification du navigateur (si autorisée et activée dans les paramètres).
+   *  Couleurs : `info` (bleu : on vous informe, ex. surenchéri), `warn` (jaune : attention, ex. fin proche, surveillance, mise arrêtée), `ok` (vert), `alert` (rouge). */
+  function alertUser(title, body, tag, { toast = true, kind = 'warn' } = {}) {
+    if (toast) WMX.notify?.({ kind, title, text: body, ms: 9000, key: `alert:${tag}` });
     try {
       if (WMX.settings?.auctionNotify !== false && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
         new Notification(title, { body, tag });
       }
     } catch (_) { /* notification indisponible */ }
+  }
+  /** D'où vient un plafond, en clair : « moyenne du marché −10 % (moyenne : 19 W) » ou « valeur fixe ». */
+  const capSource = (rule, a) => {
+    if (rule?.capMode === 'avg') {
+      const p = Number(rule.capPct) || 0;
+      const avg = a ? avgOf(a) : null;
+      return `moyenne du marché${p ? ` ${p > 0 ? '+' : '−'}${Math.abs(p)} %` : ''}${avg != null ? `, la moyenne est de ${fmt(avg)} W` : ''}`;
+    }
+    return rule?.capMode === 'abs' || rule?.cap ? 'valeur fixe' : 'réglage de plafond';
+  };
+  /** Le prix a dépassé (ou dépasse déjà) le plafond : on le dit clairement, avec un bouton qui ouvre les réglages à la bonne partie. */
+  function capNotice(a, price, capW, rule, { starting = false } = {}) {
+    const name = cardTitle(a);
+    const title = 'Prix au-dessus de votre plafond';
+    const text = starting
+      ? `« ${name} » est déjà à ${fmt(price)} W, alors que votre plafond est de ${fmt(capW)} W (${capSource(rule, a)}). L’extension ne la surveillera pas : elle ne miserait jamais. Relevez le plafond si vous voulez quand même tenter.`
+      : `« ${name} » est monté à ${fmt(price)} W, au-dessus de votre plafond de ${fmt(capW)} W (${capSource(rule, a)}). L’extension ne mise donc pas (ou plus) sur cette carte. Relevez le plafond si vous voulez quand même tenter.`;
+    WMX.notify?.({ kind: 'warn', ms: 20000, key: `cap:${a.id}`, title, text, action: { label: 'Modifier le plafond', onClick: () => WMX.openSettings?.('Mises automatiques') } });
+    alertUser(title, `« ${name} » : ${fmt(price)} W pour un plafond de ${fmt(capW)} W.`, `${a.id}:cap`, { toast: false });
   }
   /** Nouvelle surenchère d'un autre joueur sur une enchère où je misais (au premier chargement, on ne fait que mémoriser). */
   function checkOutbid(first) {
@@ -50,7 +70,7 @@
       const key = `${a.id}:out:${a.current_bid}`;
       if (notified.has(key)) continue;
       notified.add(key);
-      if (!first) alertUser('Vous êtes surenchéri', `« ${cardTitle(a)} » : ${fmt(a.current_bid)} W`, key);
+      if (!first) alertUser('Vous êtes surenchéri', `« ${cardTitle(a)} » : ${fmt(a.current_bid)} W`, key, { kind: 'info' });
     }
   }
   /** Chaque seconde : une enchère (mise ou vente) qui passe sous 2 minutes déclenche une alerte unique. */
@@ -288,9 +308,10 @@
       const min = Number(input.min);
       if (!Number.isFinite(min) || min <= 0) { jr('minimum de mise illisible : rien n’a été misé', 'error'); return WMX.toast('Je n’ai pas pu lire la mise minimum : rien n’a été misé. Réessayez dans un instant.', 7000, { kind: 'warn' }); }
       if (opts.cap && min > opts.cap) { // plafond de la mise automatique dépassé : on s'arrête
+        const ruleBefore = S.auto[a.id];
         delete S.auto[a.id]; saveAuto();
         jr(`le minimum (${fmt(min)} W) dépasse le plafond de ${fmt(opts.cap)} W : règle arrêtée`, 'warn');
-        alertUser('Mise automatique arrêtée', `« ${cardTitle(a)} » : le minimum (${fmt(min)} W) dépasse votre plafond de ${fmt(opts.cap)} W.`, `${a.id}:cap`);
+        capNotice(a, min, opts.cap, ruleBefore);
         return;
       }
       if (opts.auto) jr(`mise de ${fmt(min)} W déclenchée (il reste ${Math.max(0, Math.round(msLeft(a) / 1000))} s${preloaded ? '' : ', page chargée à la demande en ' + Math.round((Date.now() - t0) / 1000) + ' s'})`);
@@ -303,9 +324,10 @@
       let amount = Number(input.min);
       if (!Number.isFinite(amount) || amount <= 0) amount = min;
       if (opts.cap && amount > opts.cap) {
+        const ruleBefore = S.auto[a.id];
         delete S.auto[a.id]; saveAuto();
         jr(`le minimum est monté à ${fmt(amount)} W, au-dessus du plafond de ${fmt(opts.cap)} W : règle arrêtée`, 'warn');
-        alertUser('Mise automatique arrêtée', `« ${cardTitle(a)} » : le minimum (${fmt(amount)} W) dépasse votre plafond de ${fmt(opts.cap)} W.`, `${a.id}:cap`);
+        capNotice(a, amount, opts.cap, ruleBefore);
         return;
       }
       setNumber(input, amount); // exactement le minimum proposé par le jeu
@@ -514,8 +536,7 @@
       }
       if (capW != null && m && m > capW && !leading(a)) { // le minimum dépasse le plafond : la règle s'arrête (et on prévient)
         delete S.auto[a.id]; saveAuto(); renderAll();
-        if (watching) alertUser('Veille arrêtée', `« ${cardTitle(a)} » : le prix (${fmt(m)} W) a dépassé votre plafond de ${fmt(capW)} W. L’extension ne misera pas.`, `${a.id}:cap`);
-        else alertUser('Mise automatique arrêtée', `« ${cardTitle(a)} » : le minimum (${fmt(m)} W) dépasse votre plafond de ${fmt(capW)} W.`, `${a.id}:cap`);
+        capNotice(a, m, capW, rule);
         continue;
       }
       // Ma dernière mise automatique n'est pas encore visible (serveur lent) : on attend qu'une mise PLUS HAUTE apparaisse (vraie
@@ -930,7 +951,7 @@
       if (cur?.watch) {
         delete S.auto[id]; delete S.autoTry[id]; D.watching = D.watching.filter((w) => w.id !== id);
         saveAuto(); fire(); renderAll(); schedulePoll();
-        WMX.toast(`Veille arrêtée sur « ${name} » : rien ne sera misé.`);
+        WMX.notify?.({ kind: 'warn', title: 'Surveillance arrêtée', text: `« ${name} » n’est plus surveillée : rien ne sera misé.`, ms: 6000, key: `watch:${id}` });
         return 'none';
       }
       if (cur) { WMX.toast(`Une mise automatique est déjà réglée sur « ${name} » (à modifier dans « Mes enchères »).`); return 'auto'; }
@@ -943,9 +964,19 @@
       await refreshWatching(true);
       const a = D.watching.find((w) => w.id === id);
       if (a && !WMX.prices.has(a.card_id)) WMX.prices.fetchOne(a.card_id).then(() => { if (S.bubbleOpen) renderAll(); });
+      // Moyenne du marché inconnue (plafond « selon la moyenne ») : on la demande un court instant pour pouvoir juger tout de suite.
+      if (a && rule.capMode === 'avg' && avgOf(a) == null) await Promise.race([WMX.prices.fetchOne(a.card_id), sleep(4000)]);
       const capW = a ? WMX.logic.resolveCap(rule, avgOf(a)) : null;
+      // Le prix est déjà au-dessus du plafond : il ne redescendra pas, la veille ne servirait à rien. On l'explique au lieu de créer puis supprimer une règle.
+      const price = a ? (a.current_bid ? a.current_bid + 1 : a.base_amount) : 0;
+      if (a && capW != null && price > capW) {
+        delete S.auto[id]; delete S.autoTry[id]; D.watching = D.watching.filter((w) => w.id !== id);
+        saveAuto(); fire(); renderAll(); schedulePoll();
+        capNotice(a, a.current_bid || a.base_amount, capW, rule, { starting: true });
+        return 'none';
+      }
       const secs = rule.secs < 120 ? `${rule.secs} s` : `${Math.round(rule.secs / 60)} min`;
-      WMX.notify?.({ kind: 'ok', ms: 9000, key: `watch:${id}`, title: `« ${a ? cardTitle(a) : name} » est surveillée`,
+      WMX.notify?.({ kind: 'warn', ms: 9000, key: `watch:${id}`, title: `« ${a ? cardTitle(a) : name} » est surveillée`,
         text: `Je ne mise pas maintenant. Je miserai quand il restera ${secs}, seulement si le prix reste sous ${capW != null ? `${fmt(capW)} W` : `votre plafond (${WMX.logic.capLabel(rule)})`}. Sinon, je laisse tomber.` });
       fire(); renderAll(); schedulePoll();
       return 'watch';

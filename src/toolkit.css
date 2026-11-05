@@ -746,3 +746,14 @@ html.wmx-opening .wmx-cover { display: block; }
 /* Bulle « Mes enchères » : sous-titre et lignes des cartes simplement surveillées */
 .wmx-auc-sep { margin: 8px 2px 2px; font: 700 10px Outfit, system-ui, sans-serif; text-transform: uppercase; letter-spacing: .05em; color: #8fd0ff; }
 .wmx-auc-row.watch { border-style: dashed; border-color: rgb(124 198 255 / .35); }
+/* Réglages ouverts depuis une notification : la partie concernée est mise en évidence un instant */
+.wmx-sec.wmx-sec-hl { outline: 2px solid rgb(124 198 255 / .8); outline-offset: 4px; border-radius: 10px; animation: wmx-sec-hl 2.6s ease-out forwards; }
+@keyframes wmx-sec-hl { 0%, 70% { outline-color: rgb(124 198 255 / .8); } 100% { outline-color: transparent; } }
+
+/* Couleurs des notifications selon le sens (0.23.3) : bleu = information, jaune = attention, vert = réussi, rouge = blocage. Bordure, titre et anneau suivent la couleur. */
+.wmx-note.info { --c: #60a5fa; }
+.wmx-note.warn { --c: #fbbf24; }
+.wmx-note.ok { --c: #2dd4a0; }
+.wmx-note:not(.alert) { border-color: color-mix(in srgb, var(--c) 50%, transparent); border-left-color: var(--c); }
+.wmx-note:not(.alert) .wmx-note-body b { color: color-mix(in srgb, var(--c) 72%, #fff); }
+.wmx-note.warn .wmx-note-act { border-color: #fbbf24; color: #fde68a; } .wmx-note.warn .wmx-note-act:hover { background: #fbbf24; color: #1b1405; }

@@ -130,7 +130,8 @@
     window.dispatchEvent(new CustomEvent('wmx:settings')); // les pages se mettent à jour sans rechargement
   };
 
-  WMX.openSettings = function openSettings() {
+  /** Ouvre les réglages ; `sectionTitle` (ex. « Mises automatiques ») fait défiler jusqu'à cette partie et la met en évidence un instant. */
+  WMX.openSettings = function openSettings(sectionTitle = '') {
     if (document.querySelector('.wmx-modal-backdrop')) return;
     const initial = { ...WMX.settings }; // pour ne sauvegarder que ce que l'utilisateur a réellement modifié
     let draft = { ...WMX.settings };
@@ -263,5 +264,13 @@
           } }, 'Appliquer'))));
     const backdrop = el('div', { class: 'wmx-modal-backdrop', onmousedown: (e) => { if (e.target === backdrop) close(); } }, modal);
     document.body.append(backdrop);
+    if (sectionTitle) {
+      const sec = [...content.querySelectorAll('section.wmx-sec')].find((s) => s.querySelector('h3')?.textContent === sectionTitle);
+      if (sec) {
+        sec.scrollIntoView({ block: 'start' });
+        sec.classList.add('wmx-sec-hl');
+        setTimeout(() => sec.classList.remove('wmx-sec-hl'), 2600);
+      }
+    }
   };
 })();

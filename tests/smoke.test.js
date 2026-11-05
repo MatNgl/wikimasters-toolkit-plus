@@ -176,6 +176,7 @@ async function watchEnv({ rules = {}, auctions = [], min = 7, route = '', body =
   const byId = Object.fromEntries(auctions.map((a) => [a.id, a]));
   const payload = { auctions, selling: [], bidding: [], won: [{ winner_id: ME }], history: [] };
   const env = createEnv({ fetchImpl: async (u) => {
+    if (String(u).includes('/sales')) return json({ summary: { UR: { average: 20, count: 12, latest: 20 } } }); // moyenne du marché : 20 W
     const m = String(u).match(/\/api\/marketplace\/([\w-]+)/);
     return m ? (byId[m[1]] ? json({ auction: byId[m[1]] }) : json({}, 404)) : json(payload);
   } });
@@ -184,6 +185,7 @@ async function watchEnv({ rules = {}, auctions = [], min = 7, route = '', body =
   if (body) w.document.body.innerHTML = body;
   const clicks = fakeBidPages(w, min);
   env.mem.autoBids = rules;
+  WMX.settings.autoCapMode = 'abs'; WMX.settings.autoCapW = 1000; // plafond large par défaut (chaque test règle le sien au besoin)
   for (const f of WMX.features) await f.init?.();
   return { env, w, WMX, clicks };
 }
@@ -204,7 +206,29 @@ test('veille : un prix déjà au-dessus du plafond arrête la veille sans rien m
   await sleep(5000);
   assert.deepEqual(clicks, []);
   assert.equal(env.mem.autoBids.w2, undefined, 'la veille est supprimée');
-  assert.match(w.document.body.textContent, /Veille arrêtée/);
+  assert.match(w.document.body.textContent, /Prix au-dessus de votre plafond/);
+  assert.match(w.document.body.textContent, /Modifier le plafond/, 'avec un bouton vers les réglages');
+  env.close();
+});
+
+test('veille : un prix déjà au-dessus du plafond n\'est pas surveillé, et la notification explique pourquoi avec un bouton vers les réglages', async () => {
+  const a = auction('w5', { seller_id: 'other', current_bid: 30, current_bidder_id: 'rival', end_at: inMin(60) });
+  const { env, w, WMX } = await watchEnv({ auctions: [a] });
+  WMX.settings.autoCapMode = 'avg'; WMX.settings.autoCapPct = -10; // plafond : moyenne (20 W) −10 % = 18 W
+  const state = await WMX.auctions.toggleWatch('w5', 'Carte w5');
+  assert.equal(state, 'none', 'aucune veille créée');
+  assert.equal(env.mem.autoBids.w5, undefined);
+  const note = w.document.querySelector('.wmx-note.warn');
+  assert.ok(note, 'notification affichée');
+  assert.match(note.textContent, /Prix au-dessus de votre plafond/);
+  assert.match(note.textContent, /30 W/);
+  assert.match(note.textContent, /18 W/);
+  assert.match(note.textContent, /moyenne du marché −10 %/, 'on dit d\'où vient le plafond');
+  assert.match(note.textContent, /ne la surveillera pas/);
+  note.querySelector('.wmx-note-act').click();
+  await sleep(100);
+  assert.ok(w.document.querySelector('.wmx-modal'), 'les réglages s\'ouvrent');
+  assert.equal(w.document.querySelector('.wmx-sec-hl h3')?.textContent, 'Mises automatiques', 'à la partie « Mises automatiques », mise en évidence');
   env.close();
 });
 
