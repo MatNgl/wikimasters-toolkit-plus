@@ -190,6 +190,40 @@ async function watchEnv({ rules = {}, auctions = [], min = 7, route = '', body =
   return { env, w, WMX, clicks };
 }
 
+test('fiche de carte : annuler un chargement lent le coupe aussitôt (le cadre jamais prêt ne bloque rien), sans notification de chargement', async () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  const { w, WMX } = env;
+  // Ouverture directe : un signal annulé arrête l'attente du cadre (ici il ne sera jamais prêt : jsdom ne charge pas la Collection).
+  const sig = WMX.sheet.signal();
+  const p = WMX.sheet.openInFrame({ wikipedia_title: 'A', rarity: 'C' }, 'view', sig);
+  await sleep(200);
+  sig.cancel();
+  const r = await Promise.race([p, sleep(1500).then(() => 'trop lent')]);
+  assert.equal(r?.error, 'cancelled', 'annulée en moins de 1,5 s au lieu d\'attendre le cadre');
+
+  // Clic sur une carte, puis sur une autre pendant le chargement : la première est abandonnée, la seconde prend la main.
+  const a = { wikipedia_title: 'Carte A', rarity: 'C' };
+  const b = { wikipedia_title: 'Carte B', rarity: 'C' };
+  WMX.openCardDetail(a);
+  await sleep(500);
+  assert.match(w.document.querySelector('.wmx-pre')?.textContent || '', /Carte A/, 'aperçu de la carte A');
+  assert.equal(w.document.querySelectorAll('.wmx-note').length, 0, 'aucune notification de chargement : l\'aperçu suffit');
+  WMX.openCardDetail(b);
+  await sleep(900);
+  const pre = w.document.querySelector('.wmx-pre')?.textContent || '';
+  assert.match(pre, /Carte B/, 'la seconde carte s\'ouvre sans attendre la première');
+  assert.ok(!/Carte A/.test(pre), 'la première est abandonnée');
+  assert.equal(w.document.querySelectorAll('.wmx-note').length, 0);
+  // Fermer l'aperçu (×) puis recliquer sur la même carte : possible tout de suite.
+  w.document.querySelector('.wmx-pre .wmx-close').click();
+  await sleep(300);
+  assert.equal(w.document.querySelector('.wmx-pre'), null, 'aperçu fermé');
+  WMX.openCardDetail(b);
+  await sleep(900);
+  assert.match(w.document.querySelector('.wmx-pre')?.textContent || '', /Carte B/, 'on peut rouvrir la même carte après avoir annulé');
+  env.close();
+});
+
 test('veille (« Surveiller ») : rien n\'est misé avant le dernier moment, puis une seule mise du minimum', async () => {
   const a = auction('w1', { seller_id: 'other', current_bid: 8, current_bidder_id: 'rival', end_at: new Date(Date.now() + 33000).toISOString() });
   const { env, clicks } = await watchEnv({ auctions: [a], rules: { w1: { mode: 'time', secs: 30, capMode: 'abs', cap: 20, watch: true } } });

@@ -247,14 +247,14 @@
   new MutationObserver(() => {
     routeGen += 1;
     if (F.view.frame?.classList.contains('wmx-on')) closeSheet('view');
-    toast('');
+    if (active && !active.shown) active.sig.cancel(); // chargement en cours : abandonné
   }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-wmx-route'] });
 
   /**
    * Remet le cadre sur la liste de la Collection. Après une mise en vente réussie, le jeu ouvre la page de l'enchère créée
    * (/marketplace/{id}) DANS le cadre : sans ce retour, l'opération suivante ne trouve plus la barre de recherche.
    */
-  async function ensureCollection(kind) {
+  async function ensureCollection(kind, sig = null) {
     const frame = F[kind].frame;
     const onList = () => { try { return frame.contentWindow.location.pathname === '/collection' && listReady(frame); } catch (_) { return false; } };
     if (onList()) return true;
@@ -262,34 +262,56 @@
       const link = frame.contentDocument.querySelector('nav a[href="/collection"]');
       if (link) link.click(); else frame.contentWindow.location.href = home(kind);
     } catch (_) { frame.src = home(kind); }
-    if (await waitFor(onList, 20000, 200)) return true;
+    if (await waitFor(() => sig?.cancelled || onList(), 20000, 200)) return !sig?.cancelled;
     frame.src = home(kind); // dernier recours : rechargement complet du cadre
-    return !!(await waitFor(onList, 120000, 400));
+    return !!(await waitFor(() => sig?.cancelled || onList(), 120000, 400)) && !sig?.cancelled;
   }
 
-  /** Cherche la carte dans le cadre et ouvre sa fiche (sans l'afficher). Renvoie { d, w, root } ou { error }. */
-  async function openInFrame(card, kind = 'view') {
+  /** Signal d'annulation : `cancel()` fait s'arrêter aussitôt une ouverture de fiche en cours (elle ne bloque plus la suivante). */
+  const mkSignal = () => {
+    const s = { cancelled: false, cancel() { if (!s.cancelled) { s.cancelled = true; s.wake(); } } };
+    s.promise = new Promise((resolve) => { s.wake = resolve; });
+    return s;
+  };
+
+  /** Cherche la carte dans le cadre et ouvre sa fiche (sans l'afficher). Renvoie { d, w, root } ou { error } (error « cancelled » si `sig` a été annulé). */
+  async function openInFrame(card, kind = 'view', sig = null) {
     lastUse = Date.now();
-    const ok = await WMX.prepareCardSheets(kind);
+    const stopped = () => !!sig?.cancelled;
+    const ready = WMX.prepareCardSheets(kind);
+    const ok = sig ? await Promise.race([ready, sig.promise.then(() => false)]) : await ready; // le premier chargement du cadre peut durer 30 s : on ne l'attend pas si on a annulé
+    if (stopped()) return { error: 'cancelled' };
     if (!ok) return { error: 'frame' };
     const frame = F[kind].frame;
     if (!frame) return { error: 'frame' };
-    if (!(await ensureCollection(kind))) return { error: 'frame' };
+    // Une fiche restée ouverte dans le cadre (ouverture annulée en route) est refermée d'abord : sinon on la prendrait pour celle de cette carte.
+    try {
+      if (sheetRoot(frame.contentDocument, frame.contentWindow)) {
+        closeSheet(kind);
+        await waitFor(() => stopped() || !sheetRoot(frame.contentDocument, frame.contentWindow), 2500, 80);
+      }
+    } catch (_) { /* cadre en cours de chargement */ }
+    if (stopped()) return { error: 'cancelled' };
+    if (!(await ensureCollection(kind, sig))) return { error: stopped() ? 'cancelled' : 'frame' };
     const d = frame.contentDocument;
     const w = frame.contentWindow;
     search(d, w, card.wikipedia_title);
     // La recherche relance un chargement : on laisse la liste se mettre à jour, puis on repère la carte.
-    const tile = await waitFor(() => findTile(d, card), 15000, 150);
+    const tile = await waitFor(() => stopped() || findTile(d, card), 15000, 150);
+    if (stopped()) return { error: 'cancelled' };
     if (!tile) return { error: 'notfound' };
     await sleep(120);
+    if (stopped()) return { error: 'cancelled' };
     tile.click();
-    const root = await waitFor(() => sheetRoot(d, w), 6000, 80);
+    const root = await waitFor(() => stopped() || sheetRoot(d, w), 6000, 80);
+    if (stopped()) { closeSheet(kind); return { error: 'cancelled' }; }
     if (!root) return { error: 'nosheet' };
     return { d, w, root };
   }
 
   WMX.sheet = {
     openInFrame,
+    signal: mkSignal,
     closeSheet,
     /** Exécute `fn` quand le cadre `kind` est libre (les opérations d'un même cadre ne se mélangent pas). */
     exclusive(fn, kind = 'view') {
@@ -312,7 +334,7 @@
    * illustration, et un état de chargement. Il n'apparaît qu'après 250 ms (rien à l'écran quand la fiche s'ouvre tout de suite)
    * et se ferme par × / Échap / clic à côté : la fiche ne s'ouvre alors pas.
    */
-  function showPreview(card, onCancel) {
+  function showPreview(card, onCancel, cold = false) {
     let node = null;
     const timer = setTimeout(() => {
       const rar = WMX.normRarity(card.rarity) || 'C';
@@ -323,7 +345,8 @@
           el('button', { class: 'wmx-close', title: 'Annuler', onclick: close }, '×'),
           art,
           el('div', { class: 'wmx-pre-title' }, el('b', {}, rar), el('strong', {}, card.wikipedia_title || '?')),
-          el('div', { class: 'wmx-pre-load' }, el('i'), el('span', {}, 'Chargement de la fiche du jeu…'))));
+          el('div', { class: 'wmx-pre-load' }, el('i'), el('span', {}, cold ? 'Première ouverture : cela peut prendre jusqu’à 30 secondes…' : 'Chargement de la fiche du jeu…')),
+          el('small', { class: 'wmx-pre-hint' }, 'Vous pouvez fermer (×, Échap) et ouvrir une autre carte : le chargement s’arrête.')));
       document.body.append(node);
       WMX.loadCardInfo?.(card).then((i) => { if (i?.img && node?.isConnected) WMX.dom.artLayers(i.img, art); });
     }, 250);
@@ -333,30 +356,36 @@
   let preview = null;
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && preview?.isOpen()) { e.stopPropagation(); preview.cancel(); } }, true);
 
-  const asked = new Set(); // cartes dont la fiche est demandée, en cours d'ouverture ou affichée
-  let lastAsked = null;    // dernière carte cliquée : si on clique ailleurs pendant un chargement, c'est elle qui s'ouvre
+  // Une seule fiche à la fois : la dernière demandée (en chargement ou affichée). Cliquer une autre carte pendant un chargement, fermer l'aperçu,
+  // changer de page ou dépasser le délai ANNULE aussitôt le chargement en cours (recherche, ouverture) : il ne bloque plus la fiche suivante.
+  let active = null; // { key, sig, shown }
   WMX.openCardDetail = function openCardDetail(card) {
     const key = `${card.wikipedia_title}|${card.rarity}`;
-    if (asked.has(key)) return undefined; // clics répétés sur la même carte : une seule ouverture
-    asked.add(key);
-    lastAsked = key;
+    if (active && !active.sig.cancelled) {
+      if (active.shown || active.key === key) return undefined; // fiche déjà affichée, ou clics répétés sur la même carte : une seule ouverture
+      active.sig.cancel(); // une autre carte a été cliquée pendant le chargement : on l'abandonne tout de suite
+    }
+    const op = { key, sig: mkSignal(), shown: false, timedOut: false };
+    active = op;
     return WMX.sheet.exclusive(async () => {
-      if (lastAsked !== key) return undefined; // une autre carte a été cliquée depuis : celle-ci est abandonnée
-      // Premier chargement à froid : on l'explique au lieu de laisser croire à un blocage.
+      if (op.sig.cancelled) return undefined; // abandonnée avant même de commencer
       const gen = routeGen;
-      let cancelled = false;
-      const pv = showPreview(card, () => { cancelled = true; });
-      preview = { isOpen: pv.isOpen, cancel: () => { cancelled = true; pv.remove(); } };
-      const cold = !F.view.frame;
-      const slow = setTimeout(() => toast(cold ? 'Préparation de la fiche… la première fois, cela peut prendre jusqu’à 30 secondes.' : 'Chargement de la fiche…', 90000), cold ? 600 : 500);
+      const cold = !F.view.frame; // premier chargement à froid : expliqué dans l'aperçu (pas de notification)
+      const pv = showPreview(card, () => op.sig.cancel(), cold);
+      preview = { isOpen: pv.isOpen, cancel: () => { op.sig.cancel(); pv.remove(); } };
+      const limit = setTimeout(() => { if (!op.shown) { op.timedOut = true; op.sig.cancel(); } }, cold ? 70000 : 35000); // jamais un blocage sans fin
       let r;
-      try { r = await openInFrame(card, 'view'); } finally { clearTimeout(slow); pv.remove(); preview = null; }
-      toast('');
-      if (cancelled) { if (!r.error) closeSheet('view'); return undefined; } // aperçu fermé par l'utilisateur
+      try { r = await openInFrame(card, 'view', op.sig); } finally { clearTimeout(limit); pv.remove(); preview = null; }
+      if (op.sig.cancelled) { // annulée (aperçu fermé, autre carte cliquée, délai dépassé)
+        if (!r.error) closeSheet('view');
+        if (op.timedOut) toast('La fiche met trop de temps à répondre : réessayez dans un instant.', 7000, { kind: 'warn' });
+        return undefined;
+      }
       if (gen !== routeGen) { if (!r.error) closeSheet('view'); return undefined; } // l'utilisateur a changé de page entre-temps
       if (r.error) return toast(ERRORS[r.error] || 'La fiche n’est pas disponible pour le moment.', 7000, { kind: 'warn' });
       const { d, w, root } = r;
       const frame = F.view.frame;
+      op.shown = true;
 
       // Seule la fiche reste visible ; le reste du cadre devient invisible et transparent.
       if (!d.getElementById('wmx-sheet-style')) {
@@ -377,6 +406,6 @@
           if (!open) { clearInterval(iv); F.view.frame?.classList.remove('wmx-on'); window.focus(); lastUse = Date.now(); resolve(); }
         }, 200);
       });
-    }, 'view').finally(() => asked.delete(key));
+    }, 'view').finally(() => { if (active === op) active = null; });
   };
 })();
