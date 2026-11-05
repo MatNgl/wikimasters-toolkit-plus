@@ -460,6 +460,30 @@ test('style de carte : appliqué à toute carte du jeu (marché, échanges…), 
   env.close();
 });
 
+test('carte shiny (« L✦ shiny ») : rareté Légendaire reconnue, traitement d\'exception, retiré avec le style', async () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  const { w, WMX } = env;
+  assert.equal(WMX.normRarity('L✦ shiny'), 'L', 'le texte de la pastille shiny donne la rareté');
+  assert.equal(WMX.normRarity('UR'), 'UR');
+  assert.equal(WMX.normRarity('rare'), 'R', 'les mots complets passent toujours');
+  assert.equal(WMX.normRarity('rien'), null);
+  const card = (cls, badge) => `<div class="relative rounded-2xl overflow-hidden ${cls}"><img src="a.jpg"><div class="absolute h-[45%] z-20"></div>${badge}<div class="absolute top-[45%] z-20"><h3>Titre</h3></div></div>`;
+  const shinyBadge = '<div class="shiny-badge absolute top-2 left-2">L<span aria-hidden="true">✦</span><span class="sr-only"> shiny</span></div>';
+  w.document.body.innerHTML = `<main>${card('shiny-card', shinyBadge)}${card('', '<div class="absolute top-2 left-2">L</div>')}</main>`;
+  WMX.cardStyle.scan();
+  const [shiny, plain] = [...w.document.querySelectorAll('main > div.rounded-2xl')];
+  assert.equal(shiny.dataset.wmxR, 'L', 'la carte shiny est une Légendaire (pas une Commune)');
+  assert.equal(shiny.dataset.wmxShiny, '1');
+  assert.ok(['holo', 'foil', 'glint', 'glare'].every((k) => shiny.querySelector(`.wmx-sty-${k}`)), 'cadre holographique, feuille, éclats et reflet');
+  assert.equal(plain.dataset.wmxShiny, undefined, 'une Légendaire ordinaire n\'a pas le traitement shiny');
+  WMX.cardStyle.scan();
+  assert.equal(shiny.querySelectorAll('.wmx-sty-holo').length, 1, 'rien n\'est ajouté en double au balayage suivant');
+  WMX.settings.cardStyle = false;
+  WMX.cardStyle.scan();
+  assert.equal(w.document.querySelectorAll('.wmx-sty-shiny, [data-wmx-shiny]').length, 0, 'style désactivé : tout est retiré');
+  env.close();
+});
+
 test('révélation des paquets : la face des cartes reprend cadre, vagues et reflet du style de carte', async () => {
   const env = createEnv({ fetchImpl: async () => json({ summary: {} }) });
   const { w, WMX } = env;

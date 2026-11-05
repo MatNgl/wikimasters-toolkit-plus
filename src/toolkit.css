@@ -668,3 +668,59 @@ html.wmx-opening .wmx-cover { display: block; }
 @keyframes wmx-note-ring { to { stroke-dashoffset: 100; } }
 @keyframes wmx-note-in { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .wmx-note { animation: none; } .wmx-note-ring .fg { animation-duration: 0.01ms; } }
+
+/* ===== Carte « shiny » (0.22.12) : la plus rare du jeu. Aura noire, cadre holographique, feuille irisée, éclats, reflet au pointeur ===== */
+@property --wmx-ang { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+@property --wmx-pu { syntax: '<number>'; inherits: true; initial-value: 0; }
+@keyframes wmx-ang { to { --wmx-ang: 360deg; } }
+@keyframes wmx-pu { from { --wmx-pu: 0; } to { --wmx-pu: 1; } }
+@keyframes wmx-foil { from { background-position: 0% 20%; } to { background-position: 100% 80%; } }
+@keyframes wmx-twinkle { 0%, 100% { opacity: .1; transform: scale(.7); } 50% { opacity: 1; transform: scale(1.12); } }
+
+.wmx-sty[data-wmx-shiny] {
+  /* l'aura : liseré d'or, halo doré qui respire, puis un halo noir profond teinté de violet autour de la carte */
+  box-shadow:
+    inset 0 0 0 1.5px rgb(255 212 90 / calc(.75 + var(--wmx-pu) * .25)),
+    0 0 calc(16px + var(--wmx-pu) * 14px) rgb(255 200 80 / calc(.42 + var(--wmx-pu) * .28)),
+    0 0 44px 10px rgb(0 0 0 / .92),
+    0 0 96px 22px rgb(92 58 170 / calc(.1 + var(--wmx-pu) * .14)) !important;
+  animation: wmx-pu 3.2s ease-in-out infinite alternate;
+  z-index: 2;
+}
+.wmx-sty[data-wmx-shiny]:hover { z-index: 10; transition: transform .12s ease-out, box-shadow .25s ease !important;
+  transform: perspective(620px) rotateX(var(--wmx-ty, 0deg)) rotateY(var(--wmx-tx, 0deg)) translateY(-4px) scale(1.04); }
+
+.wmx-sty-shiny { position: absolute; inset: 0; pointer-events: none; border-radius: inherit; }
+/* cadre holographique qui tourne en continu */
+.wmx-sty-holo { z-index: 47; padding: 2px; opacity: .95;
+  background: conic-gradient(from var(--wmx-ang), #ffd45a, #ff5fa8, #7c5cff, #3de3ff, #7dffb0, #ffd45a);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  animation: wmx-ang 7s linear infinite; }
+/* feuille irisée : couleurs de l'arc-en-ciel qui glissent sur la carte, plus vives au survol */
+.wmx-sty-foil { z-index: 44; mix-blend-mode: overlay; opacity: .5;
+  background: linear-gradient(115deg, #ff2d95 0%, #ffd45a 18%, #3de3ff 38%, #7c5cff 58%, #ff2d95 78%, #ffd45a 100%); background-size: 300% 300%;
+  animation: wmx-foil 9s ease-in-out infinite alternate; transition: opacity .3s ease; }
+.wmx-sty[data-wmx-shiny]:hover .wmx-sty-foil { opacity: .62; background-position: var(--wmx-mx, 50%) var(--wmx-my, 50%); animation: none; }
+/* éclats : petites étoiles qui scintillent à tour de rôle */
+.wmx-sty-glint, .wmx-sty-glint::after { z-index: 48; content: ""; position: absolute; inset: 0; border-radius: inherit; }
+.wmx-sty-glint { background:
+  radial-gradient(circle at 16% 20%, #fff 0, #fff 1px, rgb(255 230 150 / .85) 1.6px, transparent 3.4px),
+  radial-gradient(circle at 82% 34%, #fff 0, #fff 1px, rgb(255 230 150 / .85) 1.6px, transparent 3px),
+  radial-gradient(circle at 44% 12%, #fff 0, #fff .8px, rgb(255 230 150 / .85) 1.4px, transparent 2.8px);
+  animation: wmx-twinkle 3.4s ease-in-out infinite; }
+.wmx-sty-glint::after { background:
+  radial-gradient(circle at 70% 70%, #fff 0, #fff 1px, rgb(255 230 150 / .85) 1.6px, transparent 3.4px),
+  radial-gradient(circle at 26% 58%, #fff 0, #fff .8px, rgb(255 230 150 / .85) 1.4px, transparent 3px),
+  radial-gradient(circle at 90% 84%, #fff 0, #fff 1px, rgb(255 230 150 / .85) 1.6px, transparent 3px);
+  animation: wmx-twinkle 3.4s ease-in-out 1.7s infinite; }
+/* reflet blanc qui suit le pointeur */
+.wmx-sty-glare { z-index: 46; mix-blend-mode: soft-light; opacity: 0; transition: opacity .3s ease;
+  background: radial-gradient(circle at var(--wmx-mx, 50%) var(--wmx-my, 30%), rgb(255 255 255 / .85), rgb(255 255 255 / .15) 34%, transparent 58%); }
+.wmx-sty[data-wmx-shiny]:hover .wmx-sty-glare { opacity: 1; }
+/* nom en or irisé */
+.wmx-sty[data-wmx-shiny] h3 { background: linear-gradient(100deg, #fff3c4 0%, #ffd45a 38%, #fff 52%, #e9c15a 70%, #ffe9a6 100%); -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent !important; text-shadow: none !important; filter: drop-shadow(0 1px 4px #000); width: fit-content; }
+@media (prefers-reduced-motion: reduce) {
+  .wmx-sty[data-wmx-shiny], .wmx-sty-holo, .wmx-sty-foil, .wmx-sty-glint, .wmx-sty-glint::after { animation: none; }
+  .wmx-sty[data-wmx-shiny]:hover { transform: translateY(-3px); }
+}

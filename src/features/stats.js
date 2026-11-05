@@ -5,7 +5,11 @@
   };
   WMX.normRarity = (r) => {
     const s = String(r || '').toLowerCase().trim();
-    return ALIASES[s] || (WMX.RARITIES.includes(r) ? r : WMX.RARITIES.find((x) => x.toLowerCase() === s) || null);
+    const direct = ALIASES[s] || (WMX.RARITIES.includes(r) ? r : WMX.RARITIES.find((x) => x.toLowerCase() === s) || null);
+    if (direct) return direct;
+    // Pastille d'une carte « shiny » : le texte lu est « L✦ shiny » (sigle suivi d'une étoile), le sigle est la rareté.
+    const lead = s.match(/^(pc|sr|ur|c|r|l)(?![a-zà-ÿ_])/);
+    return lead ? lead[1].toUpperCase() : null;
   };
 
   const today = () => new Date().toLocaleDateString('sv-SE'); // AAAA-MM-JJ, heure locale

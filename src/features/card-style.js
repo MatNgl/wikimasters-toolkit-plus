@@ -26,18 +26,56 @@
     return out;
   }
 
+  /** Exception shiny : cadre holographique tournant, feuille irisée, éclats, reflet qui suit le pointeur et légère inclinaison 3D. */
+  function setShiny(card, shiny) {
+    if (!shiny) {
+      if (card.dataset.wmxShiny) { delete card.dataset.wmxShiny; card.querySelectorAll('.wmx-sty-shiny').forEach((e) => e.remove()); }
+      return;
+    }
+    card.dataset.wmxShiny = '1';
+    if (!card.querySelector(':scope > .wmx-sty-holo')) {
+      card.append(...['holo', 'foil', 'glint', 'glare'].map((k) => el('span', { class: `wmx-sty-shiny wmx-sty-${k}` })));
+    }
+    if (card._wmxTilt) return;
+    card._wmxTilt = true;
+    let raf = 0;
+    card.addEventListener('pointermove', (e) => {
+      if (e.pointerType === 'touch') return;
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const r = card.getBoundingClientRect();
+        const x = Math.min(1, Math.max(0, (e.clientX - r.left) / (r.width || 1)));
+        const y = Math.min(1, Math.max(0, (e.clientY - r.top) / (r.height || 1)));
+        card.style.setProperty('--wmx-mx', `${(x * 100).toFixed(1)}%`);
+        card.style.setProperty('--wmx-my', `${(y * 100).toFixed(1)}%`);
+        card.style.setProperty('--wmx-tx', `${((x - 0.5) * 14).toFixed(2)}deg`);
+        card.style.setProperty('--wmx-ty', `${((0.5 - y) * 14).toFixed(2)}deg`);
+      });
+    });
+    card.addEventListener('pointerleave', () => {
+      cancelAnimationFrame(raf);
+      for (const k of ['--wmx-mx', '--wmx-my', '--wmx-tx', '--wmx-ty']) card.style.removeProperty(k);
+    });
+  }
+
   function apply(card) {
     const on = isOn();
     const was = card.classList.contains('wmx-sty');
     if (!on) {
       if (was) {
         card.classList.remove('wmx-sty', 'wmx-sty-a', 'wmx-sty-lg', 'wmx-sty-contain');
-        card.querySelectorAll('.wmx-sty-waves, .wmx-sty-sheen').forEach((e) => e.remove());
+        card.querySelectorAll('.wmx-sty-waves, .wmx-sty-sheen, .wmx-sty-shiny').forEach((e) => e.remove());
+        delete card.dataset.wmxShiny;
       }
       return;
     }
-    const rarity = WMX.normRarity(String(card.querySelector(`:scope > ${BADGE}`)?.textContent || '').replace(/\s+/g, ' ').trim()) || 'C';
+    const badge = card.querySelector(`:scope > ${BADGE}`);
+    const badgeText = String(badge?.textContent || '').replace(/\s+/g, ' ').trim();
+    const rarity = WMX.normRarity(badgeText) || 'C';
+    // Carte « shiny » (variante spéciale du jeu, pastille « L✦ shiny » : calque onyx + lignes dorées) : traitement d'exception.
+    const shiny = card.classList.contains('shiny-card') || !!badge?.classList.contains('shiny-badge') || /\bshiny\b/i.test(badgeText);
     if (!was) { card.classList.add('wmx-sty', 'wmx-sty-a'); }
+    setShiny(card, shiny);
     if (card.dataset.wmxR !== rarity || !card.style.getPropertyValue('--wmx-rgb')) {
       card.dataset.wmxR = rarity;
       card.style.setProperty('--wmx-rgb', WMX.RARITY_RGB[rarity] || '255 255 255');
