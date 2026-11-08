@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WikiMasters Toolkit+",
-  "version": "0.24.8",
+  "version": "0.24.9",
   "description": "Prix du marché, ouverture de paquets en un clic, enchères automatiques et style de cartes pour WikiMasters.",
   "permissions": [
     "storage",
@@ -78,7 +78,7 @@
       "world": "MAIN"
     }
   ],
-  "version_name": "0.24.8 · Activité en direct : pages cachées, surveillances, requêtes, fluidité",
+  "version_name": "0.24.9 · assistant de vente : les cartes revenues invendues ne sont plus oubliées",
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",

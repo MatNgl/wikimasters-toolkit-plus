@@ -88,6 +88,7 @@
       for (const e of plan.excluded) counts[e.reason] = (counts[e.reason] || 0) + 1;
       const detail = {
         active, queued: 0, free: Math.max(0, free), tagged: plan.tagged, eligible: plan.eligible.length, counts,
+        gameTagged: (() => { const n = st.tags.map((t) => WMX.inventory.tagCount(t)).filter((x) => x != null); return n.length ? n.reduce((a, b) => a + b, 0) : null; })(), // nombre annoncé par le jeu : sert à repérer une copie périmée
         next: plan.eligible.slice(0, 10).map((it) => ({ title: it.title, rarity: it.rarity, avg: Math.round(WMX.prices.get(it.card_id, it.rarity)?.avg || 0) })),
         excluded: plan.excluded.slice(0, 60).map((e) => ({ title: e.title, rarity: e.rarity, reason: e.reason, until: e.until, avg: Math.round(e.avg || 0) })),
       };
@@ -216,7 +217,7 @@
       if (on() && st) {
         parts.push(el('div', { class: 'wmx-as-meta' },
           `Dernière passe : ${fmtAt(st.t)} · prochaine dans ${fmtIn(st.nextAt - Date.now())} · ${st.target} enchère${st.target > 1 ? 's' : ''} visée${st.target > 1 ? 's' : ''} · plafond de départ ${st.cap} W`));
-        parts.push(el('div', { class: 'wmx-as-meta' }, `Étiquettes : ${(st.tags || []).join(', ') || '—'} · ${st.tagged ?? 0} carte(s) étiquetée(s) · ${st.eligible ?? 0} éligible(s)`));
+        parts.push(el('div', { class: 'wmx-as-meta' }, `Étiquettes : ${(st.tags || []).join(', ') || '—'} · ${st.tagged ?? 0} carte(s) étiquetée(s)${st.gameTagged != null && st.gameTagged !== st.tagged ? ` (le jeu en compte ${st.gameTagged} : mise à jour en cours)` : ''} · ${st.eligible ?? 0} éligible(s)`));
         if (st.counts && Object.keys(st.counts).length) parts.push(el('div', { class: 'wmx-as-meta' }, 'Écartées : ' + Object.entries(st.counts).map(([k, n]) => `${n} ${REASONS[k] || k}`).join(' · ')));
         parts.push(el('h4', {}, 'Prochaines cartes mises en vente'), ...rows(st.next || [], (c) => el('div', { class: 'wmx-as-row' }, el('b', {}, c.rarity), el('span', {}, c.title), el('small', {}, c.avg ? `Moy. ${c.avg} W` : 'prix à charger'))));
         parts.push(el('h4', {}, 'Cartes étiquetées mises de côté'), ...rows(st.excluded || [], (c) => el('div', { class: 'wmx-as-row' }, el('b', {}, c.rarity), el('span', {}, c.title),

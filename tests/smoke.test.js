@@ -703,6 +703,34 @@ test('inventaire : contrôle du nombre de cartes par étiquette (1 requête) ; r
   env.close();
 });
 
+test('inventaire : une carte partie en vente puis revenue invendue revient dans l’inventaire (elle n’est plus oubliée à vie)', async () => {
+  const tagV = { id: 'T1', name: 'VENTE' };
+  const row = (id, title, rarity, tags) => ({ id, card_id: 'c-' + id, count: 1, starred: false, tags, card: { wikipedia_title: title, rarity, id: 'c-' + id } });
+  const state = { back: false };
+  const env = createEnv({ fetchImpl: async (u) => {
+    const s = String(u);
+    if (!s.includes('/api/my-collection')) return json({});
+    const p = new URL(s).searchParams;
+    if (p.get('stats') === '1') return json({ collection: [], tagOptions: [{ id: 'T1', name: 'VENTE', cardCount: state.back ? 2 : 1 }] });
+    if (p.get('tag_id') === 'T1') return json({ collection: p.get('page') === '0' ? [row('b', 'Beta', 'SR', [tagV]), ...(state.back ? [row('a', 'Alpha légendaire', 'legendaire', [tagV])] : [])] : [] });
+    return json({ collection: [] });
+  } });
+  const { w, WMX } = env;
+  env.mem.invCacheV2 = { t: Date.now() - 60000, complete: true, items: [
+    { id: 'a', card_id: 'c-a', title: 'Alpha légendaire', rarity: 'L', count: 1, starred: false, tags: [tagV] },
+    { id: 'b', card_id: 'c-b', title: 'Beta', rarity: 'SR', count: 1, starred: false, tags: [tagV] },
+  ] };
+  await WMX.inventory.ensure();
+  const titles = () => [...WMX.inventory.items().map((it) => it.title)].sort(); // tableau recréé ici (celui du jeu simulé vient d'un autre « monde » JavaScript)
+  w.dispatchEvent(new w.CustomEvent('wmx:discard', { detail: { card_id: 'c-a' } })); // Alpha part en vente : retirée de l'inventaire
+  assert.deepEqual(titles(), ['Beta']);
+  await sleep(30);
+  state.back = true; // l'enchère se termine sans acheteur : Alpha est revenue dans la collection
+  await WMX.inventory.syncTagged(['VENTE'], { force: true });
+  assert.deepEqual(titles(), ['Alpha légendaire', 'Beta'], 'la carte revenue est de nouveau vue (avant : retirée à vie)');
+  env.close();
+});
+
 test('assistant de vente : une carte invendue retrouve l’étiquette de vente (le jeu la retire), une carte vendue est oubliée', async () => {
   const now = Date.now();
   const hist = { value: [] };

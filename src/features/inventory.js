@@ -34,16 +34,22 @@
   const tagKey = (s) => String(s || '').trim().toLowerCase();
   const hasTag = (it, name) => it.tags.some((t) => tagKey(t.name) === tagKey(name));
 
-  /** Un chargement lancé AVANT une défausse peut rendre des cartes déjà défaussées : on les retire. */
-  function withoutDiscarded(list) {
+  /**
+   * Un chargement lancé AVANT le départ d'une carte (mise en vente, vente, défausse) peut la rendre encore présente : on la retire. S.gone garde la DATE de
+   * chaque départ et `since` est le début de la lecture : un départ plus ancien est déjà pris en compte par cette lecture. Sans cela, une carte partie en vente
+   * puis revenue invendue restait retirée à vie de l'inventaire (l'assistant ne la voyait plus, par exemple des Légendaires étiquetées, et mettait d'autres cartes en vente).
+   */
+  function withoutDiscarded(list, since = 0) {
     if (!S.gone.size) return list;
-    return list.map((it) => (S.gone.has(it.card_id) ? { ...it, count: it.count - S.gone.get(it.card_id) } : it)).filter((it) => it.count > 0);
+    const left = (id) => (S.gone.get(id) || []).filter((t) => t >= since).length;
+    return list.map((it) => { const n = left(it.card_id); return n ? { ...it, count: it.count - n } : it; }).filter((it) => it.count > 0);
   }
   const setItems = (list) => { S.items = list; index = null; emit(); };
 
   async function loadInventory() {
     if (S.loading) return;
     S.loading = true;
+    const startedAt = Date.now(); // début de la lecture : seuls les départs de cartes survenus depuis comptent
     const hadCache = S.items.length > 0; // avec un cache on garde l'affichage actuel jusqu'à la fin
     const byId = new Map();
     let blocks = 0;
@@ -70,13 +76,13 @@
       if (!rows.length) { complete = true; break; }
       for (const r of rows) byId.set(r.id, compact(r));
       S.loadedCount = byId.size;
-      if (!hadCache && p % 4 === 0) setItems(withoutDiscarded([...byId.values()]));
+      if (!hadCache && p % 4 === 0) setItems(withoutDiscarded([...byId.values()], startedAt));
       else renderStatus();
       await sleep(300);
     }
     S.loading = false;
     if (complete) S.loadedAt = Date.now();
-    if (complete || !S.items.length) setItems(withoutDiscarded([...byId.values()]));
+    if (complete || !S.items.length) setItems(withoutDiscarded([...byId.values()], startedAt));
     // Un chargement interrompu ne remplace pas un inventaire plus complet, et son cache est marqué incomplet (rechargé la prochaine fois).
     WMX.store.set('invCacheV2', { t: Date.now(), items: S.items, complete });
   }
@@ -90,6 +96,7 @@
     if (!S.items.length || S.loading) return false;
     const wanted = [...new Set((names || []).map(tagKey).filter(Boolean))];
     if (!wanted.length) return false;
+    const startedAt = Date.now();
     const ids = new Map(knownIds || []); // nom d'étiquette (minuscules) -> identifiant : donné par le contrôle du nombre de cartes, sinon appris sur les cartes déjà connues
     for (const it of S.items) for (const t of it.tags) if (t.id && wanted.includes(tagKey(t.name))) ids.set(tagKey(t.name), t.id);
     if (ids.size < wanted.length) return false;
@@ -112,7 +119,7 @@
     for (const it of S.items) { // cartes qui n'ont plus l'étiquette : on la leur retire
       if (!fetched.has(it.id) && it.tags.some((t) => wanted.includes(tagKey(t.name)))) byId.set(it.id, { ...it, tags: it.tags.filter((t) => !wanted.includes(tagKey(t.name))) });
     }
-    setItems(withoutDiscarded([...byId.values()]));
+    setItems(withoutDiscarded([...byId.values()], startedAt)); // cartes fraîchement lues : seuls les départs survenus pendant cette lecture comptent
     return true;
   }
 
@@ -159,7 +166,7 @@
     S.tagsTouched = !!prefs.tagsTouched;
     await WMX.prices.load();
     const cached = await WMX.store.get('invCacheV2', null);
-    if (cached?.items?.length) { setItems(withoutDiscarded(cached.items)); if (cached.complete) S.loadedAt = cached.t || 0; }
+    if (cached?.items?.length) { setItems(withoutDiscarded(cached.items, cached.t || 0)); if (cached.complete) S.loadedAt = cached.t || 0; }
     if (!cached || !cached.complete || Date.now() - cached.t > INV_TTL) loadInventory(); // un cache sans « complete » est partiel : on recharge
   }
 
@@ -188,7 +195,7 @@
     emit();
   });
   window.addEventListener('wmx:discard', (e) => {
-    S.gone.set(e.detail.card_id, (S.gone.get(e.detail.card_id) || 0) + 1);
+    S.gone.set(e.detail.card_id, [...(S.gone.get(e.detail.card_id) || []), Date.now()]);
     for (const it of S.items) if (it.card_id === e.detail.card_id) it.count -= 1;
     setItems(S.items.filter((i) => i.count > 0));
     if (!S.loading) WMX.store.set('invCacheV2', { t: Date.now(), items: S.items, complete: true }); // le cache ne réaffiche plus les cartes défaussées (jamais une liste partielle)
@@ -345,5 +352,7 @@
     age: () => (S.loadedAt ? Date.now() - S.loadedAt : Infinity),
     reload: () => loadInventory(),
     refreshTagged, syncTagged,
+    /** Dernier nombre de cartes annoncé par le jeu pour une étiquette (null tant qu'il n'a pas été lu). */
+    tagCount: (name) => tagCounts.get(tagKey(name)) ?? null,
   };
 })();
