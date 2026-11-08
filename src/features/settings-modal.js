@@ -61,7 +61,7 @@
         { key: 'autoSellMax', type: 'number', min: 1, max: 10, step: 1, label: 'Enchères actives visées', desc: 'L’assistant complète jusqu’à ce nombre d’enchères en cours (vos ventes manuelles comptent). 10 = limite du jeu.' },
         { key: 'autoSellOrder', type: 'select', label: 'Ordre de mise en vente', desc: 'Quelles cartes étiquetées l’assistant met en vente en premier quand il y a plus de cartes que de places.',
           options: [['avg', 'Meilleure moyenne d’abord'], ['avgLow', 'Moyenne la plus basse d’abord'], ['rarityHigh', 'Raretés les plus hautes d’abord'], ['rarityLow', 'Raretés les plus basses d’abord']] },
-        { key: 'autoSellPriorityRar', type: 'text', placeholder: 'ex. L, UR', label: 'Raretés prioritaires (facultatif)', desc: 'Raretés servies avant toutes les autres, dans cet ordre, séparées par des virgules (L, UR, SR, R, PC, C). Exemple : « L, UR ». Vide : aucune priorité particulière.' },
+        { key: 'autoSellPriorityRar', type: 'rarityOrder', label: 'Raretés prioritaires (facultatif)', desc: 'Classez les raretés comme un podium : les cartes de la rareté n°1 sont mises en vente d’abord, puis la n°2, etc. Les raretés hors podium passent ensuite, selon l’ordre choisi ci-dessus. « Aucune priorité » : rien n’est privilégié.' },
       ],
     },
     {
@@ -148,10 +148,28 @@
         s.addEventListener('change', () => { draft[it.key] = it.number ? Number(s.value) : s.value; });
         return s;
       }
-      if (it.type === 'text') {
-        const i = el('input', { class: 'wmx-input', type: 'text', value: String(draft[it.key] ?? ''), placeholder: it.placeholder || '' });
-        i.addEventListener('change', () => { draft[it.key] = i.value.trim(); });
-        return i;
+      if (it.type === 'rarityOrder') {
+        // Podium des raretés : la n°1 est traitée d'abord, puis la n°2… « Aucune priorité » : rien n'est privilégié. Valeur : codes séparés par des virgules (ex. « L,UR »).
+        const NAMES = { L: 'Légendaire', UR: 'Ultra rare', SR: 'Super rare', R: 'Rare', PC: 'Peu commune', C: 'Commune' };
+        const wrap = el('div', { class: 'wmx-rord' });
+        const get = () => [...new Set(String(draft[it.key] || '').split(/[\s,;]+/).map((x) => x.trim().toUpperCase()).filter((x) => NAMES[x]))];
+        const set = (arr) => { draft[it.key] = arr.join(','); draw(); };
+        const badge = (r) => el('b', { class: 'wmx-rord-r', style: `--rgb:${WMX.RARITY_RGB?.[r] || '160 175 168'}` }, r);
+        const btn = (label, title, onClick, extra = {}) => { const b = el('button', { type: 'button', class: 'wmx-rord-btn', title, 'aria-label': title, ...extra }, label); b.addEventListener('click', onClick); return b; };
+        const draw = () => {
+          const ord = get();
+          const rest = Object.keys(NAMES).filter((r) => !ord.includes(r));
+          const mode = (label, on, onClick) => { const b = el('button', { type: 'button', class: 'wmx-seg-btn', 'aria-pressed': String(on) }, label); b.addEventListener('click', onClick); return b; };
+          wrap.replaceChildren(
+            el('div', { class: 'wmx-seg' }, mode('Aucune priorité', !ord.length, () => set([])), mode('Choisir un ordre', !!ord.length, () => { if (!ord.length) set(['L', 'UR', 'SR']); })),
+            ...(ord.length ? [el('ol', { class: 'wmx-rord-list' }, ...ord.map((r, i) => el('li', {}, el('span', { class: 'wmx-rord-n' }, `n°${i + 1}`), badge(r), el('span', { class: 'wmx-rord-name' }, NAMES[r]),
+              btn('↑', 'Monter', () => { const a = [...ord]; [a[i - 1], a[i]] = [a[i], a[i - 1]]; set(a); }, i ? {} : { disabled: '' }),
+              btn('↓', 'Descendre', () => { const a = [...ord]; [a[i + 1], a[i]] = [a[i], a[i + 1]]; set(a); }, i < ord.length - 1 ? {} : { disabled: '' }),
+              btn('×', 'Retirer du podium', () => set(ord.filter((x) => x !== r))))))] : []),
+            ...(ord.length && rest.length ? [el('div', { class: 'wmx-rord-add' }, el('small', {}, 'Ajouter au podium :'), ...rest.map((r) => btn(r, `Ajouter ${NAMES[r]}`, () => set([...ord, r]), { class: 'wmx-rord-btn wmx-rord-plus' })))] : []));
+        };
+        draw();
+        return wrap;
       }
       if (it.type === 'number') {
         const i = el('input', { class: 'wmx-input', type: 'number', min: String(it.min), max: String(it.max), step: String(it.step), value: String(draft[it.key]) });

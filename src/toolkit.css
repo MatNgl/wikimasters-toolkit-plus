@@ -786,3 +786,16 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-vtable td { padding: 7px 12px; border-bottom: 1px solid #ffffff0d; }
 .wmx-vtable .n { text-align: right; font-variant-numeric: tabular-nums; }
 .wmx-vtable tbody tr:hover { background: #ffffff08; }
+
+/* Réglages : podium des raretés prioritaires de l'assistant (0.24.1) */
+.wmx-rord { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.wmx-rord-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; width: 100%; }
+.wmx-rord-list li { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 10px; background: #ffffff08; border: 1px solid #ffffff12; }
+.wmx-rord-n { width: 28px; font-weight: 800; color: #9db5a8; font-size: 12px; }
+.wmx-rord-r { min-width: 28px; text-align: center; padding: 1px 6px; border-radius: 6px; font-size: 11px; background: rgb(var(--rgb) / .2); color: rgb(var(--rgb)); border: 1px solid rgb(var(--rgb) / .55); }
+.wmx-rord-name { flex: 1; font-size: 13px; }
+.wmx-rord-btn { min-width: 26px; height: 26px; padding: 0 6px; border-radius: 8px; border: 1px solid #27493b; background: #0d1411; color: #cfe0d6; cursor: pointer; font-size: 13px; line-height: 1; }
+.wmx-rord-btn:hover:not(:disabled) { border-color: var(--acc, #2dd4a0); color: #fff; }
+.wmx-rord-btn:disabled { opacity: .35; cursor: default; }
+.wmx-rord-add { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.wmx-rord-add small { color: #8a9a92; }
