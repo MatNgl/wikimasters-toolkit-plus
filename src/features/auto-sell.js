@@ -61,6 +61,13 @@
       // pour fonctionner depuis n'importe quelle page du jeu. Les cartes revenues invendues y reviennent : relecture complète toutes les 30 min.
       await WMX.inventory.ensure();
       if (WMX.inventory.age() > 30 * 60000 && !WMX.inventory.isLoading()) WMX.inventory.reload();
+      // À chaque passe : UNE requête compare le nombre de cartes de chaque étiquette de vente à celui de la fois précédente. Même nombre : rien n'est relu ;
+      // nombre différent : les cartes de ces étiquettes sont relues (sans cela l'assistant ignorait, jusqu'à 30 min, les cartes étiquetées depuis le dernier
+      // chargement complet, par exemple des Légendaires, et mettait d'abord d'autres raretés en vente).
+      if (!WMX.inventory.isLoading() && Date.now() - (S.taggedAt || 0) > 40000) {
+        S.taggedAt = Date.now();
+        try { await WMX.inventory.syncTagged(st.tags, { force: !!S.forceTagged }); S.forceTagged = false; } catch (_) { /* jeu lent : on garde la copie actuelle */ }
+      }
       const items = WMX.inventory.items(); // la liste en cache suffit : l'inventaire se recharge parfois pendant des minutes (jeu lent)
       if (!items.length) return done('no-inventory', WMX.inventory.isLoading() ? 'chargement de la collection en cours, reprise à la prochaine passe' : 'collection indisponible pour le moment, nouvelle tentative à la prochaine passe');
       if (WMX.quick.isRunning()) return done('queue-busy', 'file d’attente occupée, reprise à la fin', { queued: WMX.quick.queued() });
@@ -82,7 +89,7 @@
       const detail = {
         active, queued: 0, free: Math.max(0, free), tagged: plan.tagged, eligible: plan.eligible.length, counts,
         next: plan.eligible.slice(0, 10).map((it) => ({ title: it.title, rarity: it.rarity, avg: Math.round(WMX.prices.get(it.card_id, it.rarity)?.avg || 0) })),
-        excluded: plan.excluded.slice(0, 60).map((e) => ({ title: e.title, rarity: e.rarity, reason: e.reason, until: e.until })),
+        excluded: plan.excluded.slice(0, 60).map((e) => ({ title: e.title, rarity: e.rarity, reason: e.reason, until: e.until, avg: Math.round(e.avg || 0) })),
       };
       if (free <= 0) return done('full', `toutes les enchères visées sont en cours (${active}/${st.target})`, detail);
       const picks = plan.eligible.slice(0, free);
@@ -121,6 +128,7 @@
     }
     ensureLock();
     S.pauseUntil = 0; // un lancement demandé à la main passe outre la pause
+    S.taggedAt = 0; S.forceTagged = true; // et relit tout de suite les cartes étiquetées
     if (S.leader) { await tick(); return WMX.toast?.(`Assistant de vente : ${line().text}`, 5000); }
     await WMX.store.set('autoSellForce', Date.now()); // l'onglet qui pilote l'assistant lance une passe
     WMX.toast?.('Demande transmise à votre autre onglet du jeu…', 4000);
@@ -212,7 +220,7 @@
         if (st.counts && Object.keys(st.counts).length) parts.push(el('div', { class: 'wmx-as-meta' }, 'Écartées : ' + Object.entries(st.counts).map(([k, n]) => `${n} ${REASONS[k] || k}`).join(' · ')));
         parts.push(el('h4', {}, 'Prochaines cartes mises en vente'), ...rows(st.next || [], (c) => el('div', { class: 'wmx-as-row' }, el('b', {}, c.rarity), el('span', {}, c.title), el('small', {}, c.avg ? `Moy. ${c.avg} W` : 'prix à charger'))));
         parts.push(el('h4', {}, 'Cartes étiquetées mises de côté'), ...rows(st.excluded || [], (c) => el('div', { class: 'wmx-as-row' }, el('b', {}, c.rarity), el('span', {}, c.title),
-          el('small', {}, `${REASONS[c.reason] || c.reason}${c.until ? ` jusqu’à ${fmtAt(c.until)}` : ''}`))));
+          el('small', {}, c.reason === 'capped' ? `trop chère : moyenne ${c.avg} W, au-dessus du maximum de ${st.cap} W (Paramètres → Assistant de vente → Prix de départ maximum)` : `${REASONS[c.reason] || c.reason}${c.until ? ` jusqu’à ${fmtAt(c.until)}` : ''}`))));
       }
       body.replaceChildren(...parts);
       toggleBtn.textContent = on() ? 'Désactiver l’assistant' : 'Activer l’assistant';

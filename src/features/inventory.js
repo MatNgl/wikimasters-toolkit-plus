@@ -81,6 +81,73 @@
     WMX.store.set('invCacheV2', { t: Date.now(), items: S.items, complete });
   }
 
+  /**
+   * Relecture légère des cartes qui portent certaines étiquettes (filtre natif du jeu : tag_id) : l'assistant de vente voit aussitôt les cartes étiquetées
+   * ou désétiquetées depuis le dernier chargement complet (qui peut dater de 30 min), au lieu de travailler sur une copie périmée.
+   * Renvoie false si c'est impossible (collection pas chargée, étiquette inconnue, jeu qui refuse) : le chargement complet prend alors le relais.
+   */
+  async function refreshTagged(names, knownIds = null) {
+    if (!S.items.length || S.loading) return false;
+    const wanted = [...new Set((names || []).map(tagKey).filter(Boolean))];
+    if (!wanted.length) return false;
+    const ids = new Map(knownIds || []); // nom d'étiquette (minuscules) -> identifiant : donné par le contrôle du nombre de cartes, sinon appris sur les cartes déjà connues
+    for (const it of S.items) for (const t of it.tags) if (t.id && wanted.includes(tagKey(t.name))) ids.set(tagKey(t.name), t.id);
+    if (ids.size < wanted.length) return false;
+    const fetched = new Map();
+    for (const tagId of ids.values()) {
+      for (let p = 0; p < 40; p++) {
+        const u = new URL('/api/my-collection', location.origin);
+        u.searchParams.set('sort', 'name'); u.searchParams.set('tag_id', tagId); u.searchParams.set('page', String(p)); u.searchParams.set('stats', '0');
+        let res;
+        try { res = await fetch(u); } catch (_) { return false; }
+        if (!res.ok) return false;
+        const rows = (await res.json()).collection || [];
+        if (!rows.length) break;
+        for (const r of rows) fetched.set(r.id, compact(r));
+        await sleep(250);
+      }
+    }
+    const byId = new Map(S.items.map((it) => [it.id, it]));
+    for (const [id, row] of fetched) byId.set(id, row); // cartes étiquetées : ajoutées ou mises à jour
+    for (const it of S.items) { // cartes qui n'ont plus l'étiquette : on la leur retire
+      if (!fetched.has(it.id) && it.tags.some((t) => wanted.includes(tagKey(t.name)))) byId.set(it.id, { ...it, tags: it.tags.filter((t) => !wanted.includes(tagKey(t.name))) });
+    }
+    setItems(withoutDiscarded([...byId.values()]));
+    return true;
+  }
+
+  const tagCounts = new Map(); // étiquette (minuscules) -> dernier nombre de cartes annoncé par le jeu (cardCount)
+  let taggedSyncAt = 0;
+  /**
+   * Contrôle LÉGER, à chaque passe de l'assistant : UNE requête donne le nombre de cartes de chaque étiquette (tagOptions.cardCount du jeu). Si ce nombre n'a pas
+   * changé depuis la dernière fois, on ne relit rien ; s'il a changé (cartes étiquetées ou désétiquetées, carte invendue revenue…), on relit les cartes de ces
+   * étiquettes. Filet de sécurité : relecture au moins toutes les 10 min (une carte peut changer d'étiquette sans changer le nombre). Renvoie true si on a relu.
+   */
+  async function syncTagged(names, { force = false } = {}) {
+    const wanted = [...new Set((names || []).map(tagKey).filter(Boolean))];
+    if (!wanted.length || !S.items.length || S.loading) return false;
+    let options;
+    try {
+      const u = new URL('/api/my-collection', location.origin);
+      u.searchParams.set('sort', 'name'); u.searchParams.set('page', '0'); u.searchParams.set('stats', '1');
+      const res = await fetch(u);
+      if (!res.ok) return false;
+      options = (await res.json()).tagOptions || [];
+    } catch (_) { return false; }
+    const ids = new Map();
+    let changed = false;
+    for (const key of wanted) {
+      const t = options.find((o) => tagKey(o.name) === key);
+      if (!t) { if (tagCounts.has(key)) changed = true; tagCounts.delete(key); continue; }
+      ids.set(key, t.id);
+      if (tagCounts.get(key) !== t.cardCount) changed = true;
+      tagCounts.set(key, t.cardCount);
+    }
+    if (!changed && !force && Date.now() - taggedSyncAt < 10 * 60000) return false; // même nombre de cartes : rien à relire
+    taggedSyncAt = Date.now();
+    return refreshTagged(wanted, ids);
+  }
+
   /** Charge les préférences, puis l'inventaire en cache (affiché aussitôt) et, s'il est périmé, l'inventaire à jour. */
   async function ensure() {
     if (S.started) return;
@@ -277,5 +344,6 @@
     /** Âge (ms) de la dernière lecture complète de la collection ; `reload` la relit en arrière-plan (sans vider l'affichage). */
     age: () => (S.loadedAt ? Date.now() - S.loadedAt : Infinity),
     reload: () => loadInventory(),
+    refreshTagged, syncTagged,
   };
 })();

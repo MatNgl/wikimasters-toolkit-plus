@@ -808,3 +808,5 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-auc-knob::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #cfe0d6; transition: transform .18s ease; }
 .wmx-auc-toggle[aria-checked="true"] .wmx-auc-knob { background: var(--acc, #2dd4a0); }
 .wmx-auc-toggle[aria-checked="true"] .wmx-auc-knob::after { transform: translateX(12px); background: #06251c; }
+.wmx-auc-state.over { color: #fbbf24; }
+.wmx-auc-row.over { opacity: .72; border-color: rgb(251 191 36 / .35); }

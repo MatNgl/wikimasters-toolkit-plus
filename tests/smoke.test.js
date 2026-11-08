@@ -114,7 +114,7 @@ test('révélation : couronnes seulement quand tous les prix sont connus', async
 });
 
 /** Page d'enchère factice (champ « Montant de la mise » + bouton « Miser ») injectée à la place du cadre invisible. */
-function fakeBidPages(w, min) {
+function fakeBidPages(w, min, stuck = []) {
   const { JSDOM } = require('jsdom');
   const clicks = [];
   const orig = w.document.createElement.bind(w.document);
@@ -123,7 +123,8 @@ function fakeBidPages(w, min) {
     if (String(tag).toLowerCase() === 'iframe') {
       const d = new JSDOM(`<body><input aria-label="Montant de la mise" type="number" min="${min}"><button>Miser</button></body>`).window.document;
       d.querySelector('button').addEventListener('click', () => clicks.push(d.querySelector('input').value));
-      Object.defineProperty(n, 'contentDocument', { get: () => d });
+      const blank = new JSDOM('<body></body>').window.document; // page qui ne se charge pas : jamais de champ de mise
+      Object.defineProperty(n, 'contentDocument', { get: () => (stuck.some((s) => String(n.getAttribute('src') || '').includes(s)) ? blank : d) });
     }
     return n;
   };
@@ -167,12 +168,12 @@ test('mise automatique : jamais si on mène déjà, et le plafond arrête la rè
   const r2 = await bubbleEnv({ b4: { mode: 'outbid', cap: 5 } }, { bidding: [rival], min: 7 });
   await sleep(6500);
   assert.deepEqual(r2.clicks, [], 'minimum 7 > plafond 5 : aucune mise');
-  assert.equal(r2.env.mem.autoBids.b4, undefined, 'la règle est supprimée');
+  assert.equal(r2.env.mem.autoBids.b4?.overNotified, true, 'la règle reste, marquée au-dessus du plafond');
   r2.env.close();
 });
 
 /** Environnement « veille » : enchères détaillées par identifiant (GET /api/marketplace/{id}), aucune mise à moi, pages de mise factices (minimum `min`). */
-async function watchEnv({ rules = {}, auctions = [], min = 7, route = '', body = '', delay = 0 }) {
+async function watchEnv({ rules = {}, auctions = [], min = 7, route = '', body = '', delay = 0, stuck = [] }) {
   const byId = Object.fromEntries(auctions.map((a) => [a.id, a]));
   const payload = { auctions, selling: [], bidding: [], won: [{ winner_id: ME }], history: [] };
   const env = createEnv({ fetchImpl: async (u) => {
@@ -184,7 +185,7 @@ async function watchEnv({ rules = {}, auctions = [], min = 7, route = '', body =
   const { w, WMX } = env;
   if (route) w.history.pushState({}, '', route);
   if (body) w.document.body.innerHTML = body;
-  const clicks = fakeBidPages(w, min);
+  const clicks = fakeBidPages(w, min, stuck);
   env.mem.autoBids = rules;
   WMX.settings.autoCapMode = 'abs'; WMX.settings.autoCapW = 1000; // plafond large par défaut (chaque test règle le sien au besoin)
   for (const f of WMX.features) await f.init?.();
@@ -294,36 +295,45 @@ test('veille : les lectures des enchères surveillées se font en parallèle, et
   slow.env.close();
 });
 
-test('bulle des enchères : interrupteur « Afficher les enchères dépassées » (mémorisé), la colonne reste pour pouvoir les réafficher', async () => {
-  const future = (m) => new Date(Date.now() + m * 60000).toISOString();
-  const mine = { id: 'm1', status: 'active', card: { wikipedia_title: 'Menée', rarity: 'C' }, end_at: future(30), base_amount: 5, current_bid: 6, current_bidder_id: ME };
-  const lost = { id: 'l1', status: 'active', card: { wikipedia_title: 'Dépassée', rarity: 'C' }, end_at: future(30), base_amount: 5, current_bid: 9, current_bidder_id: 'rival' };
-  const env = createEnv({ fetchImpl: async () => json({ selling: [], bidding: [mine, lost], won: [{ winner_id: ME }], history: [] }) });
-  const { w, WMX } = env;
-  WMX.features.find((x) => x.name === 'auctions').init();
+test('bulle des enchères : interrupteur « Afficher les enchères au-dessus de mon plafond » (mémorisé), la colonne reste pour les réafficher', async () => {
+  const cheap = auction('o1', { seller_id: 'other', base_amount: 10, current_bid: 12, current_bidder_id: 'rival', end_at: inMin(30) });
+  const dear = auction('o2', { seller_id: 'other', base_amount: 50, current_bid: 60, current_bidder_id: 'rival', end_at: inMin(30) });
+  const rule = { mode: 'time', secs: 30, capMode: 'abs', cap: 20, watch: true }; // plafond 20 W : o1 (12 W) reste sous, o2 (60 W) est au-dessus
+  const { env, w, WMX } = await watchEnv({ auctions: [cheap, dear], rules: { o1: rule, o2: { ...rule } } });
   await WMX.auctions.refresh();
   w.document.querySelector('.wmx-dial').click();
   await sleep(100);
   const rows = () => w.document.querySelectorAll('.wmx-auc-row').length;
   const toggle = () => w.document.querySelector('.wmx-auc-toggle');
   assert.equal(rows(), 2, 'par défaut, tout est affiché');
-  assert.match(toggle().textContent, /Afficher les enchères dépassées \(1\)/);
+  assert.match(toggle().textContent, /Afficher les enchères au-dessus de mon plafond \(1\)/);
+  assert.match(w.document.querySelector('.wmx-auc-row.over')?.textContent || '', /Plafond dépassé/, 'la ligne dit pourquoi');
   assert.equal(toggle().getAttribute('aria-checked'), 'true');
   toggle().click();
   await sleep(50);
-  assert.equal(rows(), 1, 'dépassée masquée : on ne voit que celle qu\'on mène');
+  assert.equal(rows(), 1, 'au-dessus du plafond masquée : on ne garde que ce qui reste intéressant');
   assert.equal(toggle().getAttribute('aria-checked'), 'false');
-  assert.equal(env.mem.auctionShowOutbid, false, 'choix mémorisé');
+  assert.equal(env.mem.auctionShowOver, false, 'choix mémorisé');
   toggle().click();
   await sleep(50);
   assert.equal(rows(), 2, 'réaffichée');
-  // Que des enchères dépassées, et masquées : la colonne reste avec une note et l'interrupteur.
+  // Une enchère simplement dépassée par un rival (sous le plafond) n'est PAS concernée : elle reste affichée.
+  const lost = { id: 'l1', status: 'active', card: { wikipedia_title: 'Surenchérie', rarity: 'C' }, end_at: inMin(30), base_amount: 5, current_bid: 9, current_bidder_id: 'rival' };
   WMX.auctions.state().bidding = [lost];
   toggle().click();
   await sleep(50);
-  assert.equal(rows(), 0);
-  assert.ok(toggle(), 'interrupteur toujours là');
-  assert.match(w.document.querySelector('.wmx-bubble-panel').textContent, /1 enchère dépassée masquée/);
+  assert.ok(w.document.body.textContent.includes('Surenchérie'), 'surenchérie par un rival mais sans plafond dépassé : toujours visible');
+  env.close();
+});
+
+test('mises automatiques : une page qui ne se charge pas ne bloque plus les autres (en parallèle, attente bornée par le temps restant)', async () => {
+  const soon = new Date(Date.now() + 22000).toISOString();
+  const a1 = auction('stuck1', { seller_id: 'other', current_bid: 8, current_bidder_id: 'rival', end_at: soon });
+  const a2 = auction('fine1', { seller_id: 'other', current_bid: 8, current_bidder_id: 'rival', end_at: soon });
+  const rule = { mode: 'time', secs: 30, capMode: 'abs', cap: 1000, watch: true };
+  const { env, clicks } = await watchEnv({ auctions: [a1, a2], rules: { stuck1: rule, fine1: rule }, stuck: ['stuck1'] });
+  await sleep(8000);
+  assert.equal(clicks.length, 1, 'l’enchère dont la page est chargée est misée, sans attendre celle dont la page est bloquée');
   env.close();
 });
 
@@ -332,7 +342,7 @@ test('veille : un prix déjà au-dessus du plafond arrête la veille sans rien m
   const { env, w, clicks } = await watchEnv({ auctions: [a], rules: { w2: { mode: 'time', secs: 30, capMode: 'abs', cap: 20, watch: true } } });
   await sleep(5000);
   assert.deepEqual(clicks, []);
-  assert.equal(env.mem.autoBids.w2, undefined, 'la veille est supprimée');
+  assert.equal(env.mem.autoBids.w2?.overNotified, true, 'la veille reste (marquée au-dessus du plafond), elle n’est plus supprimée');
   assert.match(w.document.body.textContent, /Prix au-dessus de votre plafond/);
   assert.match(w.document.body.textContent, /Modifier le plafond/, 'avec un bouton vers les réglages');
   assert.match(w.document.body.textContent, /prochaine mise doit être d’au moins 31 W \(prix actuel : 30 W\)/, 'on distingue la mise minimum du prix actuel');
@@ -558,6 +568,61 @@ test('réglages : podium des raretés prioritaires de l’assistant (aucune prio
   [...w.document.querySelectorAll('.wmx-modal footer .wmx-btn')].find((b) => b.textContent === 'Appliquer').click();
   await sleep(300);
   assert.equal(WMX.settings.autoSellPriorityRar, '', 'plus aucune priorité');
+  env.close();
+});
+
+test('inventaire : relecture légère des cartes étiquetées (filtre tag_id) : cartes nouvellement étiquetées vues, étiquette retirée prise en compte', async () => {
+  const tagV = { id: 'T1', name: 'VENTE' };
+  const row = (id, title, rarity, tags) => ({ id, card_id: 'c-' + id, count: 1, starred: false, tags, card: { wikipedia_title: title, rarity, id: 'c-' + id } });
+  const calls = [];
+  const env = createEnv({ fetchImpl: async (u) => {
+    const s = String(u);
+    if (!s.includes('/api/my-collection')) return json({});
+    const p = new URL(s).searchParams;
+    calls.push(p.get('tag_id') || 'tout');
+    if (p.get('tag_id') === 'T1') return json({ collection: p.get('page') === '0' ? [row('a', 'Alpha', 'SR', [tagV]), row('c', 'Gamma', 'legendaire', [tagV])] : [] });
+    return json({ collection: [] });
+  } });
+  const { WMX } = env;
+  env.mem.invCacheV2 = { t: Date.now(), complete: true, items: [
+    { id: 'a', card_id: 'c-a', title: 'Alpha', rarity: 'SR', count: 1, starred: false, tags: [tagV] },
+    { id: 'b', card_id: 'c-b', title: 'Beta', rarity: 'R', count: 1, starred: false, tags: [tagV] }, // n'a plus l'étiquette dans le jeu
+    { id: 'c', card_id: 'c-c', title: 'Gamma', rarity: 'L', count: 1, starred: false, tags: [] },     // vient d'être étiquetée dans le jeu
+  ] };
+  await WMX.inventory.ensure();
+  assert.equal(await WMX.inventory.refreshTagged(['inconnue']), false, 'étiquette inconnue : on laisse le chargement complet faire');
+  assert.equal(calls.length, 0, 'aucune requête dans ce cas');
+  assert.equal(await WMX.inventory.refreshTagged(['vente']), true);
+  assert.ok(calls.every((c) => c === 'T1'), 'seules les cartes de l’étiquette sont relues, pas toute la collection');
+  const by = Object.fromEntries(WMX.inventory.items().map((it) => [it.title, it.tags.map((x) => x.name)]));
+  assert.deepEqual(by.Gamma, ['VENTE'], 'la Légendaire nouvellement étiquetée est vue');
+  assert.deepEqual(by.Alpha, ['VENTE']);
+  assert.deepEqual(by.Beta, [], 'l’étiquette retirée dans le jeu est retirée aussi ici');
+  env.close();
+});
+
+test('inventaire : contrôle du nombre de cartes par étiquette (1 requête) ; relecture seulement si ce nombre change', async () => {
+  const tagV = { id: 'T1', name: 'VENTE' };
+  const state = { count: 2, reads: 0, checks: 0 };
+  const env = createEnv({ fetchImpl: async (u) => {
+    const s = String(u);
+    if (!s.includes('/api/my-collection')) return json({});
+    const p = new URL(s).searchParams;
+    if (p.get('stats') === '1') { state.checks += 1; return json({ collection: [], tagOptions: [{ id: 'T1', name: 'VENTE', cardCount: state.count }] }); }
+    if (p.get('tag_id') === 'T1') { state.reads += 1; return json({ collection: [] }); }
+    return json({ collection: [] });
+  } });
+  const { WMX } = env;
+  env.mem.invCacheV2 = { t: Date.now(), complete: true, items: [{ id: 'a', card_id: 'c-a', title: 'Alpha', rarity: 'SR', count: 1, starred: false, tags: [tagV] }] };
+  await WMX.inventory.ensure();
+  assert.equal(await WMX.inventory.syncTagged(['VENTE']), true, 'première vérification : on relit une fois pour s’aligner');
+  assert.deepEqual([state.checks, state.reads], [1, 1]);
+  assert.equal(await WMX.inventory.syncTagged(['VENTE']), false, 'même nombre de cartes : rien n’est relu');
+  assert.deepEqual([state.checks, state.reads], [2, 1], 'une seule requête de contrôle, aucune relecture');
+  state.count = 3; // une carte de plus portent l'étiquette
+  assert.equal(await WMX.inventory.syncTagged(['VENTE']), true, 'nombre différent : on relit les cartes de l’étiquette');
+  assert.deepEqual([state.checks, state.reads], [3, 2]);
+  assert.equal(await WMX.inventory.syncTagged(['VENTE'], { force: true }), true, 'relecture forcée (bouton Lancer maintenant)');
   env.close();
 });
 

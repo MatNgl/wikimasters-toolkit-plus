@@ -30,7 +30,8 @@
   S.draft = {};      // réglages de mise automatique en cours de saisie (gardés si la liste se redessine)
   S.autoSeen = null; // identifiants des mises déjà vues (les réglages par défaut ne s'appliquent qu'aux NOUVELLES mises)
   S.autoOpen = null;                        // enchère dont le formulaire de mise automatique est ouvert
-  S.showOutbid = true;                      // afficher dans la bulle les enchères dépassées (où je ne mène plus) : au choix de l'utilisateur, mémorisé
+  S.flying = new Set();                     // enchères dont une mise est en cours (plusieurs en parallèle pour les mises automatiques)
+  S.showOver = true;                        // afficher dans la bulle les enchères dont le prix dépasse mon plafond d'achat (elles ne m'intéressent plus) : au choix, mémorisé
   const saveAuto = () => WMX.store.set('autoBids', S.auto);
   const notified = new Set();               // alertes déjà envoyées (une seule fois chacune)
 
@@ -143,6 +144,15 @@
 
   // --- Données ---------------------------------------------------------------------------------
   const isWatch = (a) => !!S.auto[a.id]?.watch && !D.bidding.some((b) => b.id === a.id);
+  /** Le minimum de la prochaine mise dépasse le plafond de la règle : cette enchère ne m'intéresse plus (je ne mise pas). Une enchère sans règle ni plafond n'est jamais « au-dessus ». */
+  const isOver = (a) => {
+    const rule = S.auto[a.id];
+    if (!rule || leading(a)) return false;
+    const capW = WMX.logic.resolveCap(rule, avgOf(a));
+    if (capW == null) return false;
+    const m = minOf(a) || (a.current_bid ? a.current_bid + 1 : (isWatch(a) ? a.base_amount : 0));
+    return !!m && m > capW;
+  };
   S.watchT = {}; // dernière lecture de chaque enchère surveillée
   /** Relit les enchères surveillées (GET /api/marketplace/{id}) : peu souvent tant que c'est loin, toutes les 2,5 s près du moment de miser. */
   async function refreshWatching(force = false, only = null) {
@@ -209,7 +219,7 @@
       if (dirty) saveAuto();
       // Page prête à l'avance (miser sans attendre) pour les règles dont l'enchère finit le plus tôt : jamais plus de pages que MAX_FRAMES.
       // Une veille n'a besoin de sa page que dans la dernière minute et demie avant le moment de miser.
-      Object.keys(S.auto).map((id) => allBids().find((b) => b.id === id)).filter((a) => a && (!isWatch(a) || msLeft(a) <= (S.auto[a.id].secs || 60) * 1000 + 90000))
+      Object.keys(S.auto).map((id) => allBids().find((b) => b.id === id)).filter((a) => a && !S.auto[a.id].overNotified && (!isWatch(a) || msLeft(a) <= (S.auto[a.id].secs || 60) * 1000 + 90000))
         .sort((x, y) => msLeft(x) - msLeft(y)).slice(0, MAX_FRAMES).forEach(frameFor);
       pruneFrames();
       renderAll();
@@ -225,7 +235,7 @@
   function schedulePoll() {
     clearTimeout(S.timer);
     // Une veille encore lointaine (plus de 5 min avant le moment de miser) ne demande pas l'actualisation rapide des règles.
-    const fast = WMX.logic.autoPollMs(Object.entries(S.auto).filter(([id, rule]) => !rule.watch || msLeftById(id) <= 5 * 60000 + (rule.secs || 60) * 1000)
+    const fast = WMX.logic.autoPollMs(Object.entries(S.auto).filter(([id, rule]) => !rule.overNotified && (!rule.watch || msLeftById(id) <= 5 * 60000 + (rule.secs || 60) * 1000))
       .map(([id, rule]) => ({ rule, msLeft: msLeftById(id) })));
     const nearEnd = [...D.bidding, ...D.selling].some((x) => msLeft(x) < 12000 && msLeft(x) > -GRACE_MS);
     const ms = fast || (nearEnd ? 3000 : (S.bubbleOpen ? 8000 : 60000));
@@ -241,13 +251,14 @@
   const bidButton = (f) => { try { return [...f.contentDocument.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Miser'); } catch (_) { return null; } };
 
   /** Page de l'enchère chargée (et gardée à jour par le jeu) dans un cadre invisible : le minimum y est toujours le bon. */
-  const MAX_FRAMES = 4; // jamais plus : chaque page préchargée est une page du jeu de plus qui tourne
+  const MAX_PAR = 2; // mises automatiques en parallèle au plus (deux enchères qui finissent ensemble ne s'attendent plus)
+  const MAX_FRAMES = 5; // jamais plus : chaque page préchargée est une page du jeu de plus qui tourne
   function frameFor(a) {
     let f = S.frames.get(a.id);
     if (f?.isConnected) return f;
     if (S.frames.size >= MAX_FRAMES) { // on libère celle dont l'enchère finit le plus tard (jamais la plus urgente)
       let far = null;
-      for (const [id] of S.frames) { if (id !== S.betting && id !== a.id && (!far || msLeftById(id) > msLeftById(far))) far = id; }
+      for (const [id] of S.frames) { if (!S.flying.has(id) && id !== a.id && (!far || msLeftById(id) > msLeftById(far))) far = id; }
       if (far) { S.frames.get(far).remove(); S.frames.delete(far); }
     }
     f = el('iframe', { class: 'wmx-sheet-frame', src: `/marketplace/${a.id}#wmx-auto`, title: 'Mise', tabindex: '-1' });
@@ -257,7 +268,7 @@
   }
   function pruneFrames() {
     const keep = new Set(allBids().map((a) => a.id));
-    for (const [id, f] of S.frames) if (!keep.has(id) && id !== S.betting) { f.remove(); S.frames.delete(id); }
+    for (const [id, f] of S.frames) if (!keep.has(id) && !S.flying.has(id)) { f.remove(); S.frames.delete(id); }
   }
   function prepareFrames() {
     [...D.bidding].sort((a, b) => msLeft(a) - msLeft(b)).slice(0, 4).forEach(frameFor);
@@ -296,18 +307,23 @@
   async function bidInner(a, opts = {}) {
     if (!D.me) await refresh(); // sans mon identifiant, on ne sait pas qui mène : pas de mise
     if (!D.me) return opts.auto ? undefined : WMX.toast('Je ne retrouve pas votre compte. Actualisez la page (F5) puis réessayez.', 6000, { kind: 'warn' });
-    if (S.betting) return opts.auto ? undefined : WMX.toast('Une autre mise est en cours : patientez un instant.');
+    if (S.flying.has(a.id)) return undefined; // une mise est déjà en cours sur cette enchère
+    if (!opts.auto && S.betting) return WMX.toast('Une autre mise est en cours : patientez un instant.');
     if (leading(a)) return opts.auto ? undefined : WMX.toast('Vous menez déjà cette enchère.');
-    S.betting = a.id;
+    if (!opts.auto) S.betting = a.id; // les mises manuelles se font l'une après l'autre ; les mises automatiques sont indépendantes (jusqu'à MAX_PAR)
+    S.flying.add(a.id);
     renderAll();
     const jr = (text, level) => WMX.journal?.add(opts.auto ? 'Mise automatique' : 'Surenchère', `« ${cardTitle(a)} » : ${text}`, level);
-    const release = () => { if (S.betting === a.id) { S.betting = null; renderAll(); } }; // sans effet si une autre mise a déjà pris la place
+    const release = () => { if (S.betting === a.id) S.betting = null; if (S.flying.delete(a.id) || true) renderAll(); }; // sans effet si déjà libérée
     const t0 = Date.now();
     try {
       WMX.toast(`Mise sur « ${cardTitle(a)} »…`, 60000, { key: `bid:${a.id}:go`, kind: 'info' });
       const preloaded = !!bidInput(S.frames.get(a.id) || {});
       const f = frameFor(a);
-      const input = await waitFor(() => bidInput(f), 90000, 150);
+      // Attente de la page : jamais plus que le temps restant (une page lente ou une enchère déjà finie bloquait tout 90 s). Mise automatique : un seul rechargement du cadre si besoin.
+      const waitMs = opts.auto ? Math.min(30000, Math.max(4000, msLeft(a) + 2000)) : 90000;
+      let input = await waitFor(() => bidInput(f), opts.auto ? Math.min(6000, waitMs) : waitMs, 150);
+      if (!input && opts.auto && waitMs > 6500) { try { f.contentWindow.location.reload(); } catch (_) { /* cadre libéré */ } input = await waitFor(() => bidInput(f), waitMs - 6000, 150); }
       if (!input) { jr(`la page de l’enchère ne s’est pas chargée (${Math.round((Date.now() - t0) / 1000)} s) : rien n’a été misé`, 'error'); return WMX.toast('La page de l’enchère n’a pas répondu : rien n’a été misé. Réessayez dans un instant.', 7000, { kind: 'warn' }); }
       const btn = bidButton(f);
       if (!btn) { jr('bouton « Miser » introuvable sur la page de l’enchère', 'error'); return WMX.toast('Le bouton « Miser » n’est pas apparu : rien n’a été misé. Le jeu a peut-être changé sa page.', 7000, { kind: 'warn' }); }
@@ -315,9 +331,8 @@
       if (!Number.isFinite(min) || min <= 0) { jr('minimum de mise illisible : rien n’a été misé', 'error'); return WMX.toast('Je n’ai pas pu lire la mise minimum : rien n’a été misé. Réessayez dans un instant.', 7000, { kind: 'warn' }); }
       if (opts.cap && min > opts.cap) { // plafond de la mise automatique dépassé : on s'arrête
         const ruleBefore = S.auto[a.id];
-        delete S.auto[a.id]; saveAuto();
-        jr(`le minimum (${fmt(min)} W) dépasse le plafond de ${fmt(opts.cap)} W : règle arrêtée`, 'warn');
-        capNotice(a, min, opts.cap, ruleBefore);
+        jr(`le minimum (${fmt(min)} W) dépasse le plafond de ${fmt(opts.cap)} W : pas de mise`, 'warn');
+        if (ruleBefore && !ruleBefore.overNotified) { ruleBefore.overNotified = true; saveAuto(); renderAll(); capNotice(a, min, opts.cap, ruleBefore); }
         return;
       }
       if (opts.auto) jr(`mise de ${fmt(min)} W déclenchée (il reste ${Math.max(0, Math.round(msLeft(a) / 1000))} s${preloaded ? '' : ', page chargée à la demande en ' + Math.round((Date.now() - t0) / 1000) + ' s'})`);
@@ -331,9 +346,8 @@
       if (!Number.isFinite(amount) || amount <= 0) amount = min;
       if (opts.cap && amount > opts.cap) {
         const ruleBefore = S.auto[a.id];
-        delete S.auto[a.id]; saveAuto();
-        jr(`le minimum est monté à ${fmt(amount)} W, au-dessus du plafond de ${fmt(opts.cap)} W : règle arrêtée`, 'warn');
-        capNotice(a, amount, opts.cap, ruleBefore);
+        jr(`le minimum est monté à ${fmt(amount)} W, au-dessus du plafond de ${fmt(opts.cap)} W : pas de mise`, 'warn');
+        if (ruleBefore && !ruleBefore.overNotified) { ruleBefore.overNotified = true; saveAuto(); renderAll(); capNotice(a, amount, opts.cap, ruleBefore); }
         return;
       }
       setNumber(input, amount); // exactement le minimum proposé par le jeu
@@ -394,7 +408,7 @@
   const fire = () => window.dispatchEvent(new CustomEvent('wmx:bids'));
   let queueRunning = false;
   function enqueueBid(a) {
-    if (S.bidQueue.some((x) => x.id === a.id) || S.betting === a.id) return;
+    if (S.bidQueue.some((x) => x.id === a.id) || S.flying.has(a.id)) return;
     S.bidQueue.push(a);
     fire();
     if (S.bidQueue.length > 1 || S.betting) WMX.toast?.(`${S.bidQueue.length} mise${S.bidQueue.length > 1 ? 's' : ''} en file d’attente…`, 3000);
@@ -526,8 +540,10 @@
   }
   /** Chaque seconde : une règle est-elle à déclencher ? (une seule mise à la fois, 6 s minimum entre deux essais) */
   function runAuto() {
-    if (!S.leader || S.betting || !D.loaded) return; // un seul onglet (le « chef ») exécute les mises automatiques
-    for (const a of allBids()) {
+    if (!S.leader || !D.loaded || S.flying.size >= MAX_PAR) return; // un seul onglet (le « chef ») exécute les mises automatiques
+    for (const a of [...allBids()].sort((x, y) => msLeft(x) - msLeft(y))) { // la plus urgente d'abord
+      if (S.flying.size >= MAX_PAR) return;
+      if (S.flying.has(a.id)) continue; // déjà en cours
       const rule = S.auto[a.id];
       if (!rule) continue;
       const watching = isWatch(a);
@@ -540,11 +556,11 @@
         else if (!S.noAvgAlert?.[a.id]) { (S.noAvgAlert ||= {})[a.id] = 1; alertUser('Mise automatique en attente', `« ${cardTitle(a)} » : pas de moyenne du marché pour fixer le plafond.`, `${a.id}:noavg`); }
         continue;
       }
-      if (capW != null && m && m > capW && !leading(a)) { // le minimum dépasse le plafond : la règle s'arrête (et on prévient)
-        delete S.auto[a.id]; saveAuto(); renderAll();
-        capNotice(a, m, capW, rule);
+      if (capW != null && m && m > capW && !leading(a)) { // le minimum dépasse le plafond : on ne mise pas (la carte reste dans la bulle, masquable)
+        if (!rule.overNotified) { rule.overNotified = true; saveAuto(); renderAll(); capNotice(a, m, capW, rule); } // une seule alerte
         continue;
       }
+      if (rule.overNotified) { delete rule.overNotified; saveAuto(); renderAll(); } // plafond relevé (réglages, règle modifiée) : la règle reprend
       // Ma dernière mise automatique n'est pas encore visible (serveur lent) : on attend qu'une mise PLUS HAUTE apparaisse (vraie
       // surenchère d'un autre joueur) ou 90 s, au lieu de remiser par-dessus soi-même.
       const last = S.autoLast[a.id];
@@ -552,8 +568,7 @@
       const due = WMX.logic.autoBidDue(rule, { leading: leading(a), msLeft: msLeft(a), minBid: m, capW, cooldownOk: Date.now() - (S.autoTry[a.id] || 0) > (msLeft(a) <= 90000 ? 3000 : 6000) });
       if (!due) continue;
       S.autoTry[a.id] = Date.now();
-      bid(a, { auto: true, cap: capW });
-      return;
+      bid(a, { auto: true, cap: capW }); // sans attendre : la suivante, si elle est due aussi, part dans la foulée (jusqu'à MAX_PAR)
     }
   }
 
@@ -595,7 +610,8 @@
       autoBtn.addEventListener('click', () => { S.autoOpen = S.autoOpen === a.id ? null : a.id; renderAll(); });
       main = el('div', { class: 'wmx-auc-main' },
         el('div', { class: 'wmx-auc-name' }, title, rarityTag(r)),
-        isWatch(a) ? el('span', { class: 'wmx-auc-state watch', title: 'Vous n’avez pas misé : l’extension misera au dernier moment si le prix reste sous votre plafond.' }, 'Surveillance')
+        isWatch(a) && isOver(a) ? el('span', { class: 'wmx-auc-state over', title: 'Le prix dépasse votre plafond : l’extension ne misera pas. Relevez le plafond (⏱ ou Paramètres) pour reprendre.' }, 'Plafond dépassé')
+          : isWatch(a) ? el('span', { class: 'wmx-auc-state watch', title: 'Vous n’avez pas misé : l’extension misera au dernier moment si le prix reste sous votre plafond.' }, 'Surveillance')
           : el('span', { class: `wmx-auc-state ${lead ? 'ok' : 'ko'}` }, lead ? 'Vous menez' : 'Surenchéri'),
         timeEl(a),
         rule ? el('span', { class: 'wmx-auc-autotag', 'data-id': a.id }, WMX.logic.autoLabel(rule)) : '');
@@ -605,7 +621,7 @@
       side = el('div', { class: 'wmx-auc-side' },
         el('div', { class: 'wmx-auc-price' }, el('small', {}, 'Mise actuelle'), el('b', {}, `${fmt(a.current_bid || a.base_amount)} W`), avgChip(a, 'buy')),
         el('div', { class: 'wmx-auc-acts' }, rm, autoBtn, act));
-      return el('div', { class: `wmx-auc-row${isWatch(a) ? ' watch' : ''}`, style: `--rgb:${WMX.RARITY_RGB[r]}` }, img, main, side, S.autoOpen === a.id ? autoForm(a) : '');
+      return el('div', { class: `wmx-auc-row${isWatch(a) ? ' watch' : ''}${isOver(a) ? ' over' : ''}`, style: `--rgb:${WMX.RARITY_RGB[r]}` }, img, main, side, S.autoOpen === a.id ? autoForm(a) : '');
     } else {
       const act = a.current_bid || msLeft(a) <= 0 ? '' : el('button', { class: 'wmx-btn wmx-btn--ghost wmx-auc-cancel', 'data-card': a.card_id, title: 'Annuler la vente et récupérer la carte' }, 'Annuler');
       if (act) {
@@ -657,26 +673,26 @@
   function content() {
     // Dans « Mes enchères » : d'abord celles où j'ai misé, puis, sous un petit titre, les cartes que je surveille sans avoir misé (pas de troisième colonne).
     const byEnd = (a, b) => msLeft(a) - msLeft(b);
-    const outbid = D.bidding.filter((a) => shown(a) && !leading(a));
-    const mineList = D.bidding.filter((a) => shown(a) && (S.showOutbid || leading(a))).sort(byEnd); // dépassées : selon l'interrupteur
-    const watchList = allBids().filter((a) => isWatch(a) && shown(a)).sort(byEnd);
+    const over = allBids().filter((a) => shown(a) && isOver(a));
+    const mineList = D.bidding.filter((a) => shown(a) && (S.showOver || !isOver(a))).sort(byEnd); // au-dessus du plafond : selon l'interrupteur
+    const watchList = allBids().filter((a) => isWatch(a) && shown(a) && (S.showOver || !isOver(a))).sort(byEnd);
     const bids = [...mineList.map((a) => row(a, 'bid')),
       ...(watchList.length ? [el('p', { class: 'wmx-auc-sep', title: 'Vous n’avez pas misé sur ces cartes : l’extension misera au dernier moment, si le prix reste sous votre plafond.' }, 'Sous surveillance (rien de misé pour l’instant)'), ...watchList.map((a) => row(a, 'bid'))] : [])];
     const bidCount = mineList.length + watchList.length;
     const sells = D.selling.filter(shown).sort((a, b) => msLeft(a) - msLeft(b)).map((a) => row(a, 'sell'));
     // Panneau adaptatif : deux colonnes quand il y a des enchères ET des ventes ; une seule, plus étroite, sinon (pas de place vide ni de note
     // pour la partie absente : elle réapparaît dès qu'il y en a). Rien du tout : une seule note.
-    const hiddenOutbid = S.showOutbid ? 0 : outbid.length; // enchères dépassées masquées : la colonne reste (avec l'interrupteur) pour pouvoir les réafficher
-    const hasBids = bids.length > 0 || hiddenOutbid > 0;
+    const hiddenOver = S.showOver ? 0 : over.length; // enchères au-dessus du plafond masquées : la colonne reste (avec l'interrupteur) pour pouvoir les réafficher
+    const hasBids = bids.length > 0 || hiddenOver > 0;
     const mode = hasBids && sells.length ? 'two' : (hasBids || sells.length ? 'one' : 'none');
     if (S.bubblePanel) { S.bubblePanel.dataset.mode = mode; applySize(); }
     const out = [];
     if (hasBids) {
-      const toggle = outbid.length ? el('button', { type: 'button', class: 'wmx-auc-toggle', role: 'switch', 'aria-checked': String(S.showOutbid),
-        title: S.showOutbid ? 'Masquer les enchères où vous êtes dépassé, pour vous concentrer sur le reste' : 'Réafficher les enchères où vous êtes dépassé' },
-      el('span', { class: 'wmx-auc-knob' }), `Afficher les enchères dépassées (${outbid.length})`) : '';
-      if (toggle) toggle.addEventListener('click', () => { S.showOutbid = !S.showOutbid; WMX.store.set('auctionShowOutbid', S.showOutbid); renderAll(); });
-      const list = bids.length ? bids : [note(`${hiddenOutbid} enchère${hiddenOutbid > 1 ? 's' : ''} dépassée${hiddenOutbid > 1 ? 's' : ''} masquée${hiddenOutbid > 1 ? 's' : ''}. Activez l’interrupteur pour les voir.`)];
+      const toggle = over.length ? el('button', { type: 'button', class: 'wmx-auc-toggle', role: 'switch', 'aria-checked': String(S.showOver),
+        title: S.showOver ? 'Masquer les enchères dont le prix dépasse votre plafond (elles ne vous intéressent plus), pour vous concentrer sur le reste' : 'Réafficher les enchères dont le prix dépasse votre plafond' },
+      el('span', { class: 'wmx-auc-knob' }), `Afficher les enchères au-dessus de mon plafond (${over.length})`) : '';
+      if (toggle) toggle.addEventListener('click', () => { S.showOver = !S.showOver; WMX.store.set('auctionShowOver', S.showOver); renderAll(); });
+      const list = bids.length ? bids : [note(`${hiddenOver} enchère${hiddenOver > 1 ? 's' : ''} au-dessus de votre plafond masquée${hiddenOver > 1 ? 's' : ''}. Activez l’interrupteur pour les voir.`)];
       out.push(column('Mes enchères', list, /^Mes ench/i, bidCount, toggle));
     }
     if (sells.length) out.push(column('Mes ventes', sells, /^Mes ventes/i));
@@ -717,8 +733,8 @@
       const a = allBids().find((x) => x.id === b.dataset.id);
       if (!a) continue;
       const m = minOf(a);
-      b.textContent = S.betting === a.id ? 'Mise en cours…' : leading(a) ? 'Vous menez' : (m ? `Surenchérir · ${fmt(m)} W` : 'Surenchérir');
-      b.disabled = !!S.betting || leading(a) || msLeft(a) <= 0;
+      b.textContent = S.flying.has(a.id) ? 'Mise en cours…' : leading(a) ? 'Vous menez' : (m ? `Surenchérir · ${fmt(m)} W` : 'Surenchérir');
+      b.disabled = !!S.betting || S.flying.has(a.id) || leading(a) || msLeft(a) <= 0;
     }
     // Règle de mise automatique : le plafond en W, et pourquoi elle ne mise pas si le minimum du jeu le dépasse (le plafond vaut pour la mise PLACÉE).
     for (const t of document.querySelectorAll('.wmx-auc-autotag[data-id]')) {
@@ -1024,19 +1040,19 @@
     stateOf(id) {
       const x = D.bidding.find((b) => b.id === id);
       if (x && leading(x)) return 'leading';
-      if (S.betting === id) return 'betting';
+      if (S.flying.has(id)) return 'betting';
       if (S.bidQueue.some((q) => q.id === id)) return 'queued';
       return x ? 'outbid' : 'none';
     },
-    busy: () => S.betting,
+    busy: () => S.betting || [...S.flying][0] || null,
     /** File des surenchères (pastille de la file d'attente) : la mise en cours, puis celles qui attendent. */
     queued() {
       const info = (a, current) => ({ id: a.id, title: cardTitle(a), rarity: a.card ? rarityOf(a) : '', current });
-      const cur = S.betting ? [info(D.bidding.find((x) => x.id === S.betting) || { id: S.betting }, true)] : [];
-      return [...cur, ...S.bidQueue.filter((a) => a.id !== S.betting).map((a) => info(a, false))];
+      const cur = [...S.flying].map((id) => info(allBids().find((x) => x.id === id) || { id }, true)); // la mise (ou les mises) en cours, titres des veilles compris
+      return [...cur, ...S.bidQueue.filter((a) => !S.flying.has(a.id)).map((a) => info(a, false))];
     },
-    removeQueued(id) { S.bidQueue = S.bidQueue.filter((a) => a.id !== id || a.id === S.betting); fire(); },
-    clearQueued() { S.bidQueue = S.bidQueue.filter((a) => a.id === S.betting); fire(); },
+    removeQueued(id) { S.bidQueue = S.bidQueue.filter((a) => a.id !== id || S.flying.has(a.id)); fire(); },
+    clearQueued() { S.bidQueue = S.bidQueue.filter((a) => S.flying.has(a.id)); fire(); },
   };
 
   WMX.register({
@@ -1057,7 +1073,7 @@
         document.addEventListener('visibilitychange', claim);
         setTimeout(claim, 4000); // onglet ouvert directement au premier plan alors qu'un onglet masqué tient déjà le rôle
       } else S.leader = true;
-      WMX.store.get('auctionShowOutbid', true).then((v) => { S.showOutbid = v !== false; renderAll(); }).catch(() => {});
+      WMX.store.get('auctionShowOver', true).then((v) => { S.showOver = v !== false; renderAll(); }).catch(() => {});
       WMX.store.get('autoBids', {}).then((r) => { S.auto = r || {}; refreshWatching(true).then(() => { renderAll(); fire(); }).catch(() => {}); });
       // Les règles créées ou modifiées dans un autre onglet arrivent ici : sans cela, l'onglet « chef » ignorerait les règles créées ailleurs.
       WMX.onStorage((c) => {
