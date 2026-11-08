@@ -163,8 +163,9 @@
       const prev = D.watching.find((w) => w.id === id);
       const rule = S.auto[id];
       const left = prev ? msLeft(prev) : 9e9;
-      const near = left <= (rule.secs || 60) * 1000 + 20000;
-      const every = !prev ? 0 : near ? 2500 : left <= 5 * 60000 ? 15000 : 60000;
+      const dear = !!prev && isOver(prev); // au-dessus du plafond : on la garde à l'œil, sans l'urgence des autres
+      const near = !dear && left <= (rule.secs || 60) * 1000 + 20000;
+      const every = !prev ? 0 : dear ? 30000 : near ? 2500 : left <= 5 * 60000 ? 15000 : 60000;
       if (!force && prev && Date.now() - (S.watchT[id] || 0) < every) return { keep: prev };
       S.watchT[id] = Date.now();
       let a = null;
@@ -219,7 +220,7 @@
       if (dirty) saveAuto();
       // Page prête à l'avance (miser sans attendre) pour les règles dont l'enchère finit le plus tôt : jamais plus de pages que MAX_FRAMES.
       // Une veille n'a besoin de sa page que dans la dernière minute et demie avant le moment de miser.
-      Object.keys(S.auto).map((id) => allBids().find((b) => b.id === id)).filter((a) => a && !S.auto[a.id].overNotified && (!isWatch(a) || msLeft(a) <= (S.auto[a.id].secs || 60) * 1000 + 90000))
+      Object.keys(S.auto).map((id) => allBids().find((b) => b.id === id)).filter((a) => a && !isOver(a) && (!isWatch(a) || msLeft(a) <= (S.auto[a.id].secs || 60) * 1000 + 90000))
         .sort((x, y) => msLeft(x) - msLeft(y)).slice(0, MAX_FRAMES).forEach(frameFor);
       pruneFrames();
       renderAll();
@@ -235,7 +236,7 @@
   function schedulePoll() {
     clearTimeout(S.timer);
     // Une veille encore lointaine (plus de 5 min avant le moment de miser) ne demande pas l'actualisation rapide des règles.
-    const fast = WMX.logic.autoPollMs(Object.entries(S.auto).filter(([id, rule]) => !rule.overNotified && (!rule.watch || msLeftById(id) <= 5 * 60000 + (rule.secs || 60) * 1000))
+    const fast = WMX.logic.autoPollMs(Object.entries(S.auto).filter(([id, rule]) => { const a = allBids().find((x) => x.id === id); return !(a && isOver(a)) && (!rule.watch || msLeftById(id) <= 5 * 60000 + (rule.secs || 60) * 1000); })
       .map(([id, rule]) => ({ rule, msLeft: msLeftById(id) })));
     const nearEnd = [...D.bidding, ...D.selling].some((x) => msLeft(x) < 12000 && msLeft(x) > -GRACE_MS);
     const ms = fast || (nearEnd ? 3000 : (S.bubbleOpen ? 8000 : 60000));
@@ -258,8 +259,13 @@
     if (f?.isConnected) return f;
     if (S.frames.size >= MAX_FRAMES) { // on libère celle dont l'enchère finit le plus tard (jamais la plus urgente)
       let far = null;
-      for (const [id] of S.frames) { if (!S.flying.has(id) && id !== a.id && (!far || msLeftById(id) > msLeftById(far))) far = id; }
-      if (far) { S.frames.get(far).remove(); S.frames.delete(far); }
+      for (const [id] of S.frames) {
+        if (S.flying.has(id) || id === a.id) continue;
+        const cand = allBids().find((x) => x.id === id);
+        const score = (cand && isOver(cand) ? 1e12 : 0) + msLeftById(id); // une enchère au-dessus du plafond cède sa place en premier
+        if (!far || score > far.score) far = { id, score };
+      }
+      if (far) { S.frames.get(far.id).remove(); S.frames.delete(far.id); }
     }
     f = el('iframe', { class: 'wmx-sheet-frame', src: `/marketplace/${a.id}#wmx-auto`, title: 'Mise', tabindex: '-1' });
     document.body.append(f);
@@ -267,7 +273,7 @@
     return f;
   }
   function pruneFrames() {
-    const keep = new Set(allBids().map((a) => a.id));
+    const keep = new Set(allBids().filter((a) => !isOver(a)).map((a) => a.id)); // une enchère au-dessus du plafond ne garde pas de page préchargée
     for (const [id, f] of S.frames) if (!keep.has(id) && !S.flying.has(id)) { f.remove(); S.frames.delete(id); }
   }
   function prepareFrames() {
@@ -605,6 +611,7 @@
       const lead = leading(a);
       const act = el('button', { class: 'wmx-btn wmx-auc-bid', 'data-id': a.id }, 'Surenchérir');
       act.addEventListener('click', () => enqueueBid(a));
+      act.addEventListener('pointerenter', () => { if (isOver(a) && !S.flying.has(a.id)) frameFor(a); }); // on veut la carte malgré le plafond : la page se charge au survol
       const rule = S.auto[a.id];
       const autoBtn = el('button', { class: `wmx-auc-autobtn${rule ? ' on' : ''}`, title: rule ? 'Mise automatique active : cliquer pour la modifier' : 'Programmer une mise automatique', 'aria-label': 'Mise automatique' }, '⏱');
       autoBtn.addEventListener('click', () => { S.autoOpen = S.autoOpen === a.id ? null : a.id; renderAll(); });

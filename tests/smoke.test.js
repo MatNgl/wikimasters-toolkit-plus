@@ -337,6 +337,21 @@ test('mises automatiques : une page qui ne se charge pas ne bloque plus les autr
   env.close();
 });
 
+test('enchères au-dessus du plafond : pas de page préchargée (réservée aux enchères encore intéressantes), mais toujours dans la bulle', async () => {
+  const mk = (id, bid) => auction(id, { seller_id: 'other', current_bid: bid, current_bidder_id: 'rival', end_at: inMin(1) });
+  const rule = { mode: 'time', secs: 30, capMode: 'abs', cap: 20, watch: true }; // plafond 20 W
+  const { env, w, WMX } = await watchEnv({ auctions: [mk('dear1', 500), mk('good1', 8), mk('good2', 9)], rules: { dear1: rule, good1: { ...rule }, good2: { ...rule } } });
+  await WMX.auctions.refresh();
+  await sleep(100);
+  const framed = [...w.document.querySelectorAll('iframe.wmx-sheet-frame')].map((f) => f.getAttribute('src') || '').join(' ');
+  assert.ok(framed.includes('good1') && framed.includes('good2'), 'pages préchargées pour les enchères encore intéressantes');
+  assert.ok(!framed.includes('dear1'), 'aucune page préchargée pour celle qui dépasse le plafond');
+  w.document.querySelector('.wmx-dial').click();
+  await sleep(100);
+  assert.match(w.document.querySelector('.wmx-bubble-panel').textContent, /Plafond dépassé/, 'mais elle reste suivie dans la bulle');
+  env.close();
+});
+
 test('veille : un prix déjà au-dessus du plafond arrête la veille sans rien miser, et on prévient', async () => {
   const a = auction('w2', { seller_id: 'other', current_bid: 30, current_bidder_id: 'rival', end_at: inMin(60) });
   const { env, w, clicks } = await watchEnv({ auctions: [a], rules: { w2: { mode: 'time', secs: 30, capMode: 'abs', cap: 20, watch: true } } });
