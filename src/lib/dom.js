@@ -6,7 +6,18 @@ setInterval(() => {
   for (const n of kept) if (!n.isConnected) document.body.append(n);
 }, 1000);
 
+// Conteneurs de l'extension : une modification DANS l'un d'eux n'a pas à relancer les balayages de la page (sinon l'extension se réveille elle-même en boucle).
+// Pas de sélecteur « classe commençant par wmx- » : <html> en porte plusieurs et correspondrait à tout.
+const OWN = '.wmx-mk, .wmx-mk-acts, .wmx-nt-price, .wmx-nt-bolt, .wmx-notes, .wmx-bubble, .wmx-qchip, .wmx-panel, .wmx-cplus, .wmx-dk, .wmx-dw, .wmx-sty-shiny, .wmx-sty-waves, .wmx-sty-sheen, .wmx-modal-backdrop, .wmx-sheet-frame, .wmx-pre-back, .wmx-pdial, .wmx-cover, .wmx-toast';
 WMX.dom = {
+  /** Vrai si au moins une des modifications observées vient de la page du jeu (et non d'un élément de l'extension). */
+  foreign(muts) {
+    for (const m of muts) {
+      const t = m.target.nodeType === 1 ? m.target : m.target.parentElement;
+      if (!t || !t.closest(OWN)) return true;
+    }
+    return false;
+  },
   /** Garde un élément de l'extension dans la page : remis dans <body> s'il en est retiré par le jeu. */
   keepAttached(node) { kept.add(node); return node; },
   el(tag, attrs = {}, ...children) {

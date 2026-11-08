@@ -117,7 +117,7 @@
         for (const raw of data?.trades || []) { const t = mapTrade(raw); if (t) trades.set(t.id, t); }
         schedule();
       });
-      new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
+      new MutationObserver((muts) => { if (WMX.dom.foreign(muts)) schedule(); }).observe(document.body, { childList: true, subtree: true });
       WMX.prices.onProgress(() => { if (open.size) schedule(); });
       schedule();
     },

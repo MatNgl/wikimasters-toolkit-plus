@@ -96,7 +96,7 @@
     init() {
       WMX.inventory.ensure();
       WMX.onApi(({ path, data }) => { if (/^\/api\/my-collection\/?$/.test(path)) { WMX.inventory.learn(data?.collection); schedule(); } });
-      new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
+      new MutationObserver((muts) => { if (WMX.dom.foreign(muts)) schedule(); }).observe(document.body, { childList: true, subtree: true });
       WMX.inventory.onChange(() => { clearTimeout(window.__wmxNtRepaint); window.__wmxNtRepaint = setTimeout(repaintAll, 150); });
       WMX.quick?.onChange(() => { clearTimeout(window.__wmxNtRepaint); window.__wmxNtRepaint = setTimeout(repaintAll, 150); });
       window.addEventListener('wmx:fav', repaintAll);

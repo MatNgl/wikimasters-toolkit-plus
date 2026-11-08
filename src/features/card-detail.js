@@ -313,6 +313,8 @@
     openInFrame,
     signal: mkSignal,
     closeSheet,
+    /** Cadres de la collection (fiches de cartes « view », mises en vente et étiquettes « work ») : ouverts ? affichés ? — pour « Activité en direct ». */
+    frames: () => KINDS.map((k) => ({ kind: k, open: !!F[k].frame, visible: !!F[k].frame?.classList.contains('wmx-on') })),
     /** Exécute `fn` quand le cadre `kind` est libre (les opérations d'un même cadre ne se mélangent pas). */
     exclusive(fn, kind = 'view') {
       const s = F[kind];

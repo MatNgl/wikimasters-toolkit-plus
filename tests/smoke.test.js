@@ -352,6 +352,68 @@ test('enchères au-dessus du plafond : pas de page préchargée (réservée aux 
   env.close();
 });
 
+test('fluidité : les modifications faites par l’extension elle-même ne relancent pas les balayages de la page', async () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  const { w, WMX } = env;
+  w.document.documentElement.classList.add('wmx-calm'); // <html> porte des classes wmx- : il ne doit rien rendre « interne »
+  w.document.body.innerHTML = '<div class="game"><span class="x">jeu</span></div><div class="wmx-mk"><b>moy</b></div><div class="wmx-notes"><div class="wmx-note">n</div></div>';
+  const q = (s) => w.document.querySelector(s);
+  assert.equal(WMX.dom.foreign([{ target: q('.x') }]), true, 'une modification du jeu est traitée');
+  assert.equal(WMX.dom.foreign([{ target: q('.x').firstChild }]), true, 'y compris un texte du jeu');
+  assert.equal(WMX.dom.foreign([{ target: q('.wmx-mk b') }]), false, 'dans la pastille de moyenne de l’extension : ignorée');
+  assert.equal(WMX.dom.foreign([{ target: q('.wmx-note') }]), false, 'dans une notification : ignorée');
+  assert.equal(WMX.dom.foreign([{ target: q('.wmx-mk b') }, { target: q('.x') }]), true, 'un mélange : traité dès qu’une modification vient du jeu');
+  env.close();
+});
+
+test('marché : les boutons « Miser / Surveiller » ne sont pas réécrits quand rien ne change (défilement fluide)', async () => {
+  const a = auction('m1', { seller_id: 'other', base_amount: 50, end_at: inMin(90) });
+  const { env, w } = await watchEnv({ auctions: [a], route: '/marketplace', body: '<a class="card-frame block" href="/marketplace/m1"><div>m1</div></a>' });
+  for (let i = 0; i < 60 && !w.document.querySelector('.wmx-mk-acts'); i++) await sleep(150);
+  await sleep(1200); // les prix et la mise en page finissent d'arriver
+  const acts = w.document.querySelector('.wmx-mk-acts');
+  assert.ok(acts, 'boutons présents');
+  let n = 0;
+  const mo = new w.MutationObserver((ms) => { n += ms.length; });
+  mo.observe(acts, { childList: true, subtree: true, characterData: true, attributes: true });
+  for (let i = 0; i < 6; i++) w.dispatchEvent(new w.CustomEvent('wmx:bids')); // les mises sont relues toutes les quelques secondes : l'événement est fréquent
+  await sleep(700);
+  mo.disconnect();
+  assert.equal(n, 0, 'aucune écriture : un texte identique réécrit relance tous les observateurs de la page');
+  env.close();
+});
+
+test('activité en direct : requêtes comptées par type, pages cachées et surveillances listées, accessible depuis les réglages', async () => {
+  const a = auction('ac1', { seller_id: 'other', base_amount: 10, end_at: inMin(1) }); // 10 W : sous le plafond de 20 W
+  const b = auction('ac2', { seller_id: 'other', current_bid: 500, current_bidder_id: 'rival', end_at: inMin(1) });
+  const rule = { mode: 'time', secs: 30, capMode: 'abs', cap: 20, watch: true };
+  const { env, w, WMX } = await watchEnv({ auctions: [a, b], rules: { ac1: rule, ac2: { ...rule } } });
+  await WMX.auctions.refresh();
+  await w.fetch('/api/marketplace?page=1&limit=50&mine=1');
+  await w.fetch('/api/marketplace/cards/k1/sales?scope=summary');
+  const s = WMX.activity.snapshot();
+  assert.ok(s.fetches60 >= 4, 'les requêtes de l’extension sont comptées (lectures des enchères surveillées comprises)');
+  assert.ok(s.byKind['enchères (listes)'] >= 1 && s.byKind['prix du marché'] >= 1, 'classées par type');
+  assert.equal(s.auctions.watching, 2, 'deux enchères surveillées');
+  assert.equal(s.auctions.watchOver, 1, 'dont une au-dessus du plafond');
+  assert.equal(s.auctions.frames.length, 1, 'une seule page cachée : celle de l’enchère encore intéressante');
+  assert.equal(s.auctions.frames[0].title, 'Carte ac1');
+  WMX.openSettings();
+  const row = [...w.document.querySelectorAll('.wmx-setrow')].find((r) => /Activité en direct/.test(r.textContent));
+  assert.ok(row, 'entrée dans les réglages');
+  row.querySelector('button').click();
+  await sleep(300);
+  const win = w.document.querySelector('.wmx-actwin');
+  assert.ok(win, 'fenêtre ouverte');
+  assert.match(win.textContent, /Pages du jeu cachées : 1/);
+  assert.match(win.textContent, /Enchères surveillées/);
+  assert.match(win.textContent, /Requêtes envoyées au jeu/);
+  assert.match(win.textContent, /Fluidité de la page/);
+  win.querySelector('.wmx-close').click();
+  assert.equal(w.document.querySelector('.wmx-actwin'), null, 'se ferme proprement');
+  env.close();
+});
+
 test('veille : un prix déjà au-dessus du plafond arrête la veille sans rien miser, et on prévient', async () => {
   const a = auction('w2', { seller_id: 'other', current_bid: 30, current_bidder_id: 'rival', end_at: inMin(60) });
   const { env, w, clicks } = await watchEnv({ auctions: [a], rules: { w2: { mode: 'time', secs: 30, capMode: 'abs', cap: 20, watch: true } } });

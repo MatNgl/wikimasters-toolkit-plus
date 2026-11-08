@@ -89,7 +89,7 @@
       card.style.setProperty('--wmx-rgb', WMX.RARITY_RGB[rarity] || '255 255 255');
     }
     if (!card.querySelector(':scope > .wmx-sty-waves')) card.append(el('span', { class: 'wmx-sty-waves' }), el('span', { class: 'wmx-sty-sheen' }));
-    card.classList.toggle('wmx-sty-lg', card.offsetWidth > 200); // grande carte (fiche d'une enchère) : textes plus grands
+    if (card.dataset.wmxSz === undefined) { card.dataset.wmxSz = '1'; card.classList.toggle('wmx-sty-lg', card.offsetWidth > 200); } // grande carte (fiche d'une enchère) : textes plus grands ; mesurée une fois (la lecture force un recalcul de la page)
     // Image PNG / paysage : entière (contain) sur un fond flouté, au lieu d'être rognée.
     const art = card.querySelector(`${ART} img, :scope > img`);
     const wide = () => art && (/\.(png|svg)(\?|$)/i.test(art.currentSrc || art.src || '') || (art.naturalWidth && art.naturalWidth / art.naturalHeight > 1.25));
@@ -123,7 +123,7 @@
     init() {
       scan();
       bindTilt();
-      new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
+      new MutationObserver((muts) => { if (WMX.dom.foreign(muts)) schedule(); }).observe(document.body, { childList: true, subtree: true });
       window.addEventListener('wmx:settings', scan);
       // Le jeu peut réécrire la classe d'une carte (rendu React) et effacer notre style : un contrôle léger toutes les 3 s le rétablit.
       const tick = setInterval(() => {

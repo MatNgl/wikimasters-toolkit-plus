@@ -810,3 +810,19 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-auc-toggle[aria-checked="true"] .wmx-auc-knob::after { transform: translateX(12px); background: #06251c; }
 .wmx-auc-state.over { color: #fbbf24; }
 .wmx-auc-row.over { opacity: .72; border-color: rgb(251 191 36 / .35); }
+
+/* Pages calmes (listes du marché…) : le reflet continu des Légendaires et l'aura qui respire sont coupés (une page de 50 Légendaires animées saccadait au défilement) */
+.wmx-calm .wmx-sty .wmx-sty-sheen { animation: none; opacity: 0; }
+.wmx-calm .wmx-sty[data-wmx-shiny] { animation: none; }
+
+/* Fenêtre « Activité en direct » (0.24.8) */
+.wmx-act-body section { margin-bottom: 16px; }
+.wmx-act-body h4 { margin: 0 0 6px; font-size: 13px; letter-spacing: .02em; }
+.wmx-act-note { margin: 0 0 8px; font-size: 11.5px; line-height: 1.4; color: #8a9a92; }
+.wmx-act-note.warn { color: #fbbf24; }
+.wmx-act-row { display: flex; justify-content: space-between; gap: 14px; padding: 5px 2px; border-bottom: 1px solid #ffffff0d; font-size: 12.5px; }
+.wmx-act-row span { color: #9db5a8; white-space: pre; overflow: hidden; text-overflow: ellipsis; }
+.wmx-act-row b { font-weight: 700; text-align: right; white-space: nowrap; }
+.wmx-act-row.warn b { color: #fbbf24; }
+.wmx-act-spark { margin: 4px 0 8px; }
+.wmx-act-spark rect { fill: var(--acc, #2dd4a0); opacity: .85; }

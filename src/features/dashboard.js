@@ -182,6 +182,7 @@
   const ICON = '<path d="M21 12c.552 0 1.005-.449.95-.998a10 10 0 0 0-8.953-8.951c-.55-.055-.998.398-.998.95v8a1 1 0 0 0 1 1z"/><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/>';
 
   function mountNav() {
+    if (document.querySelector('[data-wmx-nav]')?.isConnected) return; // déjà posée : aucun calcul de mise en page
     const nav = [...document.querySelectorAll('nav')].find((n) => n.getBoundingClientRect().width > 100);
     const coll = nav?.querySelector('a[href="/collection"]');
     if (!nav || !coll || nav.querySelector('[data-wmx-nav]')) return;
@@ -212,7 +213,7 @@
       mountNav();
       // Le jeu redessine sa barre latérale : on remet notre entrée si elle disparaît.
       let timer = null;
-      new MutationObserver(() => { clearTimeout(timer); timer = setTimeout(mountNav, 250); }).observe(document.body, { childList: true, subtree: true });
+      new MutationObserver((muts) => { if (!WMX.dom.foreign(muts)) return; clearTimeout(timer); timer = setTimeout(mountNav, 250); }).observe(document.body, { childList: true, subtree: true });
       // Cliquer sur une autre entrée de la barre latérale du jeu quitte la page.
       document.addEventListener('click', (e) => {
         const a = e.target.closest?.('nav a[href]');

@@ -109,6 +109,7 @@
       items: [
         { type: 'action', label: 'Journal', desc: 'Ce que l’extension a fait et ce qui a échoué, avec l’heure.', button: 'Afficher', run: () => WMX.journal.show() },
         { type: 'action', label: 'Diagnostic', desc: 'Copie le journal pour le transmettre en cas de problème.', button: 'Copier', run: () => WMX.journal.copy() },
+        { type: 'action', label: 'Activité en direct', desc: 'Ce que l’extension fait en arrière-plan : pages du jeu cachées, enchères surveillées, requêtes envoyées au jeu, fluidité de la page (tâches qui bloquent le défilement).', button: 'Afficher', run: () => WMX.activity?.open() },
       ],
     },
     {

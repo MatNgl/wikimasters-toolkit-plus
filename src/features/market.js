@@ -70,17 +70,24 @@
     if (!btn || !WMX.auctions) return;
     const id = idOf(a);
     const st = WMX.auctions.stateOf(id);
-    btn.textContent = BID_LABEL[st];
-    btn.title = BID_TITLE[st];
-    btn.classList.toggle('ok', st === 'leading');
-    btn.disabled = st === 'leading' || st === 'queued' || st === 'betting';
+    if (btn.dataset.s !== st) { // jamais d'écriture inutile : réécrire un texte identique relance tous les observateurs de la page
+      btn.dataset.s = st;
+      btn.textContent = BID_LABEL[st];
+      btn.title = BID_TITLE[st];
+      btn.classList.toggle('ok', st === 'leading');
+      btn.disabled = st === 'leading' || st === 'queued' || st === 'betting';
+    }
     const watch = a.querySelector(':scope .wmx-mk-watch');
     if (watch) {
       const w = WMX.auctions.watchState(id);
-      watch.textContent = w === 'watch' ? 'Surveillée' : w === 'auto' ? 'Mise auto' : 'Surveiller';
-      watch.classList.toggle('on', w === 'watch');
-      watch.disabled = w === 'auto';
-      watch.title = w === 'watch' ? `Veille active (${WMX.auctions.watchInfo(id)}) : cliquer pour l’arrêter` : w === 'auto' ? 'Une mise automatique est déjà réglée sur cette enchère (voir « Mes enchères »)' : WATCH_HINT;
+      const sig = w === 'watch' ? `watch|${WMX.auctions.watchInfo(id)}` : w;
+      if (watch.dataset.s !== sig) {
+        watch.dataset.s = sig;
+        watch.textContent = w === 'watch' ? 'Surveillée' : w === 'auto' ? 'Mise auto' : 'Surveiller';
+        watch.classList.toggle('on', w === 'watch');
+        watch.disabled = w === 'auto';
+        watch.title = w === 'watch' ? `Veille active (${WMX.auctions.watchInfo(id)}) : cliquer pour l’arrêter` : w === 'auto' ? 'Une mise automatique est déjà réglée sur cette enchère (voir « Mes enchères »)' : WATCH_HINT;
+      }
     }
   }
 
@@ -106,6 +113,9 @@
     }
     const w = WMX.auctions.watchState(id);
     const btn = box.querySelector('.wmx-dw-btn');
+    const dsig = w === 'watch' ? `watch|${WMX.auctions.watchInfo(id)}` : w;
+    if (btn.dataset.s === dsig) return; // rien n'a changé : on ne touche pas à la page
+    btn.dataset.s = dsig;
     btn.textContent = w === 'watch' ? `Surveillée · ${WMX.auctions.watchInfo(id)} — arrêter` : w === 'auto' ? 'Mise automatique déjà réglée' : 'Surveiller (mise au dernier moment)';
     btn.classList.toggle('on', w === 'watch');
     btn.disabled = w === 'auto';
@@ -122,8 +132,11 @@
     let b = a.querySelector(':scope > .wmx-mk');
     if (!b) { b = el('div', { class: 'wmx-mk' }); a.append(b); }
     const p = WMX.prices.get(info.card_id, info.rarity);
-    if (!p && !WMX.prices.fresh(info.card_id)) { b.className = 'wmx-mk wait'; b.textContent = 'Moy. …'; return; }
+    if (!p && !WMX.prices.fresh(info.card_id)) { if (b.dataset.sig !== 'wait') { b.dataset.sig = 'wait'; b.className = 'wmx-mk wait'; b.textContent = 'Moy. …'; } return; }
     const v = role === 'sale' ? WMX.logic.saleVerdict(info.price, p?.avg, p?.count) : WMX.logic.dealVerdict(info.price, p?.avg, p?.count);
+    const vsig = [role, p ? Math.round(p.avg) : 'x', p?.count, p ? Math.round(p.last) : '', v.kind, v.pct, info.price].join('|');
+    if (b.dataset.sig === vsig) return; // même verdict : pas de réécriture
+    b.dataset.sig = vsig;
     b.className = `wmx-mk ${v.kind}`;
     b.replaceChildren(
       el('span', {}, p ? `Moy. ${Math.round(p.avg).toLocaleString('fr-FR')} W` : 'Sans vente'),
@@ -207,9 +220,11 @@
         for (const e of entries) if (e.isIntersecting) { io.unobserve(e.target); onVisible(e.target); }
       }, { rootMargin: '200px' });
       const schedule = () => { clearTimeout(timer); timer = setTimeout(scan, 250); };
-      new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
-      window.addEventListener('wmx:bids', () => { anchors().forEach(paintBid); paintDetailWatch(); });
-      WMX.prices.onProgress(() => anchors().forEach((a) => { if (a.querySelector(':scope > .wmx-mk')) paint(a); }));
+      new MutationObserver((muts) => { if (WMX.dom.foreign(muts)) schedule(); }).observe(document.body, { childList: true, subtree: true }); // seulement ce que fait le jeu, pas nos propres écritures
+      // Repeintures regroupées : une rafale d'événements (prix qui arrivent, mises) ne repeint la page qu'une fois.
+      const later = (fn, ms) => { let t = null; return () => { if (t) return; t = setTimeout(() => { t = null; try { fn(); } catch (_) { /* page fermée */ } }, ms); }; };
+      window.addEventListener('wmx:bids', later(() => { anchors().forEach(paintBid); paintDetailWatch(); }, 200));
+      WMX.prices.onProgress(later(() => anchors().forEach((a) => { if (a.querySelector(':scope > .wmx-mk')) paint(a); }), 500));
       schedule();
     },
   });

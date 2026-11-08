@@ -240,6 +240,7 @@
       .map(([id, rule]) => ({ rule, msLeft: msLeftById(id) })));
     const nearEnd = [...D.bidding, ...D.selling].some((x) => msLeft(x) < 12000 && msLeft(x) > -GRACE_MS);
     const ms = fast || (nearEnd ? 3000 : (S.bubbleOpen ? 8000 : 60000));
+    S.pollMs = ms; // visible dans « Activité en direct »
     S.timer = setTimeout(async () => {
       if (!WMX.alive()) return;
       if (!document.hidden || Object.keys(S.auto).length) await refresh(); // une mise automatique doit voir l'enchère même onglet masqué
@@ -987,6 +988,21 @@
   /** Utilisé par la page Marché : miser le minimum sur une enchère sans ouvrir sa page, ou la surveiller pour miser au dernier moment. */
   WMX.auctions = {
     refresh,
+    /** Chiffres pour « Activité en direct » : pages cachées, surveillances, mises en cours, cadence de relecture. */
+    stats() {
+      const all = allBids();
+      const watched = all.filter(isWatch);
+      const titleOf = (id) => { const a = all.find((x) => x.id === id); return a ? cardTitle(a) : id.slice(0, 8); };
+      return {
+        leader: !!S.leader, loaded: D.loaded, bids: D.bidding.length, sells: D.selling.length,
+        watching: watched.length,
+        watchNear: watched.filter((a) => !isOver(a) && msLeft(a) <= ((S.auto[a.id]?.secs || 60) * 1000 + 20000)).length,
+        watchOver: watched.filter(isOver).length,
+        autoRules: Object.values(S.auto).filter((r) => r && !r.watch).length,
+        flying: [...S.flying].map(titleOf), queued: S.bidQueue.length, maxPar: MAX_PAR, maxFrames: MAX_FRAMES, pollMs: S.pollMs || 0,
+        frames: [...S.frames].map(([id, f]) => { const a = all.find((x) => x.id === id); return { id, title: titleOf(id), ready: !!bidInput(f), msLeft: a ? msLeft(a) : null, over: a ? isOver(a) : false }; }),
+      };
+    },
     /** 'watch' (surveillée), 'auto' (mise automatique ordinaire déjà réglée) ou 'none'. */
     watchState(id) { const r = S.auto[id]; return r ? (r.watch ? 'watch' : 'auto') : 'none'; },
     /** Texte court de la règle d'une veille, ex. « sous 35 s · max 120 W ». */
