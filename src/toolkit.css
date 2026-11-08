@@ -826,3 +826,4 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-act-row.warn b { color: #fbbf24; }
 .wmx-act-spark { margin: 4px 0 8px; }
 .wmx-act-spark rect { fill: var(--acc, #2dd4a0); opacity: .85; }
+.wmx-auc-togglebar { display: flex; justify-content: flex-start; padding: 2px 0 6px; }

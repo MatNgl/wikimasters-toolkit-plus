@@ -414,6 +414,22 @@ test('activité en direct : requêtes comptées par type, pages cachées et surv
   env.close();
 });
 
+test('bulle des enchères : l’interrupteur « au-dessus de mon plafond » est toujours affiché, même sans enchère concernée ni sans aucune enchère', async () => {
+  const fine = { id: 'f1', status: 'active', card: { wikipedia_title: 'Normale', rarity: 'C' }, end_at: inMin(30), base_amount: 5, current_bid: 6, current_bidder_id: ME };
+  const env = createEnv({ fetchImpl: async () => json({ selling: [], bidding: [fine], won: [{ winner_id: ME }], history: [] }) });
+  const { w, WMX } = env;
+  WMX.features.find((x) => x.name === 'auctions').init();
+  await WMX.auctions.refresh();
+  w.document.querySelector('.wmx-dial').click();
+  await sleep(100);
+  assert.match(w.document.querySelector('.wmx-auc-toggle')?.textContent || '', /Afficher les enchères au-dessus de mon plafond \(0\)/, 'affiché avec 0 enchère concernée');
+  WMX.auctions.state().bidding = []; // plus aucune enchère : la bulle se réduit à une note
+  WMX.auctions.refresh = WMX.auctions.refresh;
+  w.document.querySelector('.wmx-dial').click(); await sleep(50); w.document.querySelector('.wmx-dial').click(); await sleep(150);
+  assert.ok(w.document.querySelector('.wmx-auc-toggle'), 'toujours là quand il n’y a aucune enchère');
+  env.close();
+});
+
 test('veille : un prix déjà au-dessus du plafond arrête la veille sans rien miser, et on prévient', async () => {
   const a = auction('w2', { seller_id: 'other', current_bid: 30, current_bidder_id: 'rival', end_at: inMin(60) });
   const { env, w, clicks } = await watchEnv({ auctions: [a], rules: { w2: { mode: 'time', secs: 30, capMode: 'abs', cap: 20, watch: true } } });

@@ -695,11 +695,13 @@
     const mode = hasBids && sells.length ? 'two' : (hasBids || sells.length ? 'one' : 'none');
     if (S.bubblePanel) { S.bubblePanel.dataset.mode = mode; applySize(); }
     const out = [];
+    // L'interrupteur est TOUJOURS affiché (même à 0) : il ne doit pas apparaître et disparaître au gré des enchères, sinon il est introuvable quand on en a besoin.
+    const toggle = el('button', { type: 'button', class: 'wmx-auc-toggle', role: 'switch', 'aria-checked': String(S.showOver),
+      title: S.showOver ? 'Masquer les enchères dont le prix dépasse votre plafond (elles ne vous intéressent plus), pour vous concentrer sur le reste' : 'Réafficher les enchères dont le prix dépasse votre plafond' },
+    el('span', { class: 'wmx-auc-knob' }), `Afficher les enchères au-dessus de mon plafond (${over.length})`);
+    toggle.addEventListener('click', () => { S.showOver = !S.showOver; WMX.store.set('auctionShowOver', S.showOver); renderAll(); });
+    if (!hasBids) out.push(el('div', { class: 'wmx-auc-togglebar' }, toggle)); // pas de colonne « Mes enchères » : l'interrupteur reste visible en haut
     if (hasBids) {
-      const toggle = over.length ? el('button', { type: 'button', class: 'wmx-auc-toggle', role: 'switch', 'aria-checked': String(S.showOver),
-        title: S.showOver ? 'Masquer les enchères dont le prix dépasse votre plafond (elles ne vous intéressent plus), pour vous concentrer sur le reste' : 'Réafficher les enchères dont le prix dépasse votre plafond' },
-      el('span', { class: 'wmx-auc-knob' }), `Afficher les enchères au-dessus de mon plafond (${over.length})`) : '';
-      if (toggle) toggle.addEventListener('click', () => { S.showOver = !S.showOver; WMX.store.set('auctionShowOver', S.showOver); renderAll(); });
       const list = bids.length ? bids : [note(`${hiddenOver} enchère${hiddenOver > 1 ? 's' : ''} au-dessus de votre plafond masquée${hiddenOver > 1 ? 's' : ''}. Activez l’interrupteur pour les voir.`)];
       out.push(column('Mes enchères', list, /^Mes ench/i, bidCount, toggle));
     }
