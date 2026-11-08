@@ -172,12 +172,13 @@ test('mise automatique : jamais si on mène déjà, et le plafond arrête la rè
 });
 
 /** Environnement « veille » : enchères détaillées par identifiant (GET /api/marketplace/{id}), aucune mise à moi, pages de mise factices (minimum `min`). */
-async function watchEnv({ rules = {}, auctions = [], min = 7, route = '', body = '' }) {
+async function watchEnv({ rules = {}, auctions = [], min = 7, route = '', body = '', delay = 0 }) {
   const byId = Object.fromEntries(auctions.map((a) => [a.id, a]));
   const payload = { auctions, selling: [], bidding: [], won: [{ winner_id: ME }], history: [] };
   const env = createEnv({ fetchImpl: async (u) => {
     if (String(u).includes('/sales')) return json({ summary: { UR: { average: 20, count: 12, latest: 20 } } }); // moyenne du marché : 20 W
     const m = String(u).match(/\/api\/marketplace\/([\w-]+)/);
+    if (m && delay) await sleep(delay); // jeu lent : chaque lecture d'une enchère prend `delay` ms
     return m ? (byId[m[1]] ? json({ auction: byId[m[1]] }) : json({}, 404)) : json(payload);
   } });
   const { w, WMX } = env;
@@ -267,6 +268,62 @@ test('tableau de bord : « prix chargés » inclut les cartes sans vente', async
   const { WMX } = env;
   const t = WMX.inventory.totals();
   assert.ok('loaded' in t && t.loaded >= t.priced, 'le total compte les prix chargés, avec ou sans vente');
+  env.close();
+});
+
+test('veille : les lectures des enchères surveillées se font en parallèle, et le bouton « Surveiller » répond aussitôt même si le jeu est lent', async () => {
+  const mk = (id) => auction(id, { seller_id: 'other', base_amount: 50, end_at: inMin(90) });
+  const auctions = ['p1', 'p2', 'p3', 'p4'].map(mk);
+  const rule = { mode: 'time', secs: 30, capMode: 'abs', cap: 1000, watch: true };
+  const { env, WMX } = await watchEnv({ auctions, delay: 400, rules: { p1: rule, p2: rule, p3: rule, p4: rule } });
+  const t0 = Date.now();
+  await WMX.auctions.refresh();
+  const took = Date.now() - t0;
+  assert.ok(took < 1100, `4 veilles lues en parallèle (environ 0,4 s), pas l'une après l'autre (environ 1,6 s) : ${took} ms`);
+  env.close();
+
+  // Bouton « Surveiller » : « Surveillée » apparaît tout de suite, sans attendre la lecture (1,5 s) de l'enchère.
+  const slow = await watchEnv({ auctions: [mk('m9')], route: '/marketplace', body: '<a class="card-frame block" href="/marketplace/m9"><div>m9</div></a>', delay: 1500 });
+  for (let i = 0; i < 60 && !slow.w.document.querySelector('.wmx-mk-watch'); i++) await sleep(150);
+  const btn = slow.w.document.querySelector('.wmx-mk-watch');
+  btn.click();
+  await sleep(250);
+  assert.match(btn.textContent, /Surveillée/, 'état immédiat');
+  assert.equal(btn.disabled, false, 'jamais grisé pendant la lecture');
+  await sleep(1800); // la lecture lente se termine avant la fin du test (sinon l'exécuteur signale une activité après le test)
+  slow.env.close();
+});
+
+test('bulle des enchères : interrupteur « Afficher les enchères dépassées » (mémorisé), la colonne reste pour pouvoir les réafficher', async () => {
+  const future = (m) => new Date(Date.now() + m * 60000).toISOString();
+  const mine = { id: 'm1', status: 'active', card: { wikipedia_title: 'Menée', rarity: 'C' }, end_at: future(30), base_amount: 5, current_bid: 6, current_bidder_id: ME };
+  const lost = { id: 'l1', status: 'active', card: { wikipedia_title: 'Dépassée', rarity: 'C' }, end_at: future(30), base_amount: 5, current_bid: 9, current_bidder_id: 'rival' };
+  const env = createEnv({ fetchImpl: async () => json({ selling: [], bidding: [mine, lost], won: [{ winner_id: ME }], history: [] }) });
+  const { w, WMX } = env;
+  WMX.features.find((x) => x.name === 'auctions').init();
+  await WMX.auctions.refresh();
+  w.document.querySelector('.wmx-dial').click();
+  await sleep(100);
+  const rows = () => w.document.querySelectorAll('.wmx-auc-row').length;
+  const toggle = () => w.document.querySelector('.wmx-auc-toggle');
+  assert.equal(rows(), 2, 'par défaut, tout est affiché');
+  assert.match(toggle().textContent, /Afficher les enchères dépassées \(1\)/);
+  assert.equal(toggle().getAttribute('aria-checked'), 'true');
+  toggle().click();
+  await sleep(50);
+  assert.equal(rows(), 1, 'dépassée masquée : on ne voit que celle qu\'on mène');
+  assert.equal(toggle().getAttribute('aria-checked'), 'false');
+  assert.equal(env.mem.auctionShowOutbid, false, 'choix mémorisé');
+  toggle().click();
+  await sleep(50);
+  assert.equal(rows(), 2, 'réaffichée');
+  // Que des enchères dépassées, et masquées : la colonne reste avec une note et l'interrupteur.
+  WMX.auctions.state().bidding = [lost];
+  toggle().click();
+  await sleep(50);
+  assert.equal(rows(), 0);
+  assert.ok(toggle(), 'interrupteur toujours là');
+  assert.match(w.document.querySelector('.wmx-bubble-panel').textContent, /1 enchère dépassée masquée/);
   env.close();
 });
 

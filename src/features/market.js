@@ -54,9 +54,11 @@
       const watch = el('button', { class: 'wmx-btn wmx-btn--ghost wmx-mk-watch', type: 'button' });
       watch.addEventListener('click', async (e) => {
         e.preventDefault(); e.stopPropagation();
-        if (!WMX.auctions) return;
-        watch.disabled = true;
-        try { await WMX.auctions.toggleWatch(id, info.title); } finally { paintBid(a); }
+        if (!WMX.auctions || watch.dataset.busy) return; // clics répétés : une seule demande à la fois
+        watch.dataset.busy = '1';
+        const p = WMX.auctions.toggleWatch(id, info.title);
+        paintBid(a); // la règle est posée avant le premier await : « Surveillée » s'affiche aussitôt
+        try { await p; } finally { delete watch.dataset.busy; paintBid(a); }
       });
       row = el('div', { class: 'wmx-mk-acts' }, btn, watch);
       a.append(row);
