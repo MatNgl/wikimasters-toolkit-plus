@@ -8,7 +8,7 @@
     speed: 'normal', order: 'rarity', images: true,
     stopOn: 'off', reserve: 0, fullStockOpen: true, anticipate: true,
     quickCoef: 0.9, quickDuration: '1h', quickPrudent: false, auctionBubble: true, auctionNotify: true, autoReload: true,
-    autoDefaultMode: 'time', autoDefaultSecs: 35, autoCapMode: 'avg', autoCapW: 100, autoCapPct: 20, autoDefaultOn: false, watchMax: 12, autoSell: false, autoSellTags: 'VENTE', autoSellMax: 3, autoSellCap: 500, quickNoSalePrice: 10, cardStyle: true, cardShowDesc: true, cardShowStats: true,
+    autoDefaultMode: 'time', autoDefaultSecs: 35, autoCapMode: 'avg', autoCapW: 100, autoCapPct: 20, autoDefaultOn: false, watchMax: 12, autoSell: false, autoSellTags: 'VENTE', autoSellMax: 3, autoSellCap: 500, autoSellOrder: 'avg', autoSellPriorityRar: '', quickNoSalePrice: 10, cardStyle: true, cardShowDesc: true, cardShowStats: true,
   };
 
   // La mise à jour automatique n'existe que dans la version de développement (permission « alarms ») : absente de la version publiée.
@@ -59,6 +59,9 @@
         { key: 'autoSellTags', type: 'tags', label: 'Étiquettes à vendre', desc: 'Cochez une ou plusieurs étiquettes de votre compte. Seules les cartes qui en portent une sont concernées.' },
         { key: 'autoSellCap', type: 'number', min: 1, max: 1000000, step: 10, label: 'Prix de départ maximum (W)', desc: 'Garde-fou : l’assistant ne met jamais en vente une carte dont le prix de départ dépasserait ce montant (500 W par défaut). Pour une carte plus chère, utilisez le bouton ⚡ vous-même.' },
         { key: 'autoSellMax', type: 'number', min: 1, max: 10, step: 1, label: 'Enchères actives visées', desc: 'L’assistant complète jusqu’à ce nombre d’enchères en cours (vos ventes manuelles comptent). 10 = limite du jeu.' },
+        { key: 'autoSellOrder', type: 'select', label: 'Ordre de mise en vente', desc: 'Quelles cartes étiquetées l’assistant met en vente en premier quand il y a plus de cartes que de places.',
+          options: [['avg', 'Meilleure moyenne d’abord'], ['avgLow', 'Moyenne la plus basse d’abord'], ['rarityHigh', 'Raretés les plus hautes d’abord'], ['rarityLow', 'Raretés les plus basses d’abord']] },
+        { key: 'autoSellPriorityRar', type: 'text', placeholder: 'ex. L, UR', label: 'Raretés prioritaires (facultatif)', desc: 'Raretés servies avant toutes les autres, dans cet ordre, séparées par des virgules (L, UR, SR, R, PC, C). Exemple : « L, UR ». Vide : aucune priorité particulière.' },
       ],
     },
     {
@@ -144,6 +147,11 @@
         s.value = String(draft[it.key]);
         s.addEventListener('change', () => { draft[it.key] = it.number ? Number(s.value) : s.value; });
         return s;
+      }
+      if (it.type === 'text') {
+        const i = el('input', { class: 'wmx-input', type: 'text', value: String(draft[it.key] ?? ''), placeholder: it.placeholder || '' });
+        i.addEventListener('change', () => { draft[it.key] = i.value.trim(); });
+        return i;
       }
       if (it.type === 'number') {
         const i = el('input', { class: 'wmx-input', type: 'number', min: String(it.min), max: String(it.max), step: String(it.step), value: String(draft[it.key]) });

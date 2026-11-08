@@ -201,7 +201,18 @@
         if (why) plan.excluded.push({ card_id: it.card_id, title: it.title, rarity: it.rarity, reason: why, until, avg: avg(it) });
         else plan.eligible.push(it);
       }
-      plan.eligible.sort((a, b) => avg(b) - avg(a) || String(a.title).localeCompare(String(b.title)));
+      // Ordre de mise en vente : par défaut la meilleure moyenne d'abord. o.order : 'avg' | 'avgLow' (moyenne la plus basse d'abord) | 'rarityHigh' | 'rarityLow'
+      // (raretés hautes / basses d'abord, puis meilleure moyenne). o.priorityRar : raretés servies avant toutes les autres, dans l'ordre donné (ex. ['L', 'UR']).
+      const rank = { L: 5, UR: 4, SR: 3, R: 2, PC: 1, C: 0 };
+      const pri = (o.priorityRar || []).map((r) => String(r).trim().toUpperCase()).filter(Boolean);
+      const prank = (it) => { const i = pri.indexOf(it.rarity); return i < 0 ? pri.length : i; };
+      const by = {
+        avg: (a, b) => avg(b) - avg(a),
+        avgLow: (a, b) => avg(a) - avg(b),
+        rarityHigh: (a, b) => (rank[b.rarity] ?? 0) - (rank[a.rarity] ?? 0) || avg(b) - avg(a),
+        rarityLow: (a, b) => (rank[a.rarity] ?? 0) - (rank[b.rarity] ?? 0) || avg(b) - avg(a),
+      }[o.order] || ((a, b) => avg(b) - avg(a));
+      plan.eligible.sort((a, b) => prank(a) - prank(b) || by(a, b) || String(a.title).localeCompare(String(b.title)));
       return plan;
     },
     /** Message clair pour un échec réseau ou un code HTTP. */

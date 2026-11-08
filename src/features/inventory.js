@@ -128,17 +128,19 @@
   });
 
   function totals() {
-    let value = 0, priced = 0, copies = 0;
+    // priced : cartes avec une moyenne de vente ; loaded : cartes dont le prix a été chargé, y compris « sans vente » (aucune vente pour cette rareté).
+    let value = 0, priced = 0, loaded = 0, copies = 0;
     const byR = Object.fromEntries(R.map((r) => [r, 0]));
     for (const it of S.items) {
       copies += it.count;
       const p = price(it);
-      if (!p) continue;
+      if (!p) { if (WMX.prices.has(it.card_id)) loaded += 1; continue; }
       priced += 1;
+      loaded += 1;
       value += p.avg * it.count;
       byR[it.rarity] += p.avg * it.count;
     }
-    return { value, priced, copies, byR, total: S.items.length };
+    return { value, priced, loaded, copies, byR, total: S.items.length };
   }
 
   // --- Barre de prix (état + bouton) --------------------------------------------------------------

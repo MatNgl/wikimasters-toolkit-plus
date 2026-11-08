@@ -234,6 +234,42 @@ test('veille (« Surveiller ») : rien n\'est misé avant le dernier moment, pui
   env.close();
 });
 
+test('tableau de bord : courbe avec axes et valeurs, tableau jour par jour, prix chargés comptés avec les cartes sans vente', async () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  const { w, WMX } = env;
+  env.mem.valueHistory = {
+    '2026-11-01': { value: 10000, priced: 80, loaded: 90, total: 100 },
+    '2026-11-02': { value: 12500, priced: 90, loaded: 100, total: 100 },
+    '2026-11-03': { value: 11800, priced: 95, loaded: 100, total: 100 },
+  };
+  WMX.features.find((f) => f.name === 'dashboard').init();
+  await WMX.dashboard.open();
+  await sleep(300);
+  const svg = w.document.querySelector('.wmx-vchart');
+  assert.ok(svg, 'courbe affichée');
+  const labels = [...svg.querySelectorAll('text')].map((t) => t.textContent);
+  assert.ok(labels.includes('W'), 'unité sur l’axe vertical');
+  assert.ok(labels.some((l) => /^\d{2}\/\d{2}$/.test(l)), 'dates sur l’axe horizontal');
+  assert.ok(labels.some((l) => /\d/.test(l) && l !== 'W' && !l.includes('/')), 'valeurs graduées sur l’axe vertical');
+  assert.equal(svg.querySelectorAll('.dot').length, 3, 'un point par jour (valeur et date au survol)');
+  const rows = [...w.document.querySelectorAll('.wmx-vtable tbody tr')];
+  assert.equal(rows.length, 3, 'un tableau avec une ligne par jour');
+  assert.match(rows[0].textContent, /03\/11\/2026/, 'du plus récent au plus ancien');
+  assert.match(rows[0].textContent, /−\s?700\s?W/, 'écart au jour précédent');
+  assert.match(w.document.querySelector('.wmx-vstats').textContent, /Variation/);
+  const metrics = w.document.querySelector('.wmx-metrics').textContent;
+  assert.ok(!/exemplaires/.test(metrics), 'pas de répétition du nombre d’exemplaires sous « Cartes uniques »');
+  env.close();
+});
+
+test('tableau de bord : « prix chargés » inclut les cartes sans vente', async () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  const { WMX } = env;
+  const t = WMX.inventory.totals();
+  assert.ok('loaded' in t && t.loaded >= t.priced, 'le total compte les prix chargés, avec ou sans vente');
+  env.close();
+});
+
 test('veille : un prix déjà au-dessus du plafond arrête la veille sans rien miser, et on prévient', async () => {
   const a = auction('w2', { seller_id: 'other', current_bid: 30, current_bidder_id: 'rival', end_at: inMin(60) });
   const { env, w, clicks } = await watchEnv({ auctions: [a], rules: { w2: { mode: 'time', secs: 30, capMode: 'abs', cap: 20, watch: true } } });
@@ -435,6 +471,55 @@ test('mise automatique : jamais de surenchère sur soi-même (état réel de l\'
   for (const f of WMX.features) await f.init?.();
   await sleep(6500);
   assert.deepEqual(clicks, [], 'aucune mise : le contrôle en direct montre que je mène déjà');
+  env.close();
+});
+
+test('assistant de vente : une carte invendue retrouve l’étiquette de vente (le jeu la retire), une carte vendue est oubliée', async () => {
+  const now = Date.now();
+  const hist = { value: [] };
+  const env = createEnv({ fetchImpl: async () => json({ selling: [], bidding: [], won: [], history: hist.value }) });
+  const { WMX } = env;
+  env.mem.invCacheV2 = { t: now, complete: true, items: [
+    { id: 'i1', card_id: 'c1', title: 'Invendue', rarity: 'R', count: 1, starred: false, tags: [{ name: 'VENTE' }, { name: 'Animaux' }] },
+    { id: 'i2', card_id: 'c2', title: 'Vendue', rarity: 'C', count: 1, starred: false, tags: [{ name: 'VENTE' }] },
+    { id: 'i3', card_id: 'c3', title: 'Sans étiquette de vente', rarity: 'C', count: 1, starred: false, tags: [{ name: 'Animaux' }] },
+  ] };
+  await WMX.inventory.ensure();
+  WMX.settings.autoSellTags = 'VENTE';
+  const calls = [];
+  WMX.quick.bulk = (type, items, extra) => calls.push({ type, id: items[0].card_id, extra });
+  const R = WMX.autoSell.retag;
+  R.remember('c1'); R.remember('c2'); R.remember('c3');
+  assert.deepEqual(Object.keys(R.memory()).sort(), ['c1', 'c2'], 'seules les cartes portant l’étiquette de vente sont mémorisées');
+  assert.deepEqual(R.memory().c1.tags, ['VENTE'], 'uniquement l’étiquette de vente, pas les autres');
+  const end = new Date(now + 1000).toISOString();
+  hist.value = [{ card_id: 'c1', status: 'settled_unsold', owned: true, end_at: end }, { card_id: 'c2', status: 'settled_sold', owned: false, end_at: end }];
+  await R.pass();
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [{ type: 'tag', id: 'c1', extra: { tag: 'VENTE', add: true } }], 'étiquette remise à la carte invendue seulement');
+  assert.equal(R.memory().c2, undefined, 'la carte vendue est oubliée');
+  await R.pass();
+  assert.equal(calls.length, 1, 'pas de seconde demande tant que la première est en cours');
+  env.close();
+});
+
+test('collection du jeu : en mode sélection (pas d\'étoile), les cartes redessinées gardent leur moyenne, et le ⚡ revient avec l\'étoile', async () => {
+  const rows = [{ id: 'i1', card_id: 'k1', count: 1, starred: false, tags: [], card: { wikipedia_title: 'Alpha', rarity: 'rare', id: 'k1' } }];
+  const env = createEnv({ fetchImpl: async (u) => (String(u).includes('/sales') ? json({ summary: { R: { average: 42, count: 5, latest: 40 } } })
+    : String(u).includes('/api/my-collection') ? json({ collection: rows }) : json({ selling: [], bidding: [], won: [{ winner_id: ME }], history: [] })) });
+  const { w, WMX } = env;
+  w.history.pushState({}, '', '/collection');
+  const tile = (star) => `<div class="relative isolate group"><div class="cursor-pointer rounded-2xl overflow-hidden relative"><div class="absolute top-2 left-2">R</div>${star ? '<div class="absolute top-2 right-2"><button aria-label="Ajouter aux favoris (x)"></button></div>' : '<div class="absolute top-2 right-2"><input type="checkbox"></div>'}<h3>Alpha</h3></div></div>`;
+  w.document.body.innerHTML = `<main><input placeholder="Rechercher par titre ou catégorie..."><div class="flex flex-wrap justify-center">${tile(false)}</div></main>`;
+  for (const f of WMX.features) if (['collection-native', 'quick-auction'].includes(f.name)) await f.init?.();
+  await WMX.prices.fetchOne('k1');
+  for (let i = 0; i < 40 && !/42 W/.test(w.document.querySelector('.wmx-nt-price')?.textContent || ''); i++) await sleep(200);
+  assert.equal(w.document.querySelector('.wmx-nt-price')?.textContent, 'Moy. 42 W', 'moyenne affichée même sans étoile (mode sélection)');
+  assert.equal(w.document.querySelectorAll('.wmx-nt-bolt').length, 0, 'pas de ⚡ sans étoile');
+  // Sortie du mode sélection : la carte est redessinée avec son étoile, le ⚡ apparaît et la moyenne est toujours là.
+  w.document.querySelector('.flex-wrap').innerHTML = tile(true);
+  for (let i = 0; i < 30 && !w.document.querySelector('.wmx-nt-bolt'); i++) await sleep(200);
+  assert.ok(w.document.querySelector('.wmx-nt-bolt'), '⚡ de retour avec l’étoile');
+  assert.equal(w.document.querySelector('.wmx-nt-price')?.textContent, 'Moy. 42 W');
   env.close();
 });
 
@@ -907,8 +992,9 @@ test('bulle des enchères : colonnes adaptatives, titres vers le Marché, largeu
   const panel = w.document.querySelector('.wmx-bubble-panel');
   assert.equal(panel.dataset.mode, 'one', 'une seule colonne quand il n\'y a pas de vente');
   assert.match(panel.textContent, /Mes enchères \(1\)/);
-  assert.match(panel.textContent, /Aucune vente en cours\./, 'avec une note sur ce qui manque');
+  assert.ok(!/Aucune vente/.test(panel.textContent), 'aucune note ni place vide pour la partie absente');
   assert.equal(w.document.querySelectorAll('.wmx-auc-col').length, 1);
+  assert.equal(panel.querySelectorAll('.wmx-auc-note').length, 0);
   w.document.querySelector('.wmx-auc-h3link').click();
   assert.deepEqual(nav, ['/marketplace'], 'le titre mène au Marché');
   const grips = panel.querySelectorAll('.wmx-bubble-grip');

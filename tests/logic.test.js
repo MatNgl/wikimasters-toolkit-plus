@@ -244,3 +244,20 @@ test('priceNote : moyenne et verdict prêts à afficher (achat, vente, sans vent
   const none = L.priceNote('buy', 50, null);
   assert.equal(none.avg, 'Sans vente'); assert.equal(none.kind, 'unknown');
 });
+
+test('assistant de vente : ordre des cartes (meilleure moyenne par défaut, ou raretés / moyenne basse), raretés prioritaires d’abord', () => {
+  const tag = [{ name: 'VENTE' }];
+  const items = [
+    { card_id: 'a', title: 'A', rarity: 'C', count: 1, tags: tag, avg: 90 },
+    { card_id: 'b', title: 'B', rarity: 'UR', count: 1, tags: tag, avg: 40 },
+    { card_id: 'c', title: 'C', rarity: 'R', count: 1, tags: tag, avg: 60 },
+    { card_id: 'd', title: 'D', rarity: 'L', count: 1, tags: tag, avg: 10 },
+  ];
+  const ids = (o) => L.autoSellPlan(items, { tags: ['VENTE'], now: 0, avg: (it) => it.avg, ...o }).eligible.map((x) => x.card_id).join('');
+  assert.equal(ids({}), 'acbd', 'par défaut : meilleure moyenne d’abord');
+  assert.equal(ids({ order: 'avgLow' }), 'dbca', 'moyenne la plus basse d’abord');
+  assert.equal(ids({ order: 'rarityHigh' }), 'dbca', 'raretés les plus hautes d’abord');
+  assert.equal(ids({ order: 'rarityLow' }), 'acbd', 'raretés les plus basses d’abord');
+  assert.equal(ids({ priorityRar: ['UR'] }), 'bacd', 'une rareté prioritaire passe avant les autres (puis meilleure moyenne)');
+  assert.equal(ids({ priorityRar: ['L', 'ur'], order: 'avg' }), 'dbac', 'plusieurs raretés prioritaires, dans l’ordre donné (casse sans importance)');
+});

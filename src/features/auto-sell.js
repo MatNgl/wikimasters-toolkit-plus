@@ -1,5 +1,6 @@
 // Assistant de vente (désactivé par défaut) : garde des emplacements d'enchères remplis avec les cartes portant l'une des étiquettes
-// choisies (Paramètres). Une carte invendue revient dans la collection avec son étiquette : l'assistant la remet donc en vente tout seul.
+// choisies (Paramètres). Le jeu RETIRE les étiquettes d'une carte mise en vente : l'extension s'en souvient et, quand l'enchère se termine sans
+// acheteur, remet l'étiquette de vente à la carte revenue (puis l'assistant peut la remettre en vente).
 // Pour vendre des cartes précises, il suffit de leur mettre l'étiquette (sélection native du jeu → « Étiqueter »).
 // Tout passe par la file d'attente (mêmes gestes, même prix de départ que le bouton ⚡). Un seul onglet agit à la fois : celui qui prend
 // le verrou, et seulement tant que l'assistant est activé (un onglet où il est désactivé ne bloque jamais les autres).
@@ -69,7 +70,7 @@
       const active = WMX.quick.count();
       const free = Math.min(st.target - active, WMX.quick.max() - active);
       const busy = new Set(items.filter((it) => WMX.quick.stateOf(it.card_id) !== 'idle').map((it) => it.card_id));
-      const plan = WMX.logic.autoSellPlan(items, { tags: st.tags, busy, gone: (it) => WMX.quick.notOwned(it.card_id), skip: S.skip, log: S.log, now, perDay: 4, cap: st.cap, avg: (it) => WMX.prices.get(it.card_id, it.rarity)?.avg || 0 });
+      const plan = WMX.logic.autoSellPlan(items, { tags: st.tags, busy, gone: (it) => WMX.quick.notOwned(it.card_id), skip: S.skip, log: S.log, now, perDay: 4, cap: st.cap, order: WMX.settings?.autoSellOrder, priorityRar: String(WMX.settings?.autoSellPriorityRar || '').split(/[\s,;]+/).filter(Boolean), avg: (it) => WMX.prices.get(it.card_id, it.rarity)?.avg || 0 });
       // Les cartes que le jeu dit ne plus être à nous sont retirées de l'inventaire en mémoire (une seule fois).
       for (const e of plan.excluded) {
         if (e.reason !== 'gone' || S.purged.has(e.card_id)) continue;
@@ -126,6 +127,53 @@
     setTimeout(() => { if (!S.shared || Date.now() - S.shared.t > 15000) WMX.toast?.('L’assistant ne tourne dans aucun onglet pour l’instant : gardez un onglet du jeu ouvert.', 7000, { kind: 'warn' }); }, 8000);
     return undefined;
   }
+  // ---- Étiquette de vente remise aux cartes invendues ----
+  // Constaté sur le jeu : une carte dont l'enchère est « settled_unsold » revient dans la collection SANS aucune étiquette. On mémorise donc, au moment
+  // de la mise en vente, les étiquettes de vente de la carte (celles des Paramètres) ; l'enchère terminée sans acheteur, on les lui remet.
+  const retag = { mem: {}, queued: new Map() }; // queued : carte -> date de la demande (une demande restée sans réponse 10 min est refaite)
+  const saveRetag = () => WMX.store.set('autoSellRetag', retag.mem);
+  function rememberSaleTags(cardId) {
+    const wanted = new Set(tags().map((t) => t.toLowerCase()));
+    if (!wanted.size) return;
+    const it = WMX.inventory.items().find((x) => x.card_id === cardId);
+    const mine = (it?.tags || []).map((t) => t.name).filter((n) => wanted.has(String(n).toLowerCase()));
+    if (!mine.length) return;
+    retag.mem[cardId] = { tags: mine, title: it.title, rarity: it.rarity, at: Date.now(), done: 0 };
+    saveRetag();
+  }
+  async function retagPass() {
+    const ids = Object.keys(retag.mem);
+    if (!ids.length || !WMX.alive()) return;
+    const day14 = 14 * 24 * H;
+    for (const id of ids) if (Date.now() - retag.mem[id].at > day14) delete retag.mem[id]; // trop ancien : on oublie
+    let hist;
+    try {
+      const u = new URL('/api/marketplace', location.origin);
+      u.searchParams.set('page', '1'); u.searchParams.set('limit', '50'); u.searchParams.set('sort', 'recent'); u.searchParams.set('mine', '1');
+      const res = await fetch(u);
+      if (!res.ok) return;
+      hist = (await res.json()).history || [];
+    } catch (_) { return; }
+    const back = [];
+    for (const id of Object.keys(retag.mem)) {
+      const m = retag.mem[id];
+      const list = hist.filter((a) => a.card_id === id && new Date(a.end_at).getTime() > m.at - 60000);
+      if (!list.length) continue;
+      if (list.some((a) => a.status === 'settled_sold')) { delete retag.mem[id]; continue; } // vendue : plus rien à remettre
+      if (!list.some((a) => a.status === 'settled_unsold' && a.owned !== false) || (retag.queued.get(id) || 0) > Date.now() - 10 * 60000) continue; // pas encore terminée, ou pas revenue, ou demande déjà en cours
+      retag.queued.set(id, Date.now());
+      for (const tag of m.tags) WMX.quick.bulk('tag', [{ card_id: id, title: m.title, rarity: m.rarity }], { tag, add: true });
+      back.push(m.title);
+    }
+    saveRetag();
+    if (back.length) {
+      WMX.journal?.add('Assistant de vente', `Invendue${back.length > 1 ? 's' : ''} : l’étiquette de vente est remise à ${back.join(', ')}`);
+      WMX.notify?.({ kind: 'info', key: 'retag', ms: 9000, title: `Carte${back.length > 1 ? 's' : ''} invendue${back.length > 1 ? 's' : ''} : étiquette remise`,
+        text: `${back.slice(0, 3).join(', ')}${back.length > 3 ? ` et ${back.length - 3} autre${back.length > 4 ? 's' : ''}` : ''} ${back.length > 1 ? 'ont retrouvé' : 'a retrouvé'} l’étiquette de vente (le jeu la retire quand une carte est mise en vente).` });
+    }
+  }
+  const retagSafely = () => (navigator.locks?.request ? navigator.locks.request('wmx-retag', { ifAvailable: true }, async (l) => { if (l) await retagPass(); }) : retagPass());
+
   async function resetSkips() {
     S.skip = {}; S.log = {}; S.pauseUntil = 0;
     await WMX.store.set('autoSellSkip', {}); await WMX.store.set('autoSellLog', {});
@@ -192,6 +240,7 @@
       WMX.gameBlockN = await WMX.store.get('gameBlockN', 0);              // refus d'affilée (la pause grandit à chaque refus)
       S.skip = await WMX.store.get('autoSellSkip', {});
       S.log = await WMX.store.get('autoSellLog', {});
+      retag.mem = await WMX.store.get('autoSellRetag', {});
       S.shared = await WMX.store.get('autoSellStatus', null);
       WMX.store.get('wmxSettings', {}).then((s) => { Object.assign(WMX.settings, s); paintAll(); }); // la ligne d'état ne dit « désactivé » qu'avant le chargement des réglages
       // Réglages et état partagés entre les onglets : un réglage changé dans un onglet vaut aussitôt dans tous.
@@ -199,14 +248,20 @@
         if (c.wmxSettings?.newValue) { Object.assign(WMX.settings, c.wmxSettings.newValue); window.dispatchEvent(new CustomEvent('wmx:settings')); }
         if (c.autoSellStatus) { S.shared = c.autoSellStatus.newValue || null; paintAll(); }
         if (c.autoSellSkip) S.skip = c.autoSellSkip.newValue || {};
+        if (c.autoSellRetag) retag.mem = c.autoSellRetag.newValue || {};
         if (c.gameBlockedUntil) { WMX.gameBlockedUntil = c.gameBlockedUntil.newValue || 0; paintAll(); }
         if (c.autoSellForce && S.leader && on()) { S.pauseUntil = 0; tick(); }
       });
       window.addEventListener('wmx:settings', () => { ensureLock(); paintAll(); });
       WMX.quick.onResult((op, res) => {
         if (op.type === 'cancel') skipCard(op.item.card_id, 12 * H); // vente annulée par vous : l'assistant ne la relance pas
+        if (op.type === 'tag' && op.item.add && retag.mem[op.item.card_id]) { // étiquette de vente remise à une carte invendue
+          const m = retag.mem[op.item.card_id];
+          if (res.ok) { m.done = (m.done || 0) + 1; if (m.done >= m.tags.length) { delete retag.mem[op.item.card_id]; retag.queued.delete(op.item.card_id); } saveRetag(); }
+          else if (res.error) retag.queued.delete(op.item.card_id); // échec : nouvel essai à la prochaine passe
+        }
         if (op.type !== 'launch') return;
-        if (res.ok) { delete S.fails[op.item.card_id]; return; }
+        if (res.ok) { delete S.fails[op.item.card_id]; rememberSaleTags(op.item.card_id); return; }
         if (res.blocked) return; // le jeu bloque les requêtes (403) : longue pause (WMX.gameBlockedUntil, posée par la file), la carte n'y est pour rien
         if (res.unconfirmed) { S.pauseUntil = Date.now() + PAUSE; return; } // le jeu n'a rien enregistré : ce n'est pas la faute de la carte (pas d'écart), on réessaie après une pause
         if (res.gone) { skipCard(op.item.card_id, 24 * H); WMX.journal?.add('Assistant de vente', op.item.title + ' introuvable dans la collection : écartée 24 h', 'warn'); return; } // vendue entre-temps
@@ -221,10 +276,11 @@
           if (!WMX.alive()) return;
           ensureLock();
           try { await tick(); } catch (e) { console.warn('[WMX] assistant de vente', e); }
+          try { await retagSafely(); } catch (e) { console.warn('[WMX] étiquette de vente', e); }
           await sleep(EVERY);
         }
       })();
     },
   });
-  WMX.autoSell = { tick, skipCard, runNow, resetSkips, footer, openPanel, line };
+  WMX.autoSell = { tick, skipCard, runNow, resetSkips, footer, openPanel, line, retag: { remember: rememberSaleTags, pass: retagPass, memory: () => retag.mem } };
 })();

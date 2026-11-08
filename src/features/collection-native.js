@@ -82,7 +82,9 @@
     ensureBar();
     for (const h3 of document.querySelectorAll('main h3')) {
       const card = cardOf(h3);
-      if (card && card.querySelector('div.absolute.top-2.left-2') && starBtn(card)) decorate(card); // seulement les vraies cartes (rareté + étoile)
+      // Seulement les vraies cartes : une pastille de rareté. L'étoile n'est PAS exigée : en mode sélection le jeu la remplace par une case, et les
+      // cartes redessinées après une action de masse n'auraient plus de moyenne (le ⚡ revient avec l'étoile, au prochain passage).
+      if (card && card.querySelector('div.absolute.top-2.left-2') && !card.closest('.wmx-cplus, .wmx-modal, .wmx-bubble')) decorate(card);
     }
   }
   const schedule = () => { clearTimeout(timer); timer = setTimeout(scan, 200); };

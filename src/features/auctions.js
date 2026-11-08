@@ -30,6 +30,7 @@
   S.draft = {};      // réglages de mise automatique en cours de saisie (gardés si la liste se redessine)
   S.autoSeen = null; // identifiants des mises déjà vues (les réglages par défaut ne s'appliquent qu'aux NOUVELLES mises)
   S.autoOpen = null;                        // enchère dont le formulaire de mise automatique est ouvert
+  S.hidden = {};                            // enchères dépassées retirées de la bulle par l'utilisateur : { id: date } (mémorisées)
   const saveAuto = () => WMX.store.set('autoBids', S.auto);
   const notified = new Set();               // alertes déjà envoyées (une seule fois chacune)
 
@@ -68,7 +69,7 @@
   /** Nouvelle surenchère d'un autre joueur sur une enchère où je misais (au premier chargement, on ne fait que mémoriser). */
   function checkOutbid(first) {
     for (const a of D.bidding) {
-      if (leading(a)) continue;
+      if (leading(a) || S.hidden[a.id]) continue; // je mène, ou j'ai retiré cette enchère de la liste : pas d'alerte
       const key = `${a.id}:out:${a.current_bid}`;
       if (notified.has(key)) continue;
       notified.add(key);
@@ -196,6 +197,11 @@
       checkOutbid(first);
       applyDefaults(first);
       await refreshWatching();
+      // Enchères retirées de la bulle : on les oublie quand elles sont terminées ou que je les mène de nouveau.
+      for (const id of Object.keys(S.hidden)) {
+        const h = D.bidding.find((x) => x.id === id);
+        if (!h || leading(h)) { delete S.hidden[id]; WMX.store.set('hiddenBids', S.hidden); }
+      }
       let dirty = false;
       for (const id of Object.keys(S.auto)) {
         const inBids = D.bidding.some((x) => x.id === id);
@@ -595,9 +601,13 @@
           : el('span', { class: `wmx-auc-state ${lead ? 'ok' : 'ko'}` }, lead ? 'Vous menez' : 'Surenchéri'),
         timeEl(a),
         rule ? el('span', { class: 'wmx-auc-autotag', 'data-id': a.id }, WMX.logic.autoLabel(rule)) : '');
+      // « Retirer » : une enchère surveillée (arrête la veille) ou dépassée (la masque de la bulle et arrête sa règle automatique). Pas sur une enchère que je mène.
+      const rm = (isWatch(a) || !lead) ? el('button', { class: 'wmx-auc-rm', type: 'button', 'aria-label': 'Retirer',
+        title: isWatch(a) ? 'Arrêter la surveillance et retirer de la liste' : 'Retirer de la liste (et arrêter sa mise automatique)' }, '×') : '';
+      if (rm) rm.addEventListener('click', () => removeBid(a));
       side = el('div', { class: 'wmx-auc-side' },
         el('div', { class: 'wmx-auc-price' }, el('small', {}, 'Mise actuelle'), el('b', {}, `${fmt(a.current_bid || a.base_amount)} W`), avgChip(a, 'buy')),
-        el('div', { class: 'wmx-auc-acts' }, autoBtn, act));
+        el('div', { class: 'wmx-auc-acts' }, rm, autoBtn, act));
       return el('div', { class: `wmx-auc-row${isWatch(a) ? ' watch' : ''}`, style: `--rgb:${WMX.RARITY_RGB[r]}` }, img, main, side, S.autoOpen === a.id ? autoForm(a) : '');
     } else {
       const act = a.current_bid || msLeft(a) <= 0 ? '' : el('button', { class: 'wmx-btn wmx-btn--ghost wmx-auc-cancel', 'data-card': a.card_id, title: 'Annuler la vente et récupérer la carte' }, 'Annuler');
@@ -643,28 +653,42 @@
   /** Une enchère terminée reste 15 s à l'écran (« Terminée »), puis disparaît du tableau, sans attendre le règlement par le serveur. */
   const GRACE_MS = 15000;
   const shown = (a) => msLeft(a) > -GRACE_MS;
-  const liveBids = () => D.bidding.filter((x) => msLeft(x) > 0);
+  const liveBids = () => D.bidding.filter((x) => msLeft(x) > 0 && !S.hidden[x.id]);
   const liveSales = () => D.selling.filter((x) => msLeft(x) > 0);
   const listSig = () => [...allBids(), ...D.selling].filter(shown).map((x) => x.id).join();
 
   function content() {
     // Dans « Mes enchères » : d'abord celles où j'ai misé, puis, sous un petit titre, les cartes que je surveille sans avoir misé (pas de troisième colonne).
     const byEnd = (a, b) => msLeft(a) - msLeft(b);
-    const mineList = D.bidding.filter(shown).sort(byEnd);
+    const mineList = D.bidding.filter((a) => shown(a) && !S.hidden[a.id]).sort(byEnd);
     const watchList = allBids().filter((a) => isWatch(a) && shown(a)).sort(byEnd);
     const bids = [...mineList.map((a) => row(a, 'bid')),
       ...(watchList.length ? [el('p', { class: 'wmx-auc-sep', title: 'Vous n’avez pas misé sur ces cartes : l’extension misera au dernier moment, si le prix reste sous votre plafond.' }, 'Sous surveillance (rien de misé pour l’instant)'), ...watchList.map((a) => row(a, 'bid'))] : [])];
     const bidCount = mineList.length + watchList.length;
     const sells = D.selling.filter(shown).sort((a, b) => msLeft(a) - msLeft(b)).map((a) => row(a, 'sell'));
-    // Panneau adaptatif : deux colonnes quand il y a des enchères ET des ventes ; une seule (plus étroite) avec une note sur l'autre sinon.
+    // Panneau adaptatif : deux colonnes quand il y a des enchères ET des ventes ; une seule, plus étroite, sinon (pas de place vide ni de note
+    // pour la partie absente : elle réapparaît dès qu'il y en a). Rien du tout : une seule note.
     const mode = bids.length && sells.length ? 'two' : (bids.length || sells.length ? 'one' : 'none');
     if (S.bubblePanel) { S.bubblePanel.dataset.mode = mode; applySize(); }
     const out = [];
     if (bids.length) out.push(column('Mes enchères', bids, /^Mes ench/i, bidCount));
     if (sells.length) out.push(column('Mes ventes', sells, /^Mes ventes/i));
-    if (!bids.length) out.push(note('Aucune enchère en cours.'));
-    if (!sells.length) out.push(note('Aucune vente en cours.'));
+    if (!out.length) out.push(note('Aucune enchère ni vente en cours pour le moment.'));
     return out;
+  }
+
+  /** Retire une enchère de la bulle : une veille s'arrête ; une enchère dépassée est masquée (jusqu'à ce que je la mène de nouveau) et sa règle automatique s'arrête. */
+  function removeBid(a) {
+    const watching = isWatch(a);
+    delete S.auto[a.id]; delete S.autoTry[a.id]; delete S.draft[a.id];
+    if (S.autoOpen === a.id) S.autoOpen = null;
+    D.watching = D.watching.filter((w) => w.id !== a.id);
+    saveAuto();
+    if (!watching) { S.hidden[a.id] = Date.now(); WMX.store.set('hiddenBids', S.hidden); }
+    pruneFrames();
+    fire(); renderAll(); schedulePoll();
+    WMX.notify?.({ kind: 'warn', key: `rm:${a.id}`, ms: 5000, title: watching ? 'Surveillance arrêtée' : 'Enchère retirée de la liste',
+      text: watching ? `« ${cardTitle(a)} » n’est plus surveillée : rien ne sera misé.` : `« ${cardTitle(a)} » n’apparaît plus dans la bulle et sa mise automatique est arrêtée. Elle réapparaît si vous la menez de nouveau.` });
   }
 
   function renderAll() {
@@ -1028,6 +1052,7 @@
         document.addEventListener('visibilitychange', claim);
         setTimeout(claim, 4000); // onglet ouvert directement au premier plan alors qu'un onglet masqué tient déjà le rôle
       } else S.leader = true;
+      WMX.store.get('hiddenBids', {}).then((r) => { S.hidden = r && typeof r === 'object' ? r : {}; renderAll(); }).catch(() => {});
       WMX.store.get('autoBids', {}).then((r) => { S.auto = r || {}; refreshWatching(true).then(() => { renderAll(); fire(); }).catch(() => {}); });
       // Les règles créées ou modifiées dans un autre onglet arrivent ici : sans cela, l'onglet « chef » ignorerait les règles créées ailleurs.
       WMX.onStorage((c) => {

@@ -1,19 +1,122 @@
 // Tableau de bord : une page de statistiques en plus de la collection du jeu (valeur estimée, valeur par rareté, top 10 des cartes
-// les plus chères, courbe de la valeur dans le temps). Entrée « Tableau de bord » dans la barre latérale du jeu.
+// les plus chères, courbe de la valeur dans le temps avec axes, repères et tableau). Entrée « Tableau de bord » dans la barre latérale du jeu.
 (() => {
   const { el } = WMX.dom;
   const R = WMX.RARITIES;
   const fmt = (n) => Math.round(n).toLocaleString('fr-FR');
+  const sign = (n) => (n > 0 ? '+' : n < 0 ? '−' : '');
   let page = null;
   let body = null;
+  let range = 30; // période du graphique en jours (0 = tout)
 
   const isOpen = () => !!page && !page.hidden;
 
   async function recordValue(t) {
     if (!t.priced) return;
     const h = await WMX.store.get('valueHistory', {});
-    h[new Date().toLocaleDateString('sv-SE')] = { value: Math.round(t.value), priced: t.priced, total: t.total };
+    h[new Date().toLocaleDateString('sv-SE')] = { value: Math.round(t.value), priced: t.priced, loaded: t.loaded, total: t.total };
     WMX.store.set('valueHistory', h);
+  }
+
+  // --- Graphique de la valeur dans le temps --------------------------------------------------------
+  /** Pas « rond » (1, 2, 5 × 10^n) pour les repères de l'axe vertical. */
+  function niceStep(raw) {
+    const p = 10 ** Math.floor(Math.log10(Math.max(raw, 1e-9)));
+    const n = raw / p;
+    return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p;
+  }
+  /** Valeur d'axe compacte : 12 400 → « 12,4 k », 1 250 000 → « 1,25 M », sinon le nombre entier. */
+  function fmtAxis(v) {
+    const a = Math.abs(v);
+    if (a >= 1e6) return `${(v / 1e6).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} M`;
+    if (a >= 1e4) return `${(v / 1e3).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} k`;
+    return Math.round(v).toLocaleString('fr-FR');
+  }
+  const dmy = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+  const dmyFull = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
+
+  /** Courbe SVG : axe vertical gradué en W, dates en bas, lignes de repère, un point par jour (survol : date et valeur). */
+  function chartSvg(days, hist) {
+    const W = 680, H = 280, L = 64, RT = 18, T = 16, B = 36;
+    const vals = days.map((d) => hist[d].value);
+    let lo = Math.min(...vals);
+    let hi = Math.max(...vals);
+    if (hi === lo) { const pad = Math.max(10, hi * 0.05); lo -= pad; hi += pad; }
+    const step = niceStep((hi - lo) / 4);
+    lo = Math.floor(lo / step) * step;
+    hi = Math.ceil(hi / step) * step;
+    const x = (i) => L + (days.length === 1 ? (W - L - RT) / 2 : (i / (days.length - 1)) * (W - L - RT));
+    const y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+    let grid = '';
+    for (let v = lo; v <= hi + step / 2; v += step) {
+      grid += `<line class="g" x1="${L}" x2="${W - RT}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"/><text class="ty" x="${L - 8}" y="${(y(v) + 4).toFixed(1)}">${fmtAxis(v)}</text>`;
+    }
+    const nLabels = Math.min(days.length, 6);
+    let xl = '';
+    for (let k = 0; k < nLabels; k++) {
+      const i = nLabels === 1 ? 0 : Math.round((k / (nLabels - 1)) * (days.length - 1));
+      xl += `<text class="tx" x="${x(i).toFixed(1)}" y="${H - 12}">${dmy(days[i])}</text><line class="tick" x1="${x(i).toFixed(1)}" x2="${x(i).toFixed(1)}" y1="${H - B}" y2="${H - B + 4}"/>`;
+    }
+    const pts = vals.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`);
+    const area = days.length > 1 ? `<polygon class="area" points="${x(0).toFixed(1)},${H - B} ${pts.join(' ')} ${x(days.length - 1).toFixed(1)},${H - B}"/>` : '';
+    const line = days.length > 1 ? `<polyline class="line" points="${pts.join(' ')}"/>` : '';
+    const dots = vals.map((v, i) => `<circle class="dot" cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="${days.length > 40 ? 2 : 3.5}"><title>${dmyFull(days[i])} : ${fmt(v)} W</title></circle>`).join('');
+    return `<svg class="wmx-vchart" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Valeur estimée de la collection dans le temps, en W">`
+      + `<text class="unit" x="${L}" y="10">W</text>${grid}<line class="axis" x1="${L}" x2="${L}" y1="${T}" y2="${H - B}"/><line class="axis" x1="${L}" x2="${W - RT}" y1="${H - B}" y2="${H - B}"/>${area}${line}${dots}${xl}</svg>`;
+  }
+
+  /** Bloc « Valeur dans le temps » : repères chiffrés, choix de la période, courbe et tableau jour par jour. */
+  function valueBlock(hist) {
+    const all = Object.keys(hist).sort();
+    const box = el('div', { class: 'wmx-panelbox wmx-vbox' }, el('h4', {}, 'Valeur estimée dans le temps (en W)'));
+    if (all.length < 2) {
+      box.append(el('p', { class: 'wmx-cp-empty' }, all.length
+        ? `Un seul jour enregistré pour l’instant (${dmyFull(all[0])} : ${fmt(hist[all[0]].value)} W). La courbe, les écarts et le tableau apparaîtront dès le deuxième jour.`
+        : 'Aucune valeur enregistrée pour l’instant. Chargez les prix de la collection : la valeur est notée une fois par jour.'));
+      return box;
+    }
+    const days = range ? all.slice(-range) : all;
+    const first = hist[days[0]].value;
+    const last = hist[days.at(-1)].value;
+    const vals = days.map((d) => hist[d].value);
+    const diff = last - first;
+    const pct = first ? (diff / first) * 100 : 0;
+    const seg = el('div', { class: 'wmx-seg wmx-vrange' }, ...[[7, '7 jours'], [30, '30 jours'], [0, 'Tout']].map(([n, label]) => {
+      const b = el('button', { type: 'button', class: 'wmx-seg-btn', 'aria-pressed': String(range === n) }, label);
+      b.addEventListener('click', () => { range = n; render(); });
+      return b;
+    }));
+    const stat = (label, value, cls = '') => el('div', { class: 'wmx-vstat' }, el('small', {}, label), el('b', { class: cls }, value));
+    box.append(
+      el('div', { class: 'wmx-vtop' },
+        el('div', { class: 'wmx-vstats' },
+          stat('Dernière valeur', `${fmt(last)} W`),
+          stat(`Variation (${dmy(days[0])} → ${dmy(days.at(-1))})`, `${sign(diff)}${fmt(Math.abs(diff))} W (${sign(diff)}${Math.abs(pct).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %)`, diff > 0 ? 'up' : diff < 0 ? 'down' : ''),
+          stat('Plus haut', `${fmt(Math.max(...vals))} W`),
+          stat('Plus bas', `${fmt(Math.min(...vals))} W`)),
+        seg));
+    const chart = el('div', { class: 'wmx-vwrap' });
+    chart.innerHTML = chartSvg(days, hist);
+    box.append(chart);
+    // Tableau : du plus récent au plus ancien, avec l'écart au jour précédent et le nombre de cartes dont le prix était chargé ce jour-là.
+    const rows = days.map((d, i) => {
+      const h = hist[d];
+      const prev = i ? hist[days[i - 1]].value : null;
+      const dv = prev == null ? null : h.value - prev;
+      const loaded = h.loaded ?? h.priced;
+      return el('tr', {},
+        el('td', {}, dmyFull(d)),
+        el('td', { class: 'n' }, `${fmt(h.value)} W`),
+        el('td', { class: `n ${dv > 0 ? 'up' : dv < 0 ? 'down' : ''}` }, dv == null ? '—' : `${sign(dv)}${fmt(Math.abs(dv))} W${prev ? ` (${sign(dv)}${Math.abs((dv / prev) * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %)` : ''}`),
+        el('td', { class: 'n' }, `${fmt(loaded)} / ${fmt(h.total)}`));
+    }).reverse();
+    box.append(
+      el('div', { class: 'wmx-vtable-wrap' },
+        el('table', { class: 'wmx-vtable' },
+          el('thead', {}, el('tr', {}, el('th', {}, 'Jour'), el('th', { class: 'n' }, 'Valeur estimée'), el('th', { class: 'n' }, 'Écart au jour précédent'), el('th', { class: 'n', title: 'Cartes dont le prix était chargé ce jour-là, sur le nombre de cartes de la collection' }, 'Prix chargés'))),
+          el('tbody', {}, ...rows))),
+      el('small', { class: 'wmx-cp-note' }, 'La valeur est la somme des moyennes du marché × exemplaires, notée une fois par jour. Elle bouge aussi quand davantage de prix sont chargés (dernière colonne) : une hausse peut venir de prix ajoutés, pas seulement du marché.'));
+    return box;
   }
 
   async function render() {
@@ -21,24 +124,15 @@
     const t = WMX.inventory.totals();
     recordValue(t);
     const hist = await WMX.store.get('valueHistory', {});
-    const days = Object.keys(hist).sort();
     const avg = (it) => WMX.inventory.price(it)?.avg ?? null;
     const top = WMX.inventory.items().filter((it) => avg(it) != null).sort((a, b) => avg(b) - avg(a)).slice(0, 10);
     const metric = (label, value, sub) => el('div', { class: 'wmx-metric' }, el('small', {}, label), el('b', {}, value), sub ? el('small', {}, sub) : '');
-    let spark = el('p', { class: 'wmx-cp-empty' }, 'La courbe apparaîtra dès qu’au moins deux jours de valeur auront été enregistrés.');
-    if (days.length >= 2) {
-      const vals = days.map((d) => hist[d].value);
-      const lo = Math.min(...vals), hi = Math.max(...vals);
-      const pts = vals.map((v, i) => `${(i / (vals.length - 1)) * 300},${80 - (hi === lo ? 40 : ((v - lo) / (hi - lo)) * 70) - 5}`).join(' ');
-      spark = el('div', {});
-      spark.innerHTML = `<svg viewBox="0 0 300 80" width="100%" height="90" role="img" aria-label="Valeur dans le temps"><polyline points="${pts}" fill="none" stroke="var(--acc,#2dd4a0)" stroke-width="2"/></svg>`;
-      spark.append(el('small', { class: 'wmx-cp-note' }, `${days[0]} → ${days.at(-1)} · de ${fmt(lo)} W à ${fmt(hi)} W`));
-    }
+    const noSale = t.loaded - t.priced; // prix chargés, mais aucune vente pour cette rareté (comptés comme chargés)
     body.replaceChildren(
       el('div', { class: 'wmx-metrics' },
-        metric('Valeur estimée', `${fmt(t.value)} W`, `${fmt(t.priced)} / ${fmt(t.total)} prix chargés`),
-        metric('Cartes uniques', fmt(t.total), `${fmt(t.copies)} exemplaires`),
-        metric('Prix chargés', `${t.total ? Math.round((t.priced / t.total) * 100) : 0} %`, 'Chargez les raretés manquantes')),
+        metric('Valeur estimée', `${fmt(t.value)} W`, `${fmt(t.loaded)} / ${fmt(t.total)} prix chargés${noSale ? ` (dont ${fmt(noSale)} sans vente)` : ''}`),
+        metric('Cartes uniques', fmt(t.total)),
+        metric('Prix chargés', `${t.total ? Math.round((t.loaded / t.total) * 100) : 0} %`, t.loaded >= t.total && t.total ? 'Tous les prix sont chargés' : 'Chargez les raretés manquantes')),
       el('div', { class: 'wmx-dash-grid' },
         el('div', { class: 'wmx-panelbox' }, el('h4', {}, 'Valeur par rareté'),
           el('div', { class: 'wmx-stackbar' }, ...R.map((r) => el('i', { style: `flex:${t.byR[r] || 0.0001};background:rgb(${WMX.RARITY_RGB[r]})` }))),
@@ -46,7 +140,7 @@
         el('div', { class: 'wmx-panelbox' }, el('h4', {}, 'Top 10 des plus chères'),
           ...(top.length ? top.map((it) => el('div', { class: 'wmx-row2', style: `--rgb:${WMX.RARITY_RGB[it.rarity]}` },
             el('span', {}, `${it.rarity} · ${it.title}`), el('b', {}, `${fmt(avg(it))} W`))) : [el('p', { class: 'wmx-cp-empty' }, 'Aucun prix chargé pour le moment.')]))),
-      el('div', { class: 'wmx-panelbox' }, el('h4', {}, 'Valeur dans le temps'), spark));
+      valueBlock(hist));
   }
 
   function build() {
@@ -109,6 +203,8 @@
     coll.after(a);
     markNav();
   }
+
+  WMX.dashboard = { open, render };
 
   WMX.register({
     name: 'dashboard',

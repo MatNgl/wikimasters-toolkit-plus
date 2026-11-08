@@ -758,3 +758,31 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-note:not(.alert) .wmx-note-body b { color: color-mix(in srgb, var(--c) 72%, #fff); }
 .wmx-note.warn .wmx-note-act { border-color: #fbbf24; color: #fde68a; } .wmx-note.warn .wmx-note-act:hover { background: #fbbf24; color: #1b1405; }
 .wmx-pre-hint { display: block; margin-top: 6px; color: #7f8f87; font-size: 11px; line-height: 1.35; text-align: center; }
+/* Bulle : bouton « Retirer » d'une enchère surveillée ou dépassée (0.23.7) */
+.wmx-auc-rm { width: 30px; height: 30px; border-radius: 10px; border: 1px solid #27493b; background: #0d1411; color: #9db5a8; cursor: pointer; font-size: 16px; line-height: 1; transition: all .18s ease; }
+.wmx-auc-rm:hover { border-color: #ef4444; background: #ef4444; color: #fff; }
+
+/* ===== Tableau de bord : courbe de la valeur avec axes, repères chiffrés et tableau (0.23.7) ===== */
+.wmx-vtop { display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.wmx-vstats { display: flex; flex-wrap: wrap; gap: 8px 24px; }
+.wmx-vstat small { display: block; font-size: 11px; color: #8a9a92; }
+.wmx-vstat b { font-size: 15px; font-weight: 800; }
+.wmx-vbox .up { color: #2dd4a0; } .wmx-vbox .down { color: #fca5a5; }
+.wmx-vrange .wmx-seg-btn { padding: 5px 12px; font-size: 12px; }
+.wmx-vwrap { width: 100%; }
+.wmx-vchart { display: block; max-height: 340px; }
+.wmx-vchart text { fill: #9db5a8; font: 600 11px Outfit, system-ui, sans-serif; }
+.wmx-vchart .ty { text-anchor: end; } .wmx-vchart .tx { text-anchor: middle; }
+.wmx-vchart .unit { fill: #cfe0d6; font-weight: 800; }
+.wmx-vchart .g { stroke: #ffffff14; stroke-width: 1; }
+.wmx-vchart .axis, .wmx-vchart .tick { stroke: #ffffff40; stroke-width: 1; }
+.wmx-vchart .line { fill: none; stroke: var(--acc, #2dd4a0); stroke-width: 2.4; stroke-linejoin: round; stroke-linecap: round; }
+.wmx-vchart .area { fill: rgb(45 212 160 / .12); stroke: none; }
+.wmx-vchart .dot { fill: #0b1411; stroke: var(--acc, #2dd4a0); stroke-width: 2; cursor: default; }
+.wmx-vchart .dot:hover { fill: var(--acc, #2dd4a0); }
+.wmx-vtable-wrap { max-height: 280px; overflow: auto; margin-top: 12px; border: 1px solid #ffffff14; border-radius: 10px; }
+.wmx-vtable { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.wmx-vtable th { position: sticky; top: 0; background: #101a16; color: #9db5a8; font-weight: 700; text-align: left; padding: 8px 12px; border-bottom: 1px solid #ffffff1a; }
+.wmx-vtable td { padding: 7px 12px; border-bottom: 1px solid #ffffff0d; }
+.wmx-vtable .n { text-align: right; font-variant-numeric: tabular-nums; }
+.wmx-vtable tbody tr:hover { background: #ffffff08; }
