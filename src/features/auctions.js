@@ -30,6 +30,9 @@
   S.draft = {};      // réglages de mise automatique en cours de saisie (gardés si la liste se redessine)
   S.autoSeen = null; // identifiants des mises déjà vues (les réglages par défaut ne s'appliquent qu'aux NOUVELLES mises)
   S.autoOpen = null;                        // enchère dont le formulaire de mise automatique est ouvert
+  S.minSeen = {};                           // dernier minimum lu sur la page de chaque enchère : { min, bid } (valable tant que la mise actuelle n'a pas bougé)
+  S.capLogged = {};                         // minimum déjà écrit au journal comme « au-dessus du plafond » (une ligne par minimum, pas une par seconde)
+  S.endLogged = new Set();                  // enchères déjà notées « terminée » au journal
   S.loadFails = {};                         // pages d'enchère qui ne se sont pas chargées à temps, d'affilée (recul progressif)
   S.flying = new Set();                     // enchères dont une mise est en cours (plusieurs en parallèle pour les mises automatiques)
   S.showOver = true;                        // afficher dans la bulle les enchères dont le prix dépasse mon plafond d'achat (elles ne m'intéressent plus) : au choix, mémorisé
@@ -151,7 +154,7 @@
     if (!rule || leading(a)) return false;
     const capW = WMX.logic.resolveCap(rule, avgOf(a));
     if (capW == null) return false;
-    const m = minOf(a) || (a.current_bid ? a.current_bid + 1 : (isWatch(a) ? a.base_amount : 0));
+    const m = knownMin(a);
     return !!m && m > capW;
   };
   S.watchT = {}; // dernière lecture de chaque enchère surveillée
@@ -295,6 +298,18 @@
     const m = i ? Number(i.min) : NaN;
     return Number.isFinite(m) && m > 0 ? m : null;
   };
+  /**
+   * Minimum de mise le mieux connu, même quand la page de l'enchère n'est pas (ou plus) chargée : celui de la page ; sinon le dernier lu
+   * tant que la mise actuelle n'a pas bougé ; sinon la borne basse (mise actuelle + 1, ou mise de départ pour une veille).
+   * Sans cela, une enchère au-dessus du plafond dont la page avait été libérée semblait « sous le plafond » : la mise repartait chaque seconde.
+   */
+  function knownMin(a) {
+    const live = minOf(a);
+    if (live) return live;
+    const seen = S.minSeen[a.id];
+    if (seen && seen.bid === (a.current_bid || 0)) return seen.min;
+    return a.current_bid ? a.current_bid + 1 : (isWatch(a) ? a.base_amount || null : null);
+  }
 
   function setNumber(input, v) {
     const w = input.ownerDocument.defaultView;
@@ -310,7 +325,7 @@
       const res = await fetch(`/api/marketplace/${id}`, { cache: 'no-store' });
       if (!res.ok) return null;
       const j = (await res.json())?.auction;
-      return j ? { bidder: j.current_bidder_id || null, bid: j.current_bid || 0, status: j.status } : null;
+      return j ? { bidder: j.current_bidder_id || null, bid: j.current_bid || 0, status: j.status, end: j.end_at || null } : null;
     } catch (_) { return null; }
   }
 
@@ -318,6 +333,13 @@
    * Plusieurs onglets du jeu peuvent être ouverts : un verrou commun à tous les onglets (Web Locks) fait qu'une seule mise à la fois
    * est vérifiée et passée par enchère. Le second onglet voit alors qu'on mène déjà et ne mise pas par-dessus soi-même.
    */
+  /** Minimum au-dessus du plafond : une seule ligne de journal par minimum, une seule alerte par règle, et la règle se repose avant de relire. */
+  function capStop(a, min, cap, line, jr, opts) {
+    const rule = S.auto[a.id];
+    if (S.capLogged[a.id] !== min) { S.capLogged[a.id] = min; jr(line(min, cap), 'warn'); }
+    if (rule && !rule.overNotified) { rule.overNotified = true; saveAuto(); renderAll(); capNotice(a, min, cap, rule); }
+    if (opts.auto) S.autoTry[a.id] = Date.now() + 20000;
+  }
   const withLock = (name, fn) => (navigator.locks?.request ? navigator.locks.request(name, fn) : fn());
   const bid = (a, opts = {}) => withLock(`wmx-bid-${a.id}`, () => bidInner(a, opts));
   async function bidInner(a, opts = {}) {
@@ -338,8 +360,26 @@
       const f = frameFor(a);
       // Attente de la page : jamais plus que le temps restant (une page lente ou une enchère déjà finie bloquait tout 90 s). Mise automatique : un seul rechargement du cadre si besoin.
       const waitMs = opts.auto ? Math.min(30000, Math.max(8000, msLeft(a) + 2000)) : 90000;
+      // Souvent la page n'a plus de champ de mise parce que l'enchère vient de se terminer (la liste, en retard, la croyait encore en cours) :
+      // on demande son état réel avant de recharger ou de parler d'échec, et on ne réessaie pas une enchère finie (ni une qu'on mène).
+      const settled = async () => {
+        const st = await liveState(a.id);
+        if (!st) return false;
+        if (st.end) a.end_at = st.end;
+        const over = (st.status && st.status !== 'active') || (st.end && new Date(st.end).getTime() <= Date.now());
+        if (!over && !(D.me && st.bidder === D.me)) return false;
+        if (over && !S.endLogged.has(a.id)) { S.endLogged.add(a.id); jr(D.me && st.bidder === D.me ? 'enchère terminée, vous la remportez' : 'enchère terminée : plus de mise possible'); }
+        S.autoTry[a.id] = Date.now() + 60000;
+        try { f.remove(); } catch (_) { /* déjà retiré */ }
+        S.frames.delete(a.id);
+        return true;
+      };
       let input = await waitFor(() => bidInput(f), opts.auto ? Math.min(6000, waitMs) : waitMs, 150);
-      if (!input && opts.auto && waitMs > 6500) { try { f.contentWindow.location.reload(); } catch (_) { /* cadre libéré */ } input = await waitFor(() => bidInput(f), waitMs - 6000, 150); }
+      if (!input && opts.auto) {
+        if (await settled()) return undefined;
+        if (waitMs > 6500) { try { f.contentWindow.location.reload(); } catch (_) { /* cadre libéré */ } input = await waitFor(() => bidInput(f), waitMs - 6000, 150); }
+        if (!input && await settled()) return undefined;
+      }
       if (!input) {
         jr(`la page de l’enchère ne s’est pas chargée (${Math.round((Date.now() - t0) / 1000)} s) : rien n’a été misé`, 'error');
         if (opts.auto) { // page bloquée : on repart d'une page neuve, et on laisse respirer (plus longtemps si cela se répète)
@@ -355,9 +395,9 @@
       if (!btn) { jr('bouton « Miser » introuvable sur la page de l’enchère', 'error'); return WMX.toast('Le bouton « Miser » n’est pas apparu : rien n’a été misé. Le jeu a peut-être changé sa page.', 7000, { kind: 'warn' }); }
       const min = Number(input.min);
       if (!Number.isFinite(min) || min <= 0) { jr('minimum de mise illisible : rien n’a été misé', 'error'); return WMX.toast('Je n’ai pas pu lire la mise minimum : rien n’a été misé. Réessayez dans un instant.', 7000, { kind: 'warn' }); }
+      S.minSeen[a.id] = { min, bid: a.current_bid || 0 };
       if (opts.cap && min > opts.cap) { // plafond de la mise automatique dépassé : on s'arrête
-        const ruleBefore = S.auto[a.id];
-        if (ruleBefore && !ruleBefore.overNotified) { jr(`le minimum (${fmt(min)} W) dépasse le plafond de ${fmt(opts.cap)} W : pas de mise`, 'warn'); ruleBefore.overNotified = true; saveAuto(); renderAll(); capNotice(a, min, opts.cap, ruleBefore); }
+        capStop(a, min, opts.cap, (v, c) => `le minimum (${fmt(v)} W) dépasse le plafond de ${fmt(c)} W : pas de mise`, jr, opts);
         return;
       }
       if (opts.auto) jr(`mise de ${fmt(min)} W déclenchée (il reste ${Math.max(0, Math.round(msLeft(a) / 1000))} s${preloaded ? '' : ', page chargée à la demande en ' + Math.round((Date.now() - t0) / 1000) + ' s'})`);
@@ -369,9 +409,9 @@
       // sinon la mise serait inférieure au minimum et refusée.
       let amount = Number(input.min);
       if (!Number.isFinite(amount) || amount <= 0) amount = min;
+      if (amount !== min) S.minSeen[a.id] = { min: amount, bid: a.current_bid || 0 };
       if (opts.cap && amount > opts.cap) {
-        const ruleBefore = S.auto[a.id];
-        if (ruleBefore && !ruleBefore.overNotified) { jr(`le minimum est monté à ${fmt(amount)} W, au-dessus du plafond de ${fmt(opts.cap)} W : pas de mise`, 'warn'); ruleBefore.overNotified = true; saveAuto(); renderAll(); capNotice(a, amount, opts.cap, ruleBefore); }
+        capStop(a, amount, opts.cap, (v, c) => `le minimum est monté à ${fmt(v)} W, au-dessus du plafond de ${fmt(c)} W : pas de mise`, jr, opts);
         return;
       }
       // Solde : une mise est débitée tout de suite, et les W de vos enchères en tête restent bloqués. Si le solde ne suffit pas, inutile de cliquer
@@ -589,9 +629,8 @@
       if (S.flying.has(a.id)) continue; // déjà en cours
       const rule = S.auto[a.id];
       if (!rule) continue;
-      const watching = isWatch(a);
-      // Minimum de mise : lu sur la page de l'enchère ; pour une veille dont la page n'est pas encore chargée, on prend la borne basse connue (mise actuelle + 1).
-      const m = minOf(a) || (watching ? (a.current_bid ? a.current_bid + 1 : a.base_amount) || null : null);
+      // Minimum de mise : lu sur la page de l'enchère, sinon le dernier lu (même mise actuelle), sinon la borne basse connue (mise actuelle + 1).
+      const m = knownMin(a);
       // Plafond en W : valeur fixe, ou moyenne du marché de la carte (+/− un pourcentage). Moyenne inconnue : on la demande et on attend.
       const capW = WMX.logic.resolveCap(rule, avgOf(a));
       if (rule.capMode === 'avg' && capW == null) {
@@ -603,7 +642,7 @@
         if (!rule.overNotified) { rule.overNotified = true; saveAuto(); renderAll(); capNotice(a, m, capW, rule); } // une seule alerte
         continue;
       }
-      if (rule.overNotified) { delete rule.overNotified; saveAuto(); renderAll(); } // plafond relevé (réglages, règle modifiée) : la règle reprend
+      if (rule.overNotified) { delete rule.overNotified; delete S.capLogged[a.id]; saveAuto(); renderAll(); } // plafond relevé (réglages, règle modifiée) : la règle reprend
       // Ma dernière mise automatique n'est pas encore visible (serveur lent) : on attend qu'une mise PLUS HAUTE apparaisse (vraie
       // surenchère d'un autre joueur) ou 90 s, au lieu de remiser par-dessus soi-même.
       const last = S.autoLast[a.id];

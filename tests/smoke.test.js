@@ -458,6 +458,44 @@ test('mises automatiques : une page qui ne se charge pas n’est pas retentée e
   env.close();
 });
 
+test('mise automatique au-dessus du plafond : une seule ligne au journal, pas de nouvel essai chaque seconde quand la page est libérée', async () => {
+  // cap1 : mise actuelle 8 > plafond 5 : sa page est libérée, et la règle ne doit pas croire le minimum inconnu (= sous le plafond).
+  // cap2 : mise actuelle 4 (borne basse 5 = plafond) mais la page demande 9 : il faut se souvenir du 9 une fois la page libérée.
+  const a = auction('cap1', { seller_id: 'other', current_bid: 8, current_bidder_id: 'rival', end_at: inMin(60) });
+  const b = auction('cap2', { seller_id: 'other', current_bid: 4, current_bidder_id: 'rival', end_at: inMin(61) });
+  const rule = { mode: 'outbid', capMode: 'abs', cap: 5 };
+  const { env, clicks } = await bubbleEnv({ cap1: { ...rule }, cap2: { ...rule } }, { bidding: [a, b], min: 9 });
+  const lines = [];
+  const add = env.WMX.journal.add.bind(env.WMX.journal);
+  env.WMX.journal.add = (scope, text, level) => { if (/plafond/.test(text)) lines.push(text); return add(scope, text, level); };
+  await sleep(12000);
+  assert.deepEqual(clicks, [], 'rien n’est misé');
+  assert.ok(lines.filter((l) => /cap1/.test(l)).length <= 1, `au plus une ligne « au-dessus du plafond » en 12 s pour cap1 : ${lines}`);
+  assert.equal(lines.filter((l) => /cap2/.test(l)).length, 1, `une seule ligne pour cap2 : ${lines}`);
+  assert.equal(env.mem.autoBids.cap1?.overNotified, true);
+  assert.equal(env.mem.autoBids.cap2?.overNotified, true);
+  env.close();
+});
+
+test('mise automatique : une enchère terminée (page sans champ de mise) n’est pas signalée comme page non chargée ni retentée', async () => {
+  const soon = new Date(Date.now() + 20000).toISOString();
+  const a = auction('end1', { seller_id: 'other', current_bid: 8, current_bidder_id: 'rival', end_at: soon });
+  const payload = { selling: [], bidding: [a], won: [{ winner_id: ME }], history: [] };
+  const env = createEnv({ fetchImpl: async (u) => (/\/api\/marketplace\/end1/.test(String(u)) ? json({ auction: { ...a, status: 'ended' } }) : json(payload)) });
+  const { w, WMX } = env;
+  const clicks = fakeBidPages(w, 9, ['end1']);
+  env.mem.autoBids = { end1: { mode: 'time', secs: 30 } };
+  const errs = []; const ends = [];
+  const add = WMX.journal.add.bind(WMX.journal);
+  WMX.journal.add = (scope, text, level) => { if (/ne s’est pas chargée/.test(text)) errs.push(text); if (/terminée/.test(text)) ends.push(text); return add(scope, text, level); };
+  for (const f of WMX.features) await f.init?.();
+  await sleep(19000);
+  assert.deepEqual(clicks, []);
+  assert.equal(errs.length, 0, 'pas d’erreur « page non chargée » pour une enchère finie');
+  assert.equal(ends.length, 1, 'une ligne « enchère terminée »');
+  env.close();
+});
+
 test('veille : un prix déjà au-dessus du plafond arrête la veille sans rien miser, et on prévient', async () => {
   const a = auction('w2', { seller_id: 'other', current_bid: 30, current_bidder_id: 'rival', end_at: inMin(60) });
   const { env, w, clicks } = await watchEnv({ auctions: [a], rules: { w2: { mode: 'time', secs: 30, capMode: 'abs', cap: 20, watch: true } } });

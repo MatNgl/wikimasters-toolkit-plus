@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WikiMasters Toolkit+",
-  "version": "0.24.11",
+  "version": "0.24.12",
   "description": "Prix du marché, ouverture de paquets en un clic, enchères automatiques et style de cartes pour WikiMasters.",
   "permissions": [
     "storage",
@@ -78,7 +78,7 @@
       "world": "MAIN"
     }
   ],
-  "version_name": "0.24.11 · mises : solde vérifié, raison du refus, plus de boucle sur page lente ; mise en vente 201 = réussie",
+  "version_name": "0.24.12 · mises : plus de boucle au-dessus du plafond, enchère terminée reconnue (plus de « page non chargée » en série)",
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",
