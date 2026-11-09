@@ -1472,6 +1472,43 @@ test('bulle des enchères : moyenne du marché et verdict à côté de la mise a
   env.close();
 });
 
+test('notifications : une seule pile au même endroit (la dernière devant, compteur), au-dessus de la file d’attente, dépliée et en pause au survol', async () => {
+  const env = createEnv({ fetchImpl: async () => json({ selling: [], bidding: [], won: [{ winner_id: ME }], history: [] }) });
+  const { w, WMX } = env;
+  const q = (s) => [...w.document.querySelectorAll(s)];
+  // File d'attente dans le coin (jsdom ne calcule pas la mise en page : on lui donne sa place)
+  const chip = w.document.createElement('div');
+  chip.className = 'wmx-qchip';
+  let top = w.innerHeight - 60;
+  chip.getBoundingClientRect = () => ({ top, left: w.innerWidth - 300, right: w.innerWidth - 18, bottom: w.innerHeight - 18, width: 282, height: w.innerHeight - 18 - top });
+  w.document.body.append(chip);
+  for (let i = 1; i <= 4; i++) WMX.toast(`Mise sur « Carte ${i} »…`, 900);
+  await sleep(60);
+  assert.equal(q('.wmx-notes').length, 1, 'une seule pile');
+  const box = q('.wmx-notes')[0];
+  assert.equal(box.style.bottom, '70px', 'posée juste au-dessus de la file d’attente');
+  const front = q('.wmx-note.front');
+  assert.equal(front.length, 1);
+  assert.match(front[0].textContent, /Carte 4/, 'la plus récente devant');
+  assert.equal(front[0].dataset.more, '+3', 'compteur des autres');
+  assert.equal(q('.wmx-note.back').length, 3, 'les autres derrière (on n’en voit que le bord)');
+  // On ouvre la file (elle grandit vers le haut) : la pile monte d'autant.
+  top = w.innerHeight - 300;
+  WMX.toast('Encore une.', 900);
+  await sleep(60);
+  assert.equal(box.style.bottom, '310px', 'la pile monte au-dessus de la file ouverte');
+  // Survol : dépliée, rien ne disparaît pendant la lecture.
+  box.dispatchEvent(new w.MouseEvent('mouseenter'));
+  await sleep(1200);
+  assert.ok(box.classList.contains('open'));
+  assert.equal(q('.wmx-note.back').length, 0, 'dépliée : toutes lisibles');
+  assert.equal(q('.wmx-note').length, 5, 'en pause au survol : aucune n’a disparu');
+  box.dispatchEvent(new w.MouseEvent('mouseleave'));
+  await sleep(2200);
+  assert.equal(q('.wmx-note').length, 0, 'la souris partie, elles s’en vont');
+  env.close();
+});
+
 test('notifications : temporaires avec anneau et disparition, alertes rouges persistantes avec croix, même clé = remplacement', async () => {
   const env = createEnv({ fetchImpl: async () => json({ selling: [], bidding: [], won: [{ winner_id: ME }], history: [] }) });
   const { w, WMX } = env;

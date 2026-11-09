@@ -827,3 +827,23 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-act-spark { margin: 4px 0 8px; }
 .wmx-act-spark rect { fill: var(--acc, #2dd4a0); opacity: .85; }
 .wmx-auc-togglebar { display: flex; justify-content: flex-start; padding: 2px 0 6px; }
+
+/* ===== Notifications : une seule pile compacte, chaque nouvelle passe devant (0.24.13) ===== */
+.wmx-notes { display: block; width: min(330px, calc(100vw - 36px)); height: 0; gap: 0; transition: bottom .22s ease, right .22s ease, height .22s ease; }
+.wmx-notes.open { pointer-events: auto; }
+.wmx-note { position: absolute; right: 0; bottom: 0; width: 100%; box-sizing: border-box; padding: 8px 8px 8px 12px; gap: 8px; border-radius: 12px; font-size: 12.5px; line-height: 1.3;
+  animation: none; transform-origin: 50% 100%; transition: transform .24s cubic-bezier(.2,.9,.3,1), opacity .2s ease, height .2s ease; overflow: hidden; }
+.wmx-note-body { gap: 2px; }
+.wmx-note-body span { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.wmx-notes.open .wmx-note-body span { -webkit-line-clamp: 6; }
+.wmx-note.back { box-shadow: 0 6px 18px #0008; }
+.wmx-note.back > * { opacity: 0; } /* on ne devine que le bord des plus anciennes */
+.wmx-note.front { overflow: visible; }
+.wmx-note.front[data-more]::before { content: attr(data-more); position: absolute; top: -9px; left: -7px; min-width: 20px; height: 18px; padding: 0 6px; box-sizing: border-box; border-radius: 9px;
+  background: #1c2a24; border: 1px solid #ffffff2a; color: #e6efe9; font: 700 10.5px/16px Outfit, system-ui, sans-serif; text-align: center; box-shadow: 0 2px 8px #0009; }
+.wmx-note.front.more-alert[data-more]::before { background: #ef4444; border-color: #ef4444; color: #fff; }
+.wmx-note-x { width: 20px; height: 20px; font-size: 14px; border-radius: 6px; }
+.wmx-note-ring { width: 16px; height: 16px; }
+.wmx-notes.open .wmx-note-ring .fg { animation-play-state: paused; }
+.wmx-note-act { margin-top: 3px; padding: 4px 10px; font-size: 11.5px; }
+@media (prefers-reduced-motion: reduce) { .wmx-notes, .wmx-note { transition: none; } }

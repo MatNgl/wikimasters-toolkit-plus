@@ -17,20 +17,123 @@
   const home = (kind) => (kind === 'work' ? '/collection#wmx-auto' : '/collection'); // le cadre d'automatisation garde sa marque #wmx-auto
   const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
 
-  // --- Notifications : pile en bas à droite, au-dessus de la file d'attente --------------------------------------------------
+  // --- Notifications : une seule pile en bas à droite ----------------------------------------------------------------------
+  // Elles ne s'étalent plus sur l'écran : chacune passe DEVANT la précédente, au même endroit (on devine les plus anciennes derrière,
+  // et un compteur « +2 » dit combien il y en a). Survoler la pile la déplie pour toutes les lire (les minuteries sont alors en pause).
+  // La pile se pose toujours au-dessus de la file d'attente et de la bulle des enchères : si on ouvre l'une d'elles, elle monte ;
+  // s'il ne reste pas la place au-dessus, elle passe à leur gauche. Jamais par-dessus.
   // Temporaires (info, ok, warn) : disparaissent seules, un petit anneau se vide pour le montrer. Alertes (kind « alert », ou sticky) : rouges,
-  // elles restent jusqu'à la croix (vérification humaine demandée, limite du site…). Même clé = la notification est remplacée, pas empilée.
-  const NOTE_MAX = 5;
-  const notes = new Map(); // clé -> { node, timer }
+  // elles restent jusqu'à la croix. Même clé = la notification est remplacée, pas empilée.
+  const NOTE_MAX = 6;      // notifications gardées (au-delà, les plus anciennes qui ne sont pas des alertes s'en vont)
+  const NOTE_LAYERS = 2;   // cartes devinées derrière la première quand la pile est repliée
+  const NOTE_STEP = 7;     // décalage (px) de chaque carte de l'arrière
+  const ANCHORS = '.wmx-qchip, .wmx-bubble:not([hidden]) .wmx-bubble-pill, .wmx-bubble:not([hidden]) .wmx-bubble-panel:not([hidden]):not(.moved)';
+  const notes = new Map(); // clé -> { node, h, timer, due, left, persistent }
   let noteBox = null;
   let noteSeq = 0;
+  let noteOpen = false;
+  let noteRO = null;
+  let noteTick = null;
+  const watched = new WeakSet();
+
+  /** Place la pile au-dessus de ce qui occupe le coin (file d'attente, bulle des enchères, ouvertes ou non). */
+  function placeNotes() {
+    if (!noteBox?.isConnected) return;
+    const vw = window.innerWidth || 1200, vh = window.innerHeight || 800;
+    const anchors = [...document.querySelectorAll(ANCHORS)];
+    if (typeof ResizeObserver === 'function') {
+      noteRO ||= new ResizeObserver(() => { placeNotes(); layoutNotes(); });
+      for (const a of anchors) if (!watched.has(a)) { watched.add(a); noteRO.observe(a); }
+    }
+    const rects = anchors.map((a) => a.getBoundingClientRect()).filter((r) => r.width && r.height && r.right > vw - 160);
+    let bottom = 18, right = 18;
+    if (rects.length) {
+      bottom = Math.round(vh - Math.min(...rects.map((r) => r.top)) + 10);
+      const need = (notes.size ? Math.max(...[...notes.values()].map((n) => n.h || 70)) : 70) + NOTE_LAYERS * NOTE_STEP + 12;
+      if (vh - bottom < need) { // plus la place au-dessus (bulle des enchères ouverte en grand) : à gauche de ce qui est ouvert
+        const r2 = Math.round(vw - Math.min(...rects.map((r) => r.left)) + 12);
+        if (vw - r2 >= 260) { bottom = 18; right = r2; } else bottom = Math.max(18, vh - need);
+      }
+    }
+    noteBox.style.bottom = `${bottom}px`;
+    noteBox.style.right = `${right}px`;
+  }
+
+  /** Dispose les cartes : repliées (la plus récente devant, deux devinées derrière) ou dépliées au survol. */
+  function layoutNotes() {
+    if (!noteBox?.isConnected) return;
+    const list = [...notes.values()].reverse(); // la plus récente d'abord
+    const avail = (window.innerHeight || 800) - (parseFloat(noteBox.style.bottom) || 18) - 16;
+    // Hauteur naturelle (texte sur 1 à 3 lignes) relue à chaque fois : la largeur peut avoir changé (fenêtre redimensionnée).
+    for (const [i, n] of list.entries()) if (noteOpen || i === 0) { n.node.style.height = ''; n.h = n.node.offsetHeight || n.h; }
+    const frontH = list[0]?.h || 0;
+    let y = 0;
+    list.forEach((n, i) => {
+      const st = n.node.style;
+      n.node.classList.toggle('front', i === 0);
+      n.node.classList.toggle('back', !noteOpen && i > 0);
+      st.zIndex = String(100 - i);
+      if (noteOpen) {
+        const fits = i === 0 || y + n.h <= avail;
+        st.height = '';
+        st.transform = `translateY(${-y}px)`;
+        st.opacity = fits ? '1' : '0';
+        st.pointerEvents = fits ? 'auto' : 'none';
+        if (fits) y += n.h + 8;
+      } else {
+        const layer = Math.min(i, NOTE_LAYERS + 1);
+        st.height = i ? `${frontH}px` : ''; // les cartes de l'arrière prennent la taille de celle de devant : on ne voit que leur bord
+        st.transform = `translateY(${-layer * NOTE_STEP}px) scale(${1 - layer * 0.045})`;
+        st.opacity = i > NOTE_LAYERS ? '0' : '1';
+        st.pointerEvents = i ? 'none' : 'auto';
+      }
+    });
+    noteBox.style.height = `${noteOpen ? Math.max(0, y - 8) : frontH + Math.min(list.length - 1, NOTE_LAYERS) * NOTE_STEP}px`;
+    const front = list[0]?.node;
+    for (const n of list) if (n.node !== front) delete n.node.dataset.more;
+    if (front) {
+      if (list.length > 1 && !noteOpen) front.dataset.more = `+${list.length - 1}`; else delete front.dataset.more;
+      front.classList.toggle('more-alert', list.slice(1).some((n) => n.persistent)); // une alerte attend derrière : compteur rouge
+    }
+  }
+
+  function startNoteTimer(key, n, ms) {
+    clearTimeout(n.timer);
+    n.due = Date.now() + ms;
+    n.timer = setTimeout(() => dismissNote(key), ms);
+  }
+  function setNotesOpen(open) {
+    if (open === noteOpen) return;
+    noteOpen = open;
+    noteBox?.classList.toggle('open', open);
+    for (const [k, n] of notes) { // pendant la lecture, rien ne disparaît
+      if (n.persistent) continue;
+      if (open) { clearTimeout(n.timer); n.left = Math.max(1500, (n.due || 0) - Date.now()); } else startNoteTimer(k, n, n.left || 3000);
+    }
+    layoutNotes();
+  }
+
+  function ensureNoteBox() {
+    if (noteBox?.isConnected) return;
+    noteBox = el('div', { class: 'wmx-notes' });
+    noteBox.addEventListener('mouseenter', () => setNotesOpen(true));
+    noteBox.addEventListener('mouseleave', () => setNotesOpen(false));
+    document.body.append(noteBox);
+    noteOpen = false;
+    if (!noteTick) noteTick = setInterval(() => { if (!notes.size) { clearInterval(noteTick); noteTick = null; return; } placeNotes(); layoutNotes(); }, 1000); // bulle déplacée, fenêtre redimensionnée…
+  }
+
   function dismissNote(key) {
     const n = notes.get(key);
     if (!n) return;
     clearTimeout(n.timer);
-    n.node.classList.add('leaving');
-    setTimeout(() => n.node.remove(), 180);
     notes.delete(key);
+    n.node.style.opacity = '0';
+    n.node.style.transform += ' translateX(16px)';
+    n.node.style.pointerEvents = 'none';
+    setTimeout(() => n.node.remove(), 200);
+    if (!notes.size) setNotesOpen(false);
+    layoutNotes();
   }
   const ringSvg = (ms) => {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -41,7 +144,7 @@
   /** kind : info | ok | warn | alert. title : ligne en gras (facultative). action : { label, onClick } bouton dans la notification. */
   function notify({ text, title = '', kind = 'info', ms = 5000, key = '', sticky = false, action = null, hint = '' }) {
     if (!text) return undefined;
-    if (!noteBox?.isConnected) { noteBox = el('div', { class: 'wmx-notes' }); document.body.append(noteBox); }
+    ensureNoteBox();
     key = key || `n${++noteSeq}`;
     if (notes.has(key)) { clearTimeout(notes.get(key).timer); notes.get(key).node.remove(); notes.delete(key); }
     const persistent = sticky || kind === 'alert';
@@ -51,11 +154,18 @@
     const node = el('div', { class: `wmx-note ${kind}`, role: kind === 'alert' ? 'alert' : 'status', ...(hint ? { title: `Détail technique : ${hint}` } : {}) },
       el('div', { class: 'wmx-note-body' }, title ? el('b', {}, title) : '', el('span', {}, text), act),
       persistent ? close : el('div', { class: 'wmx-note-side' }, ringSvg(ms), close));
+    node.style.opacity = '0';
+    node.style.transform = 'translateY(14px)';
     noteBox.append(node);
-    const entry = { node, timer: persistent ? null : setTimeout(() => dismissNote(key), ms) };
+    const entry = { node, h: node.offsetHeight || 64, timer: null, due: 0, left: 0, persistent };
     notes.set(key, entry);
+    if (!persistent) { if (noteOpen) { entry.left = ms; entry.due = Date.now() + ms; } else startNoteTimer(key, entry, ms); }
     // Trop de notifications : on retire les plus anciennes qui ne sont pas des alertes.
-    for (const [k, n] of notes) { if (notes.size <= NOTE_MAX) break; if (!n.node.classList.contains('alert')) dismissNote(k); }
+    for (const [k, n] of notes) { if (notes.size <= NOTE_MAX) break; if (!n.persistent) dismissNote(k); }
+    placeNotes();
+    (window.requestAnimationFrame || ((f) => setTimeout(f, 16)))(() => { entry.h = node.offsetHeight || entry.h; layoutNotes(); });
+    layoutNotes();
+    node.style.opacity = '0'; node.style.transform = 'translateY(14px)'; // l'entrée glisse depuis le bas à l'image suivante
     return key;
   }
   const guessKind = (t) => (/échec|impossible|introuvable|refus|bloqu|limite|n’est pas confirmée|ne s’est pas|erreur|trop de|invalide|sans effet/i.test(t) ? 'warn'

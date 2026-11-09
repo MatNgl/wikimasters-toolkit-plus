@@ -476,10 +476,10 @@
         ? `${opts.auto ? 'Mise automatique' : 'Mise'} de ${fmt(amount)} W placée sur « ${cardTitle(a)} » : vous menez.`
         : placed ? `Mise de ${fmt(amount)} W placée sur « ${cardTitle(a)} », mais déjà surenchérie.`
           : refusal ? `Le jeu a refusé votre mise sur « ${cardTitle(a)} »${said ? ` : « ${said} »` : ''}${blocking ? ' (voir l’alerte rouge)' : ''}.`
-            : 'Votre mise n’est pas confirmée : soit vous n’avez pas assez de W, soit quelqu’un a surenchéri entre-temps. Regardez la page de l’enchère.', 7000, { key: `bid:${a.id}`, kind: won ? 'ok' : 'warn' });
+            : `Mise sur « ${cardTitle(a)} » non confirmée : quelqu’un a sans doute misé au même moment.${opts.auto ? ' La règle continue.' : ' Regardez la page de l’enchère.'}`, 7000, { key: `bid:${a.id}`, kind: won ? 'ok' : 'warn', title: won ? '' : placed ? 'Déjà surenchérie' : refusal ? 'Mise refusée' : 'Mise non confirmée' });
       if (opts.auto) { // 3 échecs de suite : on arrête pour ne pas boucler
         S.autoFails[a.id] = placed ? 0 : (S.autoFails[a.id] || 0) + 1;
-        if (S.autoFails[a.id] >= 3) { delete S.auto[a.id]; saveAuto(); alertUser('Mise automatique arrêtée', `« ${cardTitle(a)} » : 3 mises sans effet (solde insuffisant ?).`, `${a.id}:fails`); }
+        if (S.autoFails[a.id] >= 3) { delete S.auto[a.id]; saveAuto(); alertUser('Mise automatique arrêtée', `« ${cardTitle(a)} » : 3 mises de suite sans effet (d’autres joueurs misent au même moment) : la règle s’arrête.`, `${a.id}:fails`); }
       }
     } finally {
       WMX.dismissNote?.(`bid:${a.id}:go`); // la notification « Mise sur… » ne reste pas si la mise s'arrête en route

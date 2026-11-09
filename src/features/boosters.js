@@ -20,9 +20,11 @@
     else if (status === 429 || data?.rate_limited) openError = { t: Date.now(), data };
   });
 
-  // Pause entre deux paquets : 2 s au départ. Si le jeu refuse une ouverture trop rapprochée, la pause monte d'1 s (jusqu'à 6 s) et ce réglage appris
-  // est mémorisé : l'extension ne retente pas à chaque paquet une pause que le jeu refuse.
-  let cooldownS = 2;
+  // Pause entre deux paquets : 1,5 s (un humain enchaîne ses paquets aussi vite ; la vérification humaine arrive de toute façon, pause longue ou non).
+  // Si le jeu refuse une ouverture trop rapprochée, la pause monte d'1 s (jusqu'à 6 s) pour le reste de CETTE ouverture seulement :
+  // la suivante (« Tout ouvrir », ou la prochaine ouverture auto) repart de 1,5 s.
+  const BASE_COOLDOWN_S = 1.5;
+  let cooldownS = BASE_COOLDOWN_S;
   let blocks = 0;       // refus consécutifs : la pause s'allonge d'1 s à chaque refus, puis repart de la pause de base (cooldownS) au premier succès
 
   /** Indication `retry_after` du jeu en secondes (nombre, « 5 s », « 2 min » ou date), ou null si illisible. */
@@ -146,7 +148,7 @@
         openError = null;
         if (d.rate_limit_daily) { dailyLimit = true; setStatus('Limite quotidienne d’ouvertures atteinte'); break; }
         blocks += 1;
-        if (blocks === 1 && cooldownS < 6) { cooldownS += 1; WMX.store.set('packCooldown', cooldownS); } // le jeu a refusé cette pause : on l'allonge pour la suite
+        if (blocks === 1 && cooldownS < 6) cooldownS = Math.min(6, cooldownS + 1); // le jeu a refusé cette pause : on l'allonge pour le reste de cette ouverture
         if (blocks > 15) { setStatus('Le jeu refuse l’ouverture : arrêt'); break; }
         // Attente = pause de base + 1 s par refus consécutif (4, 5, 6… s), au moins ce que demande le jeu.
         const waitS = Math.min(120, Math.max(cooldownS + blocks, retryHint(d.retry_after) ?? 0));
@@ -188,10 +190,12 @@
 
   /** Pause obligatoire entre deux paquets, visible dans le panneau et sur l'écran de révélation. */
   async function cooldown(session) {
-    for (let s = cooldownS; s > 0 && (state.busy || state.auto); s--) {
+    const end = Date.now() + cooldownS * 1000;
+    for (let left = end - Date.now(); left > 0 && (state.busy || state.auto); left = end - Date.now()) {
+      const s = String(Math.round(left / 100) / 10).replace('.', ','); // « 1,5 s », « 0,5 s »
       session?.setNote(`pause ${s} s`);
       setStatus(`Pause de ${s} s avant le paquet suivant`);
-      await sleep(1000);
+      await sleep(Math.min(500, left));
     }
     session?.setNote('');
   }
@@ -203,6 +207,7 @@
     const total = packsLeft();
     if (!total) { setStatus('Aucun paquet disponible'); return; }
     state.busy = true;
+    cooldownS = BASE_COOLDOWN_S; // chaque « Tout ouvrir » repart de la pause courte
     const session = WMX.revealSession();
     session.setRemaining(total, total);
     try {
@@ -232,6 +237,7 @@
   // --- Ouverture automatique ------------------------------------------------------------------
   /** Ouvre `n` paquets et les met de côté ; s'arrête si une carte atteint le seuil choisi. */
   async function openBatch(n) {
+    cooldownS = BASE_COOLDOWN_S; // chaque ouverture auto repart de la pause courte
     for (let i = 0; i < n && state.auto; i++) {
       if (i > 0) await cooldown();
       if (!state.auto) return;
@@ -352,8 +358,7 @@
     Object.assign(WMX.settings, await WMX.store.get('wmxSettings', {}));
     const ap = await WMX.store.get('autoPrefs', { min: 5, max: 10 });
     const seenPacks = await WMX.store.get('packsSeen', null);
-    const learned = Number(await WMX.store.get('packCooldown', 2));
-    if (Number.isFinite(learned) && learned >= 2 && learned <= 6) cooldownS = Math.round(learned);
+    WMX.store.set('packCooldown', null); // ancienne pause « apprise » (gardée d'une fois sur l'autre) : abandonnée, chaque ouverture repart de 1,5 s
     let panelPos = await WMX.store.get('panelPos', null); // position choisie du menu ouvert ({ x, y }) ou null : emplacement d'origine
     if (!(panelPos && Number.isFinite(panelPos.x) && Number.isFinite(panelPos.y))) panelPos = null;
 
