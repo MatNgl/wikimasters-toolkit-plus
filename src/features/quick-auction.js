@@ -241,6 +241,8 @@
         return { ok: true, price };
       }
     }
+    // Le jeu a répondu « 201 Créée » à la mise en vente : elle existe, « Mes ventes » est seulement en retard. Ce n'est pas un échec (avant : échec + pause de l'assistant).
+    if (/POST \/api\/marketplace → 201/.test(res.where || '')) return { ok: true, price, late: true };
     WMX.releaseCardSheets?.('work'); // le prochain essai repart d'un cadre neuf (une session de cadre périmée ferait échouer toutes les suivantes)
     return { unconfirmed: true, tech: res.where || '', error: read ? 'le jeu n’a pas confirmé la mise en vente (vérifiez « Mes ventes » dans le Marché)' : 'je n’arrive pas à relire « Mes ventes » : le jeu ne répond pas' };
   }

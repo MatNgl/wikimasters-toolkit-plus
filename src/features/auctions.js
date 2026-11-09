@@ -30,6 +30,7 @@
   S.draft = {};      // réglages de mise automatique en cours de saisie (gardés si la liste se redessine)
   S.autoSeen = null; // identifiants des mises déjà vues (les réglages par défaut ne s'appliquent qu'aux NOUVELLES mises)
   S.autoOpen = null;                        // enchère dont le formulaire de mise automatique est ouvert
+  S.loadFails = {};                         // pages d'enchère qui ne se sont pas chargées à temps, d'affilée (recul progressif)
   S.flying = new Set();                     // enchères dont une mise est en cours (plusieurs en parallèle pour les mises automatiques)
   S.showOver = true;                        // afficher dans la bulle les enchères dont le prix dépasse mon plafond d'achat (elles ne m'intéressent plus) : au choix, mémorisé
   const saveAuto = () => WMX.store.set('autoBids', S.auto);
@@ -250,6 +251,14 @@
 
   // --- Surenchérir -----------------------------------------------------------------------------
   const bidInput = (f) => { try { return f.contentDocument.querySelector('input[aria-label="Montant de la mise"]'); } catch (_) { return null; } };
+  /** Solde affiché sur la page de l'enchère (« Votre solde : 28 477 wikibidous »), ou null s'il est illisible. */
+  const balanceOf = (f) => {
+    try {
+      const m = (f.contentDocument.body.innerText || f.contentDocument.body.textContent || '').match(/Votre solde\s*:\s*([\d\s\u00a0\u202f.]+)/i);
+      const n = m ? Number(m[1].replace(/\D/g, '')) : NaN;
+      return Number.isFinite(n) && m[1].trim() ? n : null;
+    } catch (_) { return null; }
+  };
   const bidButton = (f) => { try { return [...f.contentDocument.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Miser'); } catch (_) { return null; } };
 
   /** Page de l'enchère chargée (et gardée à jour par le jeu) dans un cadre invisible : le minimum y est toujours le bon. */
@@ -328,18 +337,27 @@
       const preloaded = !!bidInput(S.frames.get(a.id) || {});
       const f = frameFor(a);
       // Attente de la page : jamais plus que le temps restant (une page lente ou une enchère déjà finie bloquait tout 90 s). Mise automatique : un seul rechargement du cadre si besoin.
-      const waitMs = opts.auto ? Math.min(30000, Math.max(4000, msLeft(a) + 2000)) : 90000;
+      const waitMs = opts.auto ? Math.min(30000, Math.max(8000, msLeft(a) + 2000)) : 90000;
       let input = await waitFor(() => bidInput(f), opts.auto ? Math.min(6000, waitMs) : waitMs, 150);
       if (!input && opts.auto && waitMs > 6500) { try { f.contentWindow.location.reload(); } catch (_) { /* cadre libéré */ } input = await waitFor(() => bidInput(f), waitMs - 6000, 150); }
-      if (!input) { jr(`la page de l’enchère ne s’est pas chargée (${Math.round((Date.now() - t0) / 1000)} s) : rien n’a été misé`, 'error'); return WMX.toast('La page de l’enchère n’a pas répondu : rien n’a été misé. Réessayez dans un instant.', 7000, { kind: 'warn' }); }
+      if (!input) {
+        jr(`la page de l’enchère ne s’est pas chargée (${Math.round((Date.now() - t0) / 1000)} s) : rien n’a été misé`, 'error');
+        if (opts.auto) { // page bloquée : on repart d'une page neuve, et on laisse respirer (plus longtemps si cela se répète)
+          const n = (S.loadFails[a.id] = (S.loadFails[a.id] || 0) + 1);
+          S.autoTry[a.id] = Date.now() + (n >= 3 ? 12000 : 3000);
+          try { f.remove(); } catch (_) { /* déjà retiré */ }
+          S.frames.delete(a.id);
+          return undefined;
+        }
+        return WMX.toast('La page de l’enchère n’a pas répondu : rien n’a été misé. Réessayez dans un instant.', 7000, { kind: 'warn' }); }
+      delete S.loadFails[a.id];
       const btn = bidButton(f);
       if (!btn) { jr('bouton « Miser » introuvable sur la page de l’enchère', 'error'); return WMX.toast('Le bouton « Miser » n’est pas apparu : rien n’a été misé. Le jeu a peut-être changé sa page.', 7000, { kind: 'warn' }); }
       const min = Number(input.min);
       if (!Number.isFinite(min) || min <= 0) { jr('minimum de mise illisible : rien n’a été misé', 'error'); return WMX.toast('Je n’ai pas pu lire la mise minimum : rien n’a été misé. Réessayez dans un instant.', 7000, { kind: 'warn' }); }
       if (opts.cap && min > opts.cap) { // plafond de la mise automatique dépassé : on s'arrête
         const ruleBefore = S.auto[a.id];
-        jr(`le minimum (${fmt(min)} W) dépasse le plafond de ${fmt(opts.cap)} W : pas de mise`, 'warn');
-        if (ruleBefore && !ruleBefore.overNotified) { ruleBefore.overNotified = true; saveAuto(); renderAll(); capNotice(a, min, opts.cap, ruleBefore); }
+        if (ruleBefore && !ruleBefore.overNotified) { jr(`le minimum (${fmt(min)} W) dépasse le plafond de ${fmt(opts.cap)} W : pas de mise`, 'warn'); ruleBefore.overNotified = true; saveAuto(); renderAll(); capNotice(a, min, opts.cap, ruleBefore); }
         return;
       }
       if (opts.auto) jr(`mise de ${fmt(min)} W déclenchée (il reste ${Math.max(0, Math.round(msLeft(a) / 1000))} s${preloaded ? '' : ', page chargée à la demande en ' + Math.round((Date.now() - t0) / 1000) + ' s'})`);
@@ -353,9 +371,18 @@
       if (!Number.isFinite(amount) || amount <= 0) amount = min;
       if (opts.cap && amount > opts.cap) {
         const ruleBefore = S.auto[a.id];
-        jr(`le minimum est monté à ${fmt(amount)} W, au-dessus du plafond de ${fmt(opts.cap)} W : pas de mise`, 'warn');
-        if (ruleBefore && !ruleBefore.overNotified) { ruleBefore.overNotified = true; saveAuto(); renderAll(); capNotice(a, amount, opts.cap, ruleBefore); }
+        if (ruleBefore && !ruleBefore.overNotified) { jr(`le minimum est monté à ${fmt(amount)} W, au-dessus du plafond de ${fmt(opts.cap)} W : pas de mise`, 'warn'); ruleBefore.overNotified = true; saveAuto(); renderAll(); capNotice(a, amount, opts.cap, ruleBefore); }
         return;
+      }
+      // Solde : une mise est débitée tout de suite, et les W de vos enchères en tête restent bloqués. Si le solde ne suffit pas, inutile de cliquer
+      // (le jeu refuserait) : on le dit clairement, et la règle réessaie plus tard (le solde remonte quand on vous surenchérit ailleurs).
+      const bal = balanceOf(f);
+      if (bal != null && amount > bal) {
+        jr(`solde insuffisant : ${fmt(bal)} W disponibles pour une mise de ${fmt(amount)} W : rien n’a été misé`, 'warn');
+        WMX.notify?.({ kind: 'warn', key: 'bid-balance', ms: 12000, title: 'Solde insuffisant',
+          text: `« ${cardTitle(a)} » demande ${fmt(amount)} W, il vous reste ${fmt(bal)} W. Vos mises en tête bloquent leurs W jusqu’à ce qu’on vous surenchérisse : l’extension réessaiera si le solde remonte.` });
+        if (opts.auto) S.autoTry[a.id] = Date.now() + 15000;
+        return undefined;
       }
       setNumber(input, amount); // exactement le minimum proposé par le jeu
       await sleep(200);
@@ -388,18 +415,27 @@
       const left = Math.max(0, Math.round(msLeft(a) / 1000));
       // Le jeu a-t-il REFUSÉ la mise (403/429, coupure) ? Alors on l'explique en rouge, au lieu d'un vague « non confirmée ».
       let refusal = '';
-      try { const n = f.contentDocument.documentElement.dataset.wmxNet || ''; if (/→ (403|429|réseau)/.test(n)) refusal = n.split(' ; ').filter((x) => /→ (403|429|réseau)/.test(x)).pop(); } catch (_) { /* cadre libéré */ }
+      let said = ''; // message du jeu (ex. « Solde insuffisant », « Mise trop basse »)
+      try {
+        const n = f.contentDocument.documentElement.dataset.wmxNet || '';
+        refusal = n.split(' ; ').filter((x) => /→ (4\d\d|5\d\d|réseau)/.test(x)).pop() || '';
+        const raw = (refusal.match(/«\s*(.*?)\s*»/) || [])[1] || '';
+        try { said = raw.startsWith('{') ? (JSON.parse(raw).error || raw) : raw; } catch (_) { said = raw; }
+      } catch (_) { /* cadre libéré */ }
+      const blocking = /→ (403|429|réseau)/.test(refusal); // vérification humaine, limite du site : alerte rouge
       if (!placed && refusal) {
-        const why = WMX.explainRefusal(refusal);
-        jr(`le jeu a refusé la mise : ${refusal}`, 'error');
-        WMX.notify?.({ kind: 'alert', key: 'game-bid-refused', title: `Mise refusée sur « ${cardTitle(a)} »`, text: `${why.title}. ${why.text}`, hint: why.hint });
+        if (blocking) {
+          const why = WMX.explainRefusal(refusal);
+          WMX.notify?.({ kind: 'alert', key: 'game-bid-refused', title: `Mise refusée sur « ${cardTitle(a)} »`, text: `${why.title}. ${why.text}`, hint: why.hint });
+        }
+        jr(`le jeu a refusé la mise${said ? ` : « ${said} »` : ''} [détail technique : ${refusal}]`, 'error');
       }
-      jr(won ? `mise de ${fmt(amount)} W placée, on mène (il reste ${left} s)` : placed ? `mise de ${fmt(amount)} W placée mais déjà surenchérie (il reste ${left} s)` : `mise de ${fmt(amount)} W non confirmée (solde insuffisant, refus du jeu ou surenchère à la même seconde)`, won || placed ? 'info' : 'warn');
+      if (won || placed || !refusal) jr(won ? `mise de ${fmt(amount)} W placée, on mène (il reste ${left} s)` : placed ? `mise de ${fmt(amount)} W placée mais déjà surenchérie (il reste ${left} s)` : `mise de ${fmt(amount)} W non confirmée : le jeu n’a pas répondu d’erreur, quelqu’un a sans doute surenchéri à la même seconde`, won || placed ? 'info' : 'warn');
       WMX.dismissNote?.(`bid:${a.id}:go`);
       WMX.toast(won
         ? `${opts.auto ? 'Mise automatique' : 'Mise'} de ${fmt(amount)} W placée sur « ${cardTitle(a)} » : vous menez.`
         : placed ? `Mise de ${fmt(amount)} W placée sur « ${cardTitle(a)} », mais déjà surenchérie.`
-          : refusal ? `Le jeu a refusé votre mise sur « ${cardTitle(a)} » (voir l’alerte rouge).`
+          : refusal ? `Le jeu a refusé votre mise sur « ${cardTitle(a)} »${said ? ` : « ${said} »` : ''}${blocking ? ' (voir l’alerte rouge)' : ''}.`
             : 'Votre mise n’est pas confirmée : soit vous n’avez pas assez de W, soit quelqu’un a surenchéri entre-temps. Regardez la page de l’enchère.', 7000, { key: `bid:${a.id}`, kind: won ? 'ok' : 'warn' });
       if (opts.auto) { // 3 échecs de suite : on arrête pour ne pas boucler
         S.autoFails[a.id] = placed ? 0 : (S.autoFails[a.id] || 0) + 1;

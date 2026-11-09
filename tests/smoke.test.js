@@ -114,14 +114,14 @@ test('révélation : couronnes seulement quand tous les prix sont connus', async
 });
 
 /** Page d'enchère factice (champ « Montant de la mise » + bouton « Miser ») injectée à la place du cadre invisible. */
-function fakeBidPages(w, min, stuck = []) {
+function fakeBidPages(w, min, stuck = [], balance = null) {
   const { JSDOM } = require('jsdom');
   const clicks = [];
   const orig = w.document.createElement.bind(w.document);
   w.document.createElement = (tag, ...rest) => {
     const n = orig(tag, ...rest);
     if (String(tag).toLowerCase() === 'iframe') {
-      const d = new JSDOM(`<body><input aria-label="Montant de la mise" type="number" min="${min}"><button>Miser</button></body>`).window.document;
+      const d = new JSDOM(`<body>${balance != null ? `<div>Votre solde : ${balance} wikibidous</div>` : ''}<input aria-label="Montant de la mise" type="number" min="${min}"><button>Miser</button></body>`).window.document;
       d.querySelector('button').addEventListener('click', () => clicks.push(d.querySelector('input').value));
       const blank = new JSDOM('<body></body>').window.document; // page qui ne se charge pas : jamais de champ de mise
       Object.defineProperty(n, 'contentDocument', { get: () => (stuck.some((s) => String(n.getAttribute('src') || '').includes(s)) ? blank : d) });
@@ -173,7 +173,7 @@ test('mise automatique : jamais si on mène déjà, et le plafond arrête la rè
 });
 
 /** Environnement « veille » : enchères détaillées par identifiant (GET /api/marketplace/{id}), aucune mise à moi, pages de mise factices (minimum `min`). */
-async function watchEnv({ rules = {}, auctions = [], min = 7, route = '', body = '', delay = 0, stuck = [] }) {
+async function watchEnv({ rules = {}, auctions = [], min = 7, route = '', body = '', delay = 0, stuck = [], balance = null }) {
   const byId = Object.fromEntries(auctions.map((a) => [a.id, a]));
   const payload = { auctions, selling: [], bidding: [], won: [{ winner_id: ME }], history: [] };
   const env = createEnv({ fetchImpl: async (u) => {
@@ -185,7 +185,7 @@ async function watchEnv({ rules = {}, auctions = [], min = 7, route = '', body =
   const { w, WMX } = env;
   if (route) w.history.pushState({}, '', route);
   if (body) w.document.body.innerHTML = body;
-  const clicks = fakeBidPages(w, min, stuck);
+  const clicks = fakeBidPages(w, min, stuck, balance);
   env.mem.autoBids = rules;
   WMX.settings.autoCapMode = 'abs'; WMX.settings.autoCapW = 1000; // plafond large par défaut (chaque test règle le sien au besoin)
   for (const f of WMX.features) await f.init?.();
@@ -427,6 +427,34 @@ test('bulle des enchères : l’interrupteur « au-dessus de mon plafond » est 
   WMX.auctions.refresh = WMX.auctions.refresh;
   w.document.querySelector('.wmx-dial').click(); await sleep(50); w.document.querySelector('.wmx-dial').click(); await sleep(150);
   assert.ok(w.document.querySelector('.wmx-auc-toggle'), 'toujours là quand il n’y a aucune enchère');
+  env.close();
+});
+
+test('mises automatiques : solde insuffisant affiché sur la page → aucun clic, raison claire (au lieu de « non confirmée »)', async () => {
+  const soon = new Date(Date.now() + 20000).toISOString();
+  const a = auction('bal1', { seller_id: 'other', current_bid: 8, current_bidder_id: 'rival', end_at: soon });
+  const rule = { mode: 'time', secs: 30, capMode: 'abs', cap: 1000, watch: true };
+  const { env, w, clicks } = await watchEnv({ auctions: [a], rules: { bal1: rule }, min: 70, balance: '5' });
+  await sleep(6500);
+  assert.deepEqual(clicks, [], 'aucune mise envoyée : le jeu la refuserait');
+  assert.match(w.document.body.textContent, /Solde insuffisant/);
+  assert.match(w.document.body.textContent, /il vous reste 5 W/);
+  env.close();
+});
+
+test('mises automatiques : une page qui ne se charge pas n’est pas retentée en boucle toutes les 4 s', async () => {
+  const soon = new Date(Date.now() + 25000).toISOString();
+  const a = auction('slow1', { seller_id: 'other', current_bid: 8, current_bidder_id: 'rival', end_at: soon });
+  const rule = { mode: 'time', secs: 30, capMode: 'abs', cap: 1000, watch: true };
+  const { env, WMX } = await watchEnv({ auctions: [a], rules: { slow1: rule }, stuck: ['slow1'] });
+  const errors = [];
+  const add = WMX.journal.add.bind(WMX.journal);
+  WMX.journal.add = (scope, text, level) => { if (/ne s’est pas chargée/.test(text)) errors.push(Date.now()); return add(scope, text, level); };
+  // fin d'enchère toujours repoussée de quelques secondes (comme quand le jeu prolonge une enchère misée dans les dernières secondes)
+  const push = setInterval(() => { a.end_at = new Date(Date.now() + 5000).toISOString(); }, 500);
+  await sleep(20000);
+  clearInterval(push);
+  assert.ok(errors.length >= 1 && errors.length <= 2, `au plus deux essais en 20 s (attente d'au moins 8 s, puis recul) : ${errors.length}`);
   env.close();
 });
 
