@@ -10,7 +10,7 @@ Site : Next.js (Turbopack), auth Supabase (`profiles.is_pro`). Endpoints vus dep
 | échanges | `GET /api/trades?active=1` |
 
 Raretés (images `/rarity/*.webp`) : `legendaire` L, `ultra_rare` UR, `super_rare` SR, `rare` R, `peu_commun` PC, `commun` C.
-Paquets : 5 cartes, 1 toutes les 10 min, 10 max en stock.
+Paquets : 5 cartes, 10 max en stock pour tous les comptes ; 1 toutes les 10 min (classique) ou 3 min (Pro, repéré à l’encadré « Pack PRO du jour » de la page Paquets).
 
 Les formes de réponse exactes sont collectées automatiquement par l'extension dans `chrome.storage.local.apiShapes`
 (voir `src/lib/sniffer.js`) ; les copier ici une fois observées. Endpoints d'ouverture de paquet et de mise en vente : **à découvrir**.

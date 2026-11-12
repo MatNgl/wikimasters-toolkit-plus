@@ -40,7 +40,7 @@
   // --- Lecture de l'état du jeu --------------------------------------------------------------
   const packInfo = () => {
     const m = document.body.innerText.match(/(\d+)\s*\/\s*(\d+)\s*paquets?/i);
-    return m ? { packs: Number(m[1]), max: Number(m[2]) } : { packs: 0, max: 10 };
+    return m ? { packs: Math.min(WMX.logic.PACK_MAX, Number(m[1])), max: WMX.logic.PACK_MAX } : { packs: 0, max: WMX.logic.PACK_MAX }; // stock maximum : 10 pour tous les comptes
   };
   const packsLeft = () => packInfo().packs;
   const nextPackIn = () => {
@@ -51,25 +51,24 @@
   const rand = (a, b) => a + Math.random() * Math.max(0, b - a);
   const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
-  // Durée de régénération d'un paquet, déduite du compteur « Prochain dans » à chaque redémarrage (10 min par défaut).
-  let regen = 600;
-  let lastNext = null;
-  const trackRegen = (n) => {
-    if (n == null) return;
-    if (lastNext != null && n > lastNext + 30 && n <= 3600) regen = n;
-    lastNext = n;
+  // Recharge d'un paquet : 3 min en compte Pro, 10 min en compte classique (stock maximum 10 dans les deux cas). Le type de compte est lu sur
+  // la page Paquets (encadré « Pack PRO du jour » = Pro ; proposition de passer Pro, ou encadré absent = classique) et mémorisé.
+  let account = 'classic';
+  const regenS = () => WMX.logic.packRegen(account);
+  let noProSeen = 0; // lectures de la page Paquets d'affilée sans encadré Pro : classique seulement après plusieurs (la page peut finir de s'afficher)
+  const readAccount = () => {
+    const found = WMX.logic.packAccount(document.body.innerText);
+    if (found === 'pro' || found === 'classic') noProSeen = 0;
+    let next = found;
+    if (!found && /paquets?\s+disponibles/i.test(document.body.innerText)) next = ++noProSeen >= 5 ? 'classic' : null;
+    if (next && next !== account) { account = next; WMX.store.set('packAccount', { type: account, t: Date.now() }); }
+    return account;
   };
 
-  /** Stock de paquets vu pour la dernière fois (mémorisé), avec la régénération écoulée depuis : estimation affichée hors de la page Paquets. */
+  /** Stock de paquets vu pour la dernière fois (mémorisé, avec l'heure exacte du prochain paquet) : estimation affichée hors de la page Paquets. */
   const estimateSeen = (s) => {
-    if (!s || !(Date.now() - s.t < 6 * 3600000)) return null;
-    const e = (Date.now() - s.t) / 1000;
-    let { packs, nextIn } = s;
-    if (packs < s.max && nextIn != null) {
-      if (e >= nextIn) { packs = Math.min(s.max, packs + 1 + Math.floor((e - nextIn) / regen)); nextIn = regen - ((e - nextIn) % regen); } else nextIn -= e;
-    }
-    if (packs >= s.max) nextIn = null;
-    return { packs, max: s.max, nextIn, est: true };
+    const e = WMX.logic.packEstimate(s, Date.now(), regenS());
+    return e && { ...e, est: true };
   };
 
   const setStatus = (t) => { if (ui.status) ui.status.textContent = t; };
@@ -288,7 +287,6 @@
       }
       const { packs, max } = packInfo();
       const nextIn = nextPackIn();
-      trackRegen(nextIn);
       const cfg = WMX.settings;
       const reserve = Math.min(cfg.reserve, max - 1);
       const wait = (state.nextAt - Date.now()) / 1000;
@@ -299,7 +297,7 @@
       if (packs >= max && cfg.fullStockOpen) { toOpen = ready; why = 'stock plein'; }
       else if (ready > 0) {
         if (wait <= 0) toOpen = ready;
-        else if (cfg.anticipate && nextIn != null && nextIn + (max - packs - 1) * regen <= wait + 60) { toOpen = ready; why = 'avant blocage du stock'; }
+        else if (cfg.anticipate && nextIn != null && nextIn + (max - packs - 1) * regenS() <= wait + 60) { toOpen = ready; why = 'avant blocage du stock'; }
       }
       if (toOpen > 0) {
         setStatus(why ? `Ouverture anticipée (${why})` : 'Ouverture…');
@@ -358,6 +356,7 @@
     Object.assign(WMX.settings, await WMX.store.get('wmxSettings', {}));
     const ap = await WMX.store.get('autoPrefs', { min: 5, max: 10 });
     const seenPacks = await WMX.store.get('packsSeen', null);
+    account = (await WMX.store.get('packAccount', null))?.type || seenPacks?.account || 'classic';
     WMX.store.set('packCooldown', null); // ancienne pause « apprise » (gardée d'une fois sur l'autre) : abandonnée, chaque ouverture repart de 1,5 s
     let panelPos = await WMX.store.get('panelPos', null); // position choisie du menu ouvert ({ x, y }) ou null : emplacement d'origine
     if (!(panelPos && Number.isFinite(panelPos.x) && Number.isFinite(panelPos.y))) panelPos = null;
@@ -393,6 +392,11 @@
     let seenSnap = seenPacks; // dernier relevé fait sur la page Paquets (mémorisé) : base de l'estimation sur les autres pages
     let lastPacks = estimateSeen(seenSnap);
     let lastSave = 0;
+    // Un relevé fait dans un autre onglet (page Paquets) vaut aussitôt ici.
+    WMX.onStorage?.((c) => {
+      if (c.packsSeen?.newValue && !/^\/pulls/.test(location.pathname)) seenSnap = c.packsSeen.newValue;
+      if (c.packAccount?.newValue?.type) account = c.packAccount.newValue.type;
+    });
     // Avertissement « stock plein » : l'ouverture auto ne s'exécute que sur la page Paquets. Quand le stock est plein (10/10) alors qu'on est
     // ailleurs, un message et un bouton ramènent sur la page Paquets, où l'ouverture reprend d'elle-même.
     const goPulls = () => window.dispatchEvent(new CustomEvent('wmx:navigate', { detail: '/pulls' }));
@@ -403,12 +407,22 @@
       el('button', { class: 'wmx-qclear', title: 'Masquer', 'aria-label': 'Masquer', onclick: () => { warnDismissed = true; warn.hidden = true; } }, '×'));
     const updateFab = () => {
       const onPulls = /^\/pulls/.test(location.pathname);
-      if (onPulls && document.body.innerText.match(/paquets?/i)) {
-        const i = packInfo();
-        lastPacks = { ...i, nextIn: nextPackIn() };
-        seenSnap = { packs: i.packs, max: i.max, nextIn: lastPacks.nextIn, t: Date.now() };
-        if (Date.now() - lastSave > 15000) { lastSave = Date.now(); WMX.store.set('packsSeen', seenSnap); }
-      } else lastPacks = estimateSeen(seenSnap); // hors de la page Paquets : estimation recalculée chaque seconde
+      const live = onPulls && document.body.innerText.match(/(\d+)\s*\/\s*(\d+)\s*paquets?/i); // compteur « N / 10 paquets » affiché (pas encore : on garde l'estimation)
+      if (live) {
+        const before = account;
+        readAccount();
+        const now = Date.now();
+        const packs = Math.min(WMX.logic.PACK_MAX, Number(live[1]));
+        const nextIn = nextPackIn();
+        // L'heure EXACTE du prochain paquet est mémorisée (et non un compte à rebours) : un rechargement ou un changement de page ne la décale pas.
+        // Compteur « Prochain dans » pas encore affiché : on garde l'heure déjà connue si le stock n'a pas changé.
+        const prev = estimateSeen(seenSnap);
+        const nextAt = packs >= WMX.logic.PACK_MAX ? null : nextIn != null ? now + nextIn * 1000 : (prev && prev.packs === packs ? prev.nextAt : null);
+        lastPacks = { packs, max: WMX.logic.PACK_MAX, nextIn: nextAt ? Math.max(0, (nextAt - now) / 1000) : null };
+        const changed = !seenSnap || seenSnap.packs !== packs || before !== account || (nextAt == null) !== (seenSnap.nextAt == null);
+        seenSnap = { packs, max: WMX.logic.PACK_MAX, nextAt, t: now, account };
+        if (changed || now - lastSave > 15000) { lastSave = now; WMX.store.set('packsSeen', seenSnap); } // tout de suite quand le stock change (ouverture, nouveau paquet)
+      } else lastPacks = estimateSeen(seenSnap) || (onPulls ? lastPacks : null); // hors de la page Paquets : estimation recalculée chaque seconde
       const full = !!lastPacks && lastPacks.packs >= lastPacks.max;
       if (!full) warnDismissed = false; // le prochain stock plein ramènera l'alerte
       warn.hidden = !(full && !onPulls && !warnDismissed);
@@ -416,13 +430,17 @@
       dialEl?.classList.toggle('full', full); // anneau rouge : le stock est plein
       if (!lastPacks) return;
       const { packs, max, nextIn, est } = lastPacks;
-      const frac = packs >= max ? 1 : Math.min(1, Math.max(0, 1 - (nextIn ?? regen) / regen));
+      const frac = packs >= max ? 1 : Math.min(1, Math.max(0, 1 - (nextIn ?? regenS()) / regenS()));
       const ring = ringSvg.querySelector('.wmx-dial-ring');
       ring.style.strokeDashoffset = String(RING * (1 - frac));
       ring.style.stroke = packs >= max ? '#ef4444' : '#2dd4a0';
       ui.fabTxt.lastChild.textContent = packs >= max ? 'plein' : 'paquets';
       ui.fabTxt.firstChild.textContent = `${est ? '~' : ''}${packs}/${max}`;
-      ui.fabTxt.title = (est ? 'Estimation d’après la dernière visite de la page Paquets. ' : '') + (packs >= max ? 'Stock plein : ouvrez vos paquets' : `Prochain paquet dans ${mmss(nextIn ?? 0)}`);
+      const fullAt = packs < max && nextIn != null ? Date.now() + (nextIn + (max - packs - 1) * regenS()) * 1000 : null;
+      const hhmm = (t) => new Date(t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+      ui.fabTxt.title = (est ? 'Estimation d’après la dernière visite de la page Paquets. ' : '')
+        + `Compte ${account === 'pro' ? 'Pro : 1 paquet toutes les 3 min' : 'classique : 1 paquet toutes les 10 min'}. `
+        + (packs >= max ? 'Stock plein : ouvrez vos paquets' : nextIn != null ? `Prochain paquet dans ${mmss(nextIn)} · stock plein vers ${hhmm(fullAt)}` : 'Heure du prochain paquet inconnue : passez sur la page Paquets');
     };
     setInterval(() => {
       if (!WMX.alive()) return;

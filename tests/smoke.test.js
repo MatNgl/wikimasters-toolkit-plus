@@ -1613,3 +1613,32 @@ test('notice du jeu (bandeau « trop de requêtes automatisées ») reprise en a
   assert.ok(a.querySelector('.wmx-note-x') && a.querySelector('.wmx-note-act'));
   env.close();
 });
+
+test('paquets : compte Pro repéré sur la page Paquets, heure exacte du prochain paquet mémorisée, estimation juste après un rechargement', async () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  const { w, mem, WMX } = env;
+  Object.defineProperty(w.HTMLElement.prototype, 'innerText', { configurable: true, get() { return this.textContent; } });
+  w.history.pushState({}, '', '/pulls');
+  const page = w.document.createElement('main');
+  page.innerHTML = '<h1>Ouvrir un paquet</h1><button>Ouvrir</button><div>4 / 10 paquets disponibles</div><p>Prochain dans 2:00</p><div>Pack PRO du jour</div><p>Déjà réclamé aujourd’hui (heure de ton appareil). Reviens demain !</p>';
+  w.document.body.append(page);
+  await WMX.features.find((x) => x.name === 'boosters').init();
+  await sleep(1300);
+  const seen = mem.packsSeen;
+  assert.equal(seen.account, 'pro', 'compte Pro repéré (encadré « Pack PRO du jour »)');
+  assert.equal(mem.packAccount.type, 'pro');
+  assert.equal(seen.packs, 4);
+  assert.ok(Math.abs(seen.nextAt - (Date.now() + 120_000)) < 3000, 'heure exacte du prochain paquet');
+  assert.match(w.document.querySelector('.wmx-fab-txt').title, /Compte Pro : 1 paquet toutes les 3 min/);
+  env.close();
+  // Rechargement sur une autre page, 2 min 10 s plus tard : le paquet attendu est arrivé, le suivant arrive 3 min après (Pro).
+  const env2 = createEnv({ fetchImpl: async () => json({}) });
+  env2.mem.packsSeen = { ...seen, nextAt: Date.now() - 10_000, t: Date.now() - 130_000 };
+  env2.mem.packAccount = { type: 'pro', t: Date.now() };
+  env2.w.history.pushState({}, '', '/collection');
+  await env2.WMX.features.find((x) => x.name === 'boosters').init();
+  await sleep(1300);
+  assert.equal(env2.w.document.querySelector('.wmx-fab-txt b').textContent, '~5/10');
+  assert.match(env2.w.document.querySelector('.wmx-fab-txt').title, /Prochain paquet dans 2:(4\d|50)/, 'le suivant dans ~2 min 50 (3 min après le précédent)');
+  env2.close();
+});

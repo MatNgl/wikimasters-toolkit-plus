@@ -285,6 +285,41 @@
       plan.cards.sort((x, y) => (rank[y.rarity] ?? 0) - (rank[x.rarity] ?? 0) || y.avg - x.avg || String(x.title).localeCompare(String(y.title)));
       return plan;
     },
+    /** Stock maximum de paquets, quel que soit le compte. */
+    PACK_MAX: 10,
+    /** Recharge d'un paquet (secondes) : 3 min en compte Pro, 10 min en compte classique. */
+    packRegen(account) { return account === 'pro' ? 180 : 600; },
+    /**
+     * Type de compte d'après le texte de la page Paquets : 'pro' (encadré « Pack PRO du jour », à ouvrir ou déjà réclamé, « Reviens demain »),
+     * 'classic' (proposition de passer Pro), ou null (rien de concluant : page pas encore affichée).
+     */
+    packAccount(text) {
+      const s = String(text || '');
+      if (/pack\s+pro\s+du\s+jour/i.test(s)) return 'pro';
+      if (/(passe[rz]?|deviens|devenir|abonne[rz]?|essaie[rz]?|découvre[rz]?)\b[^.\n]{0,40}\bpro\b/i.test(s)) return 'classic';
+      return null;
+    },
+    /**
+     * Stock de paquets estimé à `now` d'après un relevé de la page Paquets : snap = { packs, t, nextAt (date d'arrivée du prochain paquet, ms) }
+     * (ancien format accepté : nextIn en secondes au moment t). Les paquets suivants arrivent toutes les `regenS` secondes, jusqu'à 10.
+     * Rend { packs, max, nextIn (s, null si plein ou inconnu), nextAt, fullAt (date où le stock sera plein) } ou null sans relevé.
+     */
+    packEstimate(snap, now, regenS) {
+      if (!snap || !Number.isFinite(snap.t)) return null;
+      const max = L.PACK_MAX;
+      const step = Math.max(1, regenS || 600) * 1000;
+      let packs = Math.min(max, Math.max(0, Math.floor(Number(snap.packs) || 0)));
+      let nextAt = Number.isFinite(snap.nextAt) ? snap.nextAt : (Number.isFinite(snap.nextIn) ? snap.t + snap.nextIn * 1000 : null);
+      if (packs >= max) return { packs: max, max, nextIn: null, nextAt: null, fullAt: null };
+      if (nextAt == null) return { packs, max, nextIn: null, nextAt: null, fullAt: null };
+      if (now >= nextAt) {
+        const n = 1 + Math.floor((now - nextAt) / step);
+        packs = Math.min(max, packs + n);
+        nextAt += n * step;
+      }
+      if (packs >= max) return { packs: max, max, nextIn: null, nextAt: null, fullAt: null };
+      return { packs, max, nextIn: Math.max(0, (nextAt - now) / 1000), nextAt, fullAt: nextAt + (max - packs - 1) * step };
+    },
     /** Message clair pour un échec réseau ou un code HTTP. */
     friendlyError(status) {
       if (status === 0 || status == null) return 'Pas de connexion au jeu : vérifiez votre connexion internet.';

@@ -312,3 +312,26 @@ test('défausse par critères : raretés, étiquette, cartes étiquetées, doubl
   assert.equal(all.kept.busy, 1); assert.equal(all.kept.favorite, 1);
   assert.equal(L.discardPlan(items, { ...base, rarities: [] }).copies, 0, 'aucune rareté choisie : rien');
 });
+
+test('paquets : type de compte lu sur la page (Pack PRO du jour = Pro, proposition de passer Pro = classique)', () => {
+  assert.equal(L.packAccount('10 / 10 paquets disponibles Pack PRO du jour Déjà réclamé aujourd’hui (heure de ton appareil). Reviens demain !'), 'pro');
+  assert.equal(L.packAccount('Pack PRO du jour Ouvrir'), 'pro');
+  assert.equal(L.packAccount('3 / 10 paquets disponibles Passe à WikiMasters Pro pour plus de paquets'), 'classic');
+  assert.equal(L.packAccount('3 / 10 paquets disponibles'), null, 'rien de concluant tant que la page n’est pas finie');
+  assert.equal(L.packRegen('pro'), 180);
+  assert.equal(L.packRegen('classic'), 600);
+});
+
+test('paquets : stock estimé d’après l’heure exacte du prochain paquet (3 min en Pro, 10 min en classique, 10 au maximum)', () => {
+  const t = 1_000_000_000_000;
+  const snap = { packs: 3, t, nextAt: t + 60_000 };
+  assert.deepEqual(L.packEstimate(snap, t + 30_000, 600), { packs: 3, max: 10, nextIn: 30, nextAt: t + 60_000, fullAt: t + 60_000 + 6 * 600_000 });
+  assert.equal(L.packEstimate(snap, t + 60_000, 600).packs, 4, 'le paquet attendu est arrivé');
+  assert.equal(L.packEstimate(snap, t + 60_000, 600).nextIn, 600, 'le suivant dans 10 min');
+  assert.equal(L.packEstimate(snap, t + 60_000 + 3 * 180_000, 180).packs, 7, 'Pro : un paquet toutes les 3 min');
+  assert.equal(L.packEstimate(snap, t + 5 * 3600_000, 600).packs, 10, 'jamais plus de 10, même longtemps après');
+  assert.equal(L.packEstimate(snap, t + 5 * 3600_000, 600).nextIn, null, 'stock plein : plus de compte à rebours');
+  assert.equal(L.packEstimate({ packs: 3, t, nextIn: 100 }, t + 250_000, 600).packs, 4, 'ancien relevé (compte à rebours) encore lu');
+  assert.equal(L.packEstimate({ packs: 12, t, nextAt: null }, t, 600).packs, 10);
+  assert.equal(L.packEstimate(null, t, 600), null);
+});
