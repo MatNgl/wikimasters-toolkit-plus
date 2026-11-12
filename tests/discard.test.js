@@ -14,9 +14,9 @@ const RAR = ['L', 'UR', 'SR', 'R', 'PC', 'C'];
  * jamais défaussées, message « N cartes défaussées (+N wikibidous). » qui reste affiché. `failAfterDiscard` : la liste échoue à se recharger une fois
  * (« Le chargement de la collection a échoué ») ; rechoisir une vue la relit.
  */
-function fakeGame(w, cards, { perPage = 50, failAfterDiscard = false, lateReload = 0 } = {}) {
+function fakeGame(w, cards, { perPage = 50, failAfterDiscard = false, lateReload = 0, blockTimes = 0 } = {}) {
   const d = w.document;
-  const st = { selecting: false, sel: new Set(), page: 0, list: cards.map((c, i) => ({ ...c, uid: i })), discarded: [], dialogs: 0, view: 'all', rar: new Set(), menuOpen: false, banner: '', fail: false, lie: false };
+  const st = { blocks: 0, selecting: false, sel: new Set(), page: 0, list: cards.map((c, i) => ({ ...c, uid: i })), discarded: [], dialogs: 0, view: 'all', rar: new Set(), menuOpen: false, banner: '', fail: false, lie: false };
   const main = d.createElement('main');
   d.body.append(main);
   const button = (text, on, attrs = {}) => { const b = d.createElement('button'); b.textContent = text; for (const [k, v] of Object.entries(attrs)) b.setAttribute(k, v); b.addEventListener('click', on); return b; };
@@ -81,6 +81,15 @@ function fakeGame(w, cards, { perPage = 50, failAfterDiscard = false, lateReload
     const h3 = d.createElement('h3'); h3.textContent = `Défausser ${chosen.length} carte${chosen.length > 1 ? 's' : ''} ?`;
     const p = d.createElement('p'); p.textContent = `${Object.entries(by).map(([r, n]) => `${n} × ${r}`).join(' · ')}.`;
     box.append(h3, p, button('Annuler', () => back.remove()), button('Défausser', () => {
+      // blockTimes : le jeu refuse les N premières défausses (« automatisation non autorisée »), comme le vrai jeu (réponse 403 automation_limit + message).
+      if (st.blocks < blockTimes) {
+        st.blocks += 1;
+        back.remove();
+        st.banner = 'Trop de requêtes automatisées. L’automatisation n’est pas autorisée — voir le règlement.';
+        render();
+        setTimeout(() => { if (/automatisées/.test(st.banner)) { st.banner = ''; render(); } }, 800);
+        return;
+      }
       st.discarded.push(...chosen.map((c) => c.title));
       for (const c of chosen) c.count = (c.count || 1) - 1;
       // lateReload : comme le vrai jeu, la liste n'est relue qu'un peu plus tard (les cartes défaussées restent affichées, puis tout remonte d'un cran).
@@ -330,6 +339,27 @@ test('défausse : la liste du jeu relue en retard après une défausse (cartes q
   assert.equal(game.discarded.length, 27, `les 27 cartes sans image sont défaussées : ${game.discarded.length}`);
   assert.ok(!game.discarded.some((t) => /Gardée/.test(t)), 'aucune carte avec image');
   assert.doesNotMatch(w.document.querySelector('.wmx-dc-run')?.textContent || '', /impossible de cocher|arrêtée/);
+  env.close();
+});
+
+test('défausse : blocage « automatisation » du jeu → pause (message), nouvel essai, encore une pause si besoin, puis la défausse aboutit', async () => {
+  const cards = Array.from({ length: 12 }, (_, i) => ({ title: `Commune ${i}`, rarity: 'C' }));
+  const { env, w, WMX, game } = setup(cards, { blockTimes: 2 });
+  await WMX.features.find((f) => f.name === 'discard').init();
+  WMX.discard.blockWait = 1; // 1 s au lieu de 30 dans le test
+  const texts = [];
+  const spy = setInterval(() => { const t = w.document.querySelector('.wmx-dc-run')?.textContent || ''; if (t && texts[texts.length - 1] !== t) texts.push(t); }, 100);
+  const p = { rarities: ['C'], keepUnpriced: true };
+  await WMX.discard.start(WMX.discard.plan(p), { dry: false, visible: true, prefs: p });
+  clearInterval(spy);
+  assert.equal(game.blocks, 2, 'le jeu a refusé deux fois');
+  assert.equal(game.discarded.length, 12, 'puis la défausse a abouti, sans rien perdre');
+  assert.ok(texts.some((t) => /le jeu bloque la défausse.*nouvel essai dans/.test(t)), 'message de pause avec compte à rebours');
+  assert.ok(texts.some((t) => /2e essai/.test(t)), 'deuxième pause quand le jeu refuse encore');
+  assert.match(w.document.querySelector('.wmx-dc-run').textContent, /12 exemplaires défaussés/);
+  const journal = (await WMX.journal.list()).map((e) => e.text).join(' | ');
+  assert.match(journal, /le jeu bloque la défausse/);
+  assert.match(journal, /blocage levé après 2 pause/);
   env.close();
 });
 

@@ -3,10 +3,22 @@
 // (« Annuler cette enchère et récupérer votre carte ? ») y répondent « oui » d'elles-mêmes. Il note aussi, pour le journal,
 // la réponse du serveur aux requêtes d'écriture du cadre (la mise en vente) : le script de l'extension la lit dans
 // <html data-wmx-net>. Rien ne change dans la page principale, ni dans les autres cadres.
+// Dans la page Collection invisible de la défausse (« #wmx-discard »), il ne répond à aucune confirmation : il note seulement le blocage
+// « automatisation » du jeu (réponse 403 automation_limit, de n'importe quelle requête) dans <html data-wmx-blocked> (date), pour que la défausse
+// se mette en pause puis réessaie (discard.js).
 (() => {
-  if (window === window.top || !location.hash.includes('wmx-auto')) return;
-  window.confirm = () => true;
-  window.alert = () => {};
+  const auto = location.hash.includes('wmx-auto');
+  if (window === window.top || (!auto && !location.hash.includes('wmx-discard'))) return;
+  if (auto) {
+    window.confirm = () => true;
+    window.alert = () => {};
+  }
+  const watchBlock = (res) => {
+    if (res && res.status === 403) {
+      res.clone().text().then((t) => { if (/automation_limit/.test(t)) { try { document.documentElement.dataset.wmxBlocked = String(Date.now()); } catch (_) { /* document pas prêt */ } } }).catch(() => {});
+    }
+    return res;
+  };
   const log = [];
   const note = (line) => {
     log.push(line);
@@ -19,11 +31,12 @@
   const realFetch = window.fetch;
   window.fetch = function wmxFetch(input, init) {
     const method = String((init && init.method) || (input && input.method) || 'GET').toUpperCase();
-    if (method === 'GET') return realFetch.apply(this, arguments);
+    if (method === 'GET') return realFetch.apply(this, arguments).then(watchBlock);
     let path = '';
     try { path = new URL(typeof input === 'string' ? input : input.url, location.href).pathname; } catch (_) { /* adresse illisible */ }
     return realFetch.apply(this, arguments).then(
       (res) => {
+        watchBlock(res);
         note(`${method} ${path} → ${res.status}`);
         if (!res.ok) { // un refus : on garde de quoi savoir QUI refuse (le jeu, ou un pare-feu devant lui) et pourquoi
           const mine = log[log.length - 1];

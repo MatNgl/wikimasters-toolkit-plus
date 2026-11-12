@@ -317,8 +317,8 @@
    * Filtres du jeu : raretés choisies (toutes : aucun bouton actif) et UNE vue d'étiquette (« Toutes les étiquettes », « Sans étiquette » ou « #NOM »).
    * Choisir l'option du menu relance aussi la lecture de la liste (utile après « le chargement a échoué »). Rend un message d'erreur, ou ''.
    */
-  async function applyFilters(rarities, view) {
-    for (let attempt = 0; attempt < 3; attempt++) {
+  async function applyFilters(rarities, view, force = false) {
+    for (let attempt = force ? 1 : 0; attempt < 3; attempt++) { // force : la liste est relue même si les filtres sont déjà les bons
       const menu = await waitFor(NATIVE.tagMenu, 15000);
       if (!menu) return 'menu « Filtrer par étiquette » du jeu introuvable';
       const want = (o) => { const t = norm(o.textContent); return view.kind === 'all' ? /^Toutes les étiquettes$/i.test(t) : view.kind === 'none' ? /^Sans étiquette$/i.test(t) : tagKey(t.replace(/\s*\(\d[\d\s ]*\)\s*$/, '')) === tagKey(view.tag); };
@@ -427,6 +427,15 @@
     };
   }
   /** Vérification humaine du jeu dans la page invisible : on la montre au centre de l'écran et on attend qu'elle soit faite. */
+  // ---- Blocage « automatisation » du jeu ----
+  // Le jeu peut refuser un temps les actions répétées : réponse 403 { code: "automation_limit" }, message « Trop de requêtes automatisées.
+  // L'automatisation n'est pas autorisée ». Trois signaux : la réponse vue dans la page principale (page-hook.js, mode visible), la même réponse notée
+  // dans la page invisible (frame-hook.js : <html data-wmx-blocked>, mode arrière-plan), et le message affiché par le jeu.
+  const BLOCK_RE = /requêtes automatisées|automatisation n.est pas autoris/i;
+  const blockWaitS = () => WMX.discard?.blockWait || 30; // 30 s entre deux essais (réglable pour les tests)
+  let blockSeen = 0;
+  WMX.onApi?.(({ status, data }) => { if (status === 403 && data?.code === 'automation_limit') blockSeen = Date.now(); });
+  const blockedSince = (t) => blockSeen >= t || Number(D.documentElement?.dataset?.wmxBlocked || 0) >= t || BLOCK_RE.test(pageText());
   async function humanGate() {
     if (!run.frame || !/vérification rapide/i.test(pageText())) return true;
     run.frame.classList.add('wmx-on', 'wmx-human');
@@ -500,13 +509,59 @@
       }
       return applyFilters(rarities, view);
     }
+    // Blocage « automatisation » : pause de 30 s (message clair), puis la liste est relue et on réessaie ; encore 30 s si le jeu refuse toujours,
+    // et ainsi de suite jusqu'à ce qu'il accepte (ou « Arrêter »). Rien n'est perdu : la page est relue, les cartes déjà parties n'y sont plus.
+    let blockClear = Date.now();
+    let blockRounds = 0;
+    const blocked = () => blockedSince(blockClear);
+    async function waitBlock(view) {
+      if (!blockRounds) {
+        WMX.journal?.add('Défausse', `le jeu bloque la défausse (« automatisation non autorisée ») : pause, nouvel essai toutes les ${blockWaitS()} s`, 'warn');
+        WMX.notify?.({ kind: 'warn', key: 'discard-block', sticky: true, title: 'Le jeu bloque la défausse',
+          text: `WikiMasters refuse pour l’instant les actions répétées (« automatisation non autorisée »). La défausse est en pause et réessaie toutes les ${blockWaitS()} s, jusqu’à ce que le jeu l’accepte. « Arrêter » l’interrompt.` });
+      }
+      while (!run.stop) {
+        blockRounds += 1;
+        const dlgOpen = NATIVE.dialog(); if (dlgOpen) cancelDialog(dlgOpen);
+        for (let s = blockWaitS(); s > 0 && !run.stop; s--) {
+          showRun(`le jeu bloque la défausse (« automatisation non autorisée ») : nouvel essai dans ${s} s${blockRounds > 1 ? ` (${blockRounds}e essai)` : ''}. ${done(stats.copies)} jusqu’ici.`, 'warn');
+          await sleep(1000);
+        }
+        if (run.stop) break;
+        const t = Date.now();
+        blockClear = t; blockSeen = 0;
+        try { delete D.documentElement.dataset.wmxBlocked; } catch (_) { /* page en cours de rechargement */ }
+        showRun('nouvel essai : relecture de la liste du jeu…', 'warn');
+        if (ctx?.reload) { const r = await ctx.reload(); if (r) { D = r.d; W = r.w; } }
+        const e = await applyFilters(rarities, view, true);
+        await settled();
+        if (!e && !blockedSince(t)) return true; // la liste se relit : on retente (le blocage n'est levé qu'à la prochaine défausse réussie)
+      }
+      WMX.dismissNote?.('discard-block');
+      return false;
+    }
+    /** Une défausse a réussi après une ou plusieurs pauses : le blocage est levé, on le dit. */
+    function blockLifted() {
+      if (!blockRounds) return;
+      WMX.dismissNote?.('discard-block');
+      WMX.notify?.({ kind: 'ok', key: 'discard-block-ok', ms: 6000, title: 'La défausse reprend', text: `Le jeu accepte de nouveau la défausse (après ${blockRounds} pause${blockRounds > 1 ? 's' : ''} de ${blockWaitS()} s).` });
+      WMX.journal?.add('Défausse', `blocage levé après ${blockRounds} pause(s) de ${blockWaitS()} s : la défausse reprend`);
+      blockRounds = 0;
+    }
+    /** Un échec dû au blocage du jeu : on attend et on réessaie (vrai) ; sinon (ou « Arrêter ») la défausse s'arrête avec `msg` (faux). */
+    async function orRetry(view, msg) {
+      if (blocked() && (await waitBlock(view))) return true;
+      await abort(run.stop ? `arrêtée à votre demande : ${done(stats.copies)}.` : msg);
+      return false;
+    }
     try {
       WMX.journal?.add('Défausse', `${label} lancée : ${plural(pl.copies, 'exemplaire')} (${byRarText(pl.byRar)})${run.frame ? ', en arrière-plan' : ''}`);
       for (let phase = 0; phase < 2; phase++) {
       for (const view of viewsOf(p)) {
         if (!remaining()) break;
         showRun(`filtres du jeu : ${rarities.join(', ')} · ${view.label}…`);
-        const err = await applyFilters(rarities, view);
+        let err = await applyFilters(rarities, view);
+        if (err && blocked() && (await waitBlock(view))) err = ''; // le jeu bloquait : la pause est passée, la liste est relue
         if (err) return abort(`${err}. Rien n’a été défaussé${stats.copies ? ' de plus' : ''}.`);
         let page = 1;
         let sweeps = 0;
@@ -547,7 +602,8 @@
           if (!remaining()) break;
           if (run.frame && !run.frame.isConnected) return finish(`la page en arrière-plan a été fermée : ${done(stats.copies)}.`, 'warn');
           if (!(await humanGate())) return abort('la vérification du jeu n’a pas été faite : arrêtée.');
-          if (NATIVE.loadError()) { const e = await recover(view); if (e) return abort(`${e}. ${done(stats.copies)}.`); }
+          if (blocked()) { if (await waitBlock(view)) continue; return abort(`arrêtée à votre demande : ${done(stats.copies)}.`); } // le jeu bloque : pause de 30 s puis nouvel essai, autant de fois que nécessaire
+          if (NATIVE.loadError()) { const e = await recover(view); if (e) { if (await orRetry(view, `${e}. ${done(stats.copies)}.`)) continue; return; } }
           run.prog.done = stats.copies;
           showRun(`${view.label} · page ${page} : lecture des cartes…`);
           const seen = await scanPage();
@@ -562,7 +618,7 @@
           const usedAll = !!all && targets.length > seen.length / 2;
           if (usedAll) {
             all.click();
-            if (!(await waitFor(() => NATIVE.count() >= targets.length, 6000))) return abort(`page ${page} : « Tout sélectionner » n’a pas coché les cartes. Rien n’a été défaussé sur cette page.`);
+            if (!(await waitFor(() => NATIVE.count() >= targets.length, 6000))) { if (await orRetry(view, `page ${page} : « Tout sélectionner » n’a pas coché les cartes. Rien n’a été défaussé sur cette page.`)) continue; return; }
             for (const s of seen) {
               const k = `${s.title}|${s.rarity}`;
               if (tkeys.has(k)) continue;
@@ -585,16 +641,16 @@
           // Compteur : les cartes prévues, plus éventuellement les favorites laissées cochées (le jeu les omet ; la fenêtre, vérifiée ensuite, le confirme).
           const n = NATIVE.count();
           const favs = usedAll ? seen.filter((x) => x.item?.starred && !tkeys.has(`${x.title}|${x.rarity}`)).length : 0;
-          if (n !== targets.length && n !== targets.length + favs) return abort(`page ${page} : le jeu compte ${n ?? '?'} carte(s) sélectionnée(s) au lieu de ${targets.length}${favs ? ` (ou ${targets.length + favs} avec les favorites)` : ''}. Rien n’a été défaussé sur cette page.`);
+          if (n !== targets.length && n !== targets.length + favs) { if (await orRetry(view, `page ${page} : le jeu compte ${n ?? '?'} carte(s) sélectionnée(s) au lieu de ${targets.length}${favs ? ` (ou ${targets.length + favs} avec les favorites)` : ''}. Rien n’a été défaussé sur cette page.`)) continue; return; }
           // Fenêtre du jeu : une carte cochée = UN exemplaire ; les nombres par rareté doivent être exactement les cartes prévues.
           const want = {};
           for (const t of targets) want[t.rarity] = (want[t.rarity] || 0) + 1;
           const db = NATIVE.discard();
-          if (!db) return abort(`page ${page} : bouton « Défausser » du jeu introuvable. Rien n’a été défaussé.`);
+          if (!db) { if (await orRetry(view, `page ${page} : bouton « Défausser » du jeu introuvable. Rien n’a été défaussé.`)) continue; return; }
           const reward = Number((/\+\s*(\d[\d\s ]*)/.exec(norm(db.textContent)) || [])[1]?.replace(/\D/g, '') || 0);
           db.click();
           const dlg = await waitFor(NATIVE.dialog, 6000);
-          if (!dlg) return abort(`page ${page} : la fenêtre de défausse du jeu ne s’est pas ouverte. Rien n’a été défaussé.`);
+          if (!dlg) { if (await orRetry(view, `page ${page} : la fenêtre de défausse du jeu ne s’est pas ouverte. Rien n’a été défaussé.`)) continue; return; }
           const got = NATIVE.dialogCounts(dlg);
           if (!R.every((r) => (got[r] || 0) === (want[r] || 0))) {
             cancelDialog(dlg);
@@ -616,11 +672,15 @@
           showRun(`${view.label} · page ${page} : défausse de ${byRarText(want)}…`);
           confirm.click();
           const expect = new RegExp(`^${targets.length} cartes? défaussées?`, 'i');
-          const ok = await waitFor(() => { if (NATIVE.dialog()) return null; const b = NATIVE.banner(); return b && expect.test(norm(b.textContent)) && (b !== oldBanner || norm(b.textContent) !== oldText) ? b : null; }, 20000, 200)
+          const ok = await waitFor(() => { if (blocked()) return 'blocked'; if (NATIVE.dialog()) return null; const b = NATIVE.banner(); return b && expect.test(norm(b.textContent)) && (b !== oldBanner || norm(b.textContent) !== oldText) ? b : null; }, 20000, 200)
             || (await waitFor(() => !NATIVE.dialog() && NATIVE.banner() && expect.test(norm(NATIVE.banner().textContent)), 2500, 200)); // même message qu'avant (même nombre) : la fenêtre fermée suffit
-          if (!ok) return finish(`page ${page} : le jeu n’a pas confirmé la défausse (vérifiez votre collection). ${done(stats.copies)} avant.`, 'warn');
+          if (ok === 'blocked' || !ok) { // refus « automatisation » : rien n'a été défaussé sur cette page ; pause, puis la page est relue et recochée
+            if (blocked()) { if (await waitBlock(view)) continue; return abort(`arrêtée à votre demande : ${done(stats.copies)}.`); }
+            return finish(`page ${page} : le jeu n’a pas confirmé la défausse (vérifiez votre collection). ${done(stats.copies)} avant.`, 'warn');
+          }
           stats.copies += targets.length;
           stats.reward += reward; stats.rounds += 1;
+          blockLifted();
           run.prog.done = stats.copies;
           for (const t of targets) {
             const c = left.get(`${t.title}|${t.rarity}`);
@@ -629,9 +689,9 @@
           }
           // La liste du jeu se relit (ou échoue) : on attend qu'elle soit prête, et on la relit nous-mêmes si besoin.
           await sleep(1200);
-          if (!(await waitFor(listReady, 6000, 200))) { const e = await recover(view); if (e) return abort(`${e}. ${done(stats.copies)}.`); }
+          if (!(await waitFor(listReady, 6000, 200))) { const e = await recover(view); if (e) { if (await orRetry(view, `${e}. ${done(stats.copies)}.`)) continue; return; } }
           await settled(); // la liste du jeu peut encore se relire (cartes remontées) : on la laisse se poser avant de lire ou de changer de page
-          if (NATIVE.count() == null) { const e = await applyFilters(rarities, view); if (e) return abort(`${e}. ${done(stats.copies)}.`); }
+          if (NATIVE.count() == null) { const e = await applyFilters(rarities, view); if (e) { if (await orRetry(view, `${e}. ${done(stats.copies)}.`)) continue; return; } }
           // Cartes gardées (favorites, options) restées sur cette page : à partir de 30, on passe à la suivante.
           if (seen.length - targets.length >= KEEP_MAX) { showRun(`page ${page} : ${seen.length - targets.length} cartes gardées sur la page, passage à la suivante…`); if (!(await advance())) break; }
         }
