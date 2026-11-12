@@ -14,6 +14,7 @@ function fakeGame(w, cards, { perPage = 50, discardAllCopies = true } = {}) {
   d.body.append(main);
   const button = (text, on) => { const b = d.createElement('button'); b.textContent = text; b.addEventListener('click', on); return b; };
   function render() {
+    st.page = Math.max(0, Math.min(st.page, Math.ceil(st.list.length / perPage) - 1)); // comme le jeu : jamais au-delà de la dernière page
     main.replaceChildren();
     const bar = d.createElement('div');
     if (!st.selecting) bar.append(button('Sélectionner', () => { st.selecting = true; st.sel.clear(); render(); }));
@@ -40,7 +41,7 @@ function fakeGame(w, cards, { perPage = 50, discardAllCopies = true } = {}) {
   const pageCards = () => st.list.slice(st.page * perPage, (st.page + 1) * perPage);
   function openDialog() {
     st.dialogs += 1;
-    const chosen = st.list.filter((c) => st.sel.has(c.uid));
+    const chosen = st.list.filter((c) => st.sel.has(c.uid) && !c.starred); // comme le jeu : une favorite sélectionnée n'est jamais défaussée
     const by = {};
     for (const c of chosen) by[c.rarity] = (by[c.rarity] || 0) + (discardAllCopies ? c.count : 1);
     const dlg = d.createElement('div'); dlg.setAttribute('role', 'dialog');
@@ -123,12 +124,12 @@ test('défausse : essai à blanc (sélection vérifiée, rien de défaussé) pui
   await WMX.features.find((f) => f.name === 'discard').init();
   const pl = WMX.discard.plan({ rarities: ['C'], tag: '', includeTagged: false, keepUnpriced: true, protectSale: true });
   assert.equal(pl.copies, 35);
-  await WMX.discard.start(pl, { dry: true });
+  await WMX.discard.start(pl, { dry: true, visible: true });
   assert.equal(game.discarded.length, 0, 'essai à blanc : rien n’est défaussé');
   assert.ok(game.dialogs >= 1, 'la fenêtre de défausse du jeu a été ouverte et vérifiée : ' + w.document.querySelector('.wmx-dc-run')?.textContent);
   assert.match(w.document.querySelector('.wmx-dc-run').textContent, /essai réussi : 35 exemplaires/);
   assert.equal(game.selecting, false, 'la sélection du jeu est refermée');
-  await WMX.discard.start(pl, { dry: false });
+  await WMX.discard.start(pl, { dry: false, visible: true });
   assert.equal(game.discarded.length, 35, 'les 35 communes sans étiquette sont défaussées');
   assert.ok(!game.discarded.includes('Commune favorite') && !game.discarded.includes('Commune animaux'), 'jamais la favorite ni l’étiquetée');
   assert.ok(game.list.some((c) => c.rarity === 'PC'), 'les autres raretés restent');
@@ -142,8 +143,52 @@ test('défausse : un nombre du jeu qui ne correspond pas arrête tout (doublons 
   await WMX.features.find((f) => f.name === 'discard').init();
   const pl = WMX.discard.plan({ rarities: ['C'], keepOne: true, keepUnpriced: true });
   assert.equal(pl.copies, 2, 'garder 1 exemplaire : 2 des 3 doubles');
-  await WMX.discard.start(pl, { dry: false });
+  await WMX.discard.start(pl, { dry: false, visible: true });
   assert.equal(game.discarded.length, 0, 'le jeu aurait défaussé les 3 exemplaires : rien n’est défaussé');
   assert.match(w.document.querySelector('.wmx-dc-run').textContent, /3 × C au lieu de 2 × C.*Garder 1 exemplaire/);
+  env.close();
+});
+
+test('défausse en arrière-plan : la page invisible est pilotée, la progression « N / total » s’affiche, la page est retirée à la fin', async () => {
+  const { env, w, WMX, game } = setup(cardsA());
+  await WMX.features.find((f) => f.name === 'discard').init();
+  let removed = false;
+  WMX.discard.frameFactory = async () => ({ d: w.document, w, frame: null, remove: () => { removed = true; } }); // la fausse page joue la page invisible
+  w.history.pushState({}, '', '/marketplace'); // l'utilisateur est ailleurs : l'arrière-plan n'a pas besoin de la page Collection
+  const pl = WMX.discard.plan({ rarities: ['C'], keepUnpriced: true });
+  const run = WMX.discard.start(pl, { dry: false });
+  await sleep(1500);
+  assert.match(w.document.querySelector('.wmx-dc-run-num').textContent, /\/ 35 exemplaires défaussés/, 'progression sur le total repéré');
+  await run;
+  assert.equal(game.discarded.length, 35);
+  assert.match(w.document.querySelector('.wmx-dc-run-num').textContent, /^35 \/ 35/);
+  await sleep(1700);
+  assert.ok(removed, 'la page invisible est retirée');
+  env.close();
+});
+
+test('défausse : mode visible refusé hors de la page Collection (rien n’est lancé)', async () => {
+  const { env, w, WMX, game } = setup(cardsA());
+  w.history.pushState({}, '', '/marketplace');
+  const pl = WMX.discard.plan({ rarities: ['C'], keepUnpriced: true });
+  await WMX.discard.start(pl, { dry: false, visible: true });
+  assert.equal(game.discarded.length, 0);
+  assert.equal(WMX.discard.isRunning(), false);
+  env.close();
+});
+
+test('défausse : les favorites cochées par « Tout sélectionner » ne sont pas décochées (le jeu les omet), et 30 cartes gardées sur une page font passer à la suivante', async () => {
+  const cards = [
+    ...Array.from({ length: 35 }, (_, i) => ({ title: `Favorite ${i}`, rarity: 'C', starred: true })),
+    ...Array.from({ length: 60 }, (_, i) => ({ title: `Commune ${i}`, rarity: 'C' })),
+  ];
+  const { env, WMX, game } = setup(cards);
+  await WMX.features.find((f) => f.name === 'discard').init();
+  const pl = WMX.discard.plan({ rarities: ['C'], keepUnpriced: true });
+  assert.equal(pl.copies, 60);
+  await WMX.discard.start(pl, { dry: false, visible: true });
+  assert.equal(game.discarded.length, 60, 'toutes les communes sont défaussées, y compris celles remontées en page 1');
+  assert.ok(!game.discarded.some((t) => /Favorite/.test(t)), 'aucune favorite');
+  assert.equal(game.list.length, 35, 'il ne reste que les favorites');
   env.close();
 });
