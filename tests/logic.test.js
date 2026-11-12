@@ -286,3 +286,29 @@ test('assistant de vente : liste de raretés stricte (une rareté à la fois, ca
   assert.equal(p.current, null, 'plus aucune L : rien en cours');
   assert.deepEqual(p.eligible, []);
 });
+
+test('défausse par critères : raretés, étiquette, cartes étiquetées, doublons, seuil, prix inconnu, protections', () => {
+  const card = (id, rarity, over = {}) => ({ card_id: id, title: id, rarity, count: 1, starred: false, image: 'x.jpg', tags: [], ...over });
+  const items = [
+    card('c1', 'C'), card('c2', 'C', { count: 3 }), card('c3', 'C', { tags: [{ name: 'animaux' }] }), card('c4', 'C', { starred: true }),
+    card('c5', 'C', { image: '' }), card('c6', 'C'), card('c7', 'C', { tags: [{ name: 'VENTE' }] }), card('p1', 'PC'), card('u1', 'UR'),
+  ];
+  const avg = { c6: 35, c1: 2, c2: 3, c5: 1, c3: 4, c7: 50 };
+  const base = { rarities: ['C'], avg: (it) => avg[it.card_id] || 0, priced: (it) => it.card_id !== 'c1' };
+  const ids = (o) => L.discardPlan(items, { ...base, ...o }).cards.map((c) => c.card_id).sort().join(',');
+  assert.equal(ids({ unpriced: 'discard' }), 'c1,c2,c5,c6', 'C sans étiquette, jamais la favorite');
+  assert.equal(ids({}), 'c2,c5,c6', 'par défaut, une carte au prix jamais chargé est gardée');
+  assert.equal(ids({ unpriced: 'discard', includeTagged: true }), 'c1,c2,c3,c5,c6,c7', 'étiquetées comprises');
+  assert.equal(ids({ unpriced: 'discard', includeTagged: true, protectTags: ['vente'] }), 'c1,c2,c3,c5,c6', 'étiquette protégée (casse sans importance)');
+  assert.equal(ids({ unpriced: 'discard', tag: 'animaux' }), 'c3', 'une étiquette précise');
+  assert.equal(ids({ unpriced: 'discard', maxAvg: 20 }), 'c1,c2,c5', 'seuil : la carte à 35 W est gardée');
+  assert.equal(ids({ unpriced: 'discard', onlyNoImage: true }), 'c5', 'seulement sans image');
+  const one = L.discardPlan(items, { ...base, unpriced: 'discard', keepOne: true });
+  assert.deepEqual(one.cards.map((c) => [c.card_id, c.copies]), [['c2', 2]], 'garder 1 exemplaire : seuls les doublons, un exemplaire reste');
+  assert.equal(one.kept.single, 3, 'c1, c5 et c6 n’ont qu’un exemplaire');
+  const all = L.discardPlan(items, { ...base, unpriced: 'discard', busy: new Set(['c6']) });
+  assert.equal(all.copies, 5, 'c1 + 3×c2 + c5 (c6 en vente)');
+  assert.deepEqual(all.byRar, { C: 5 });
+  assert.equal(all.kept.busy, 1); assert.equal(all.kept.favorite, 1);
+  assert.equal(L.discardPlan(items, { ...base, rarities: [] }).copies, 0, 'aucune rareté choisie : rien');
+});

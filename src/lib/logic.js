@@ -240,6 +240,51 @@
       plan.eligible.sort((a, b) => prank(a) - prank(b) || by(a, b) || String(a.title).localeCompare(String(b.title)));
       return plan;
     },
+    /**
+     * Défausse par critères : quelles cartes (et combien d'exemplaires) défausser.
+     * items : cartes de l'inventaire { card_id, title, rarity, count, starred, image, tags: [{ name }] }.
+     * o : {
+     *   rarities: ['C', 'PC'] (vide : aucune carte — il faut choisir), tag: '' (toutes) | nom d'étiquette (seulement les cartes qui la portent),
+     *   includeTagged: false (sans étiquette précise : les cartes étiquetées sont gardées), keepOne: garder 1 exemplaire (seulement les doublons),
+     *   maxAvg: ne jamais défausser une carte dont la moyenne atteint ce montant (0 : pas de seuil), unpriced: 'keep' | 'discard' (prix jamais chargé),
+     *   keepImage: garder les cartes avec image, onlyNoImage: seulement les cartes sans image, protectTags: [noms] jamais défaussées,
+     *   busy: Set(card_id) en vente ou en file, avg: (carte) => moyenne ou 0, priced: (carte) => vrai si le prix a été chargé (même « sans vente »)
+     * }.
+     * Jamais une favorite, jamais une carte en vente ou en file. Rend { cards: [{ ...carte, copies, avg }], copies, value, byRar: { R: exemplaires }, kept: { raison: n } }.
+     */
+    discardPlan(items, o = {}) {
+      const key = (s) => String(s || '').trim().toLowerCase();
+      const rar = new Set((o.rarities || []).map((r) => String(r).trim().toUpperCase()));
+      const tag = key(o.tag);
+      const protect = new Set((o.protectTags || []).map(key).filter(Boolean));
+      const avg = (it) => (o.avg && o.avg(it)) || 0;
+      const plan = { cards: [], copies: 0, value: 0, byRar: {}, kept: {} };
+      const keep = (why) => { plan.kept[why] = (plan.kept[why] || 0) + 1; };
+      for (const it of items || []) {
+        if (!(it.count > 0) || !rar.has(it.rarity)) continue;
+        const names = (it.tags || []).map((t) => key(t.name));
+        if (tag ? !names.includes(tag) : (names.length && !o.includeTagged)) continue; // hors du choix (pas compté comme « gardée »)
+        const a = avg(it);
+        let why = null;
+        if (it.starred) why = 'favorite';
+        else if (o.busy && o.busy.has(it.card_id)) why = 'busy';
+        else if (names.some((n) => protect.has(n))) why = 'protected';
+        else if (o.keepImage && it.image) why = 'image';
+        else if (o.onlyNoImage && it.image) why = 'image';
+        else if (o.maxAvg > 0 && a >= o.maxAvg) why = 'value';
+        else if (o.unpriced !== 'discard' && o.priced && !o.priced(it)) why = 'unpriced';
+        else if (o.keepOne && it.count < 2) why = 'single';
+        if (why) { keep(why); continue; }
+        const copies = o.keepOne ? it.count - 1 : it.count;
+        plan.cards.push({ ...it, copies, avg: a });
+        plan.copies += copies;
+        plan.value += a * copies;
+        plan.byRar[it.rarity] = (plan.byRar[it.rarity] || 0) + copies;
+      }
+      const rank = { L: 5, UR: 4, SR: 3, R: 2, PC: 1, C: 0 };
+      plan.cards.sort((x, y) => (rank[y.rarity] ?? 0) - (rank[x.rarity] ?? 0) || y.avg - x.avg || String(x.title).localeCompare(String(y.title)));
+      return plan;
+    },
     /** Message clair pour un échec réseau ou un code HTTP. */
     friendlyError(status) {
       if (status === 0 || status == null) return 'Pas de connexion au jeu : vérifiez votre connexion internet.';

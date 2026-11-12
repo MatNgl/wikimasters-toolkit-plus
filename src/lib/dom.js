@@ -8,7 +8,7 @@ setInterval(() => {
 
 // Conteneurs de l'extension : une modification DANS l'un d'eux n'a pas à relancer les balayages de la page (sinon l'extension se réveille elle-même en boucle).
 // Pas de sélecteur « classe commençant par wmx- » : <html> en porte plusieurs et correspondrait à tout.
-const OWN = '.wmx-mk, .wmx-mk-acts, .wmx-nt-price, .wmx-nt-bolt, .wmx-notes, .wmx-bubble, .wmx-qchip, .wmx-panel, .wmx-cplus, .wmx-dk, .wmx-dw, .wmx-sty-shiny, .wmx-sty-waves, .wmx-sty-sheen, .wmx-modal-backdrop, .wmx-sheet-frame, .wmx-pre-back, .wmx-pdial, .wmx-cover, .wmx-toast';
+const OWN = '.wmx-mk, .wmx-mk-acts, .wmx-nt-price, .wmx-nt-bolt, .wmx-notes, .wmx-bubble, .wmx-qchip, .wmx-panel, .wmx-cplus, .wmx-dk, .wmx-dw, .wmx-sty-shiny, .wmx-sty-waves, .wmx-sty-sheen, .wmx-modal-backdrop, .wmx-sheet-frame, .wmx-pre-back, .wmx-pdial, .wmx-cover, .wmx-toast, .wmx-dlg-back, .wmx-dc-run';
 WMX.dom = {
   /** Vrai si au moins une des modifications observées vient de la page du jeu (et non d'un élément de l'extension). */
   foreign(muts) {

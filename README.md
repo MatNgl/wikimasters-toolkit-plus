@@ -16,7 +16,7 @@ Extension Chrome (Manifest V3) pour [WikiMasters](https://www.wiki-masters.com) 
 | Page | Ce que l'extension ajoute |
 |---|---|
 | **Paquets** | « Tout ouvrir » et ouverture automatique (intervalle min/max, arrêt sur belle carte), écran de révélation façon gacha trié par rareté (prix, ★ favori, ⚡ enchère rapide, couronnes sur les cartes les plus chères), statistiques (répartition, valeur moyenne d'un paquet) |
-| **Collection** | barre au-dessus de la recherche (valeur estimée, état des prix, « Charger les prix… » par rareté ou étiquette), moyenne du marché (ou « Sans vente ») et bouton ⚡ (mise en vente en un clic, 10 W par défaut sans vente) sur chaque carte ; sélection / étiquettes / favoris / défausse en lot : fonctions natives du jeu |
+| **Collection** | barre au-dessus de la recherche (valeur estimée, état des prix, « Charger les prix… » par rareté ou étiquette), moyenne du marché (ou « Sans vente ») et bouton ⚡ (mise en vente en un clic, 10 W par défaut sans vente) sur chaque carte ; sélection / étiquettes / favoris : fonctions natives du jeu ; **« Défausser… »** : défausse par critères (raretés, étiquette ou cartes sans étiquette, garder 1 exemplaire, seuil de valeur, prix inconnu gardé, étiquettes de vente protégées, sans image, cartes récentes), confirmation avec la liste complète, puis l'extension pilote la sélection native du jeu page par page (essai à blanc par défaut) |
 | **Toutes les pages** | style de carte « plein cadre » (anneau de rareté, vagues, reflet) sur toutes les cartes affichées par le jeu : collection, marché, échanges, profil, révélation des paquets |
 | **Tableau de bord** | valeur estimée, valeur par rareté, top 10 des cartes, courbe de la valeur |
 | **Marché** | moyenne et verdict (bonne affaire / prix correct / trop cher) sous chaque enchère, bouton « Miser le minimum » (file d'attente), verdict bénéfice/perte sur mes ventes |
@@ -30,7 +30,7 @@ Un prix est valable 4 jours. Rien n'est rechargé automatiquement : au chargemen
 
 ## Principes
 - L'extension agit comme l'utilisateur : elle lit les réponses du jeu et pilote ses boutons ; les rares appels directs sont des lectures.
-- Aucune action définitive sans demande explicite (la défausse est celle, native, du jeu ; l'assistant de vente est désactivé par défaut) ; jamais de surenchère sur soi-même ; un seul onglet exécute les mises automatiques.
+- Aucune action définitive sans demande explicite (la défausse passe par la sélection native du jeu, après une confirmation explicite, et s'arrête au moindre écart entre les nombres du jeu et la liste confirmée ; l'assistant de vente est désactivé par défaut) ; jamais de surenchère sur soi-même ; un seul onglet exécute les mises automatiques.
 - Données stockées localement (`chrome.storage.local`), rien n'est envoyé à un tiers.
 - Aucun contournement de la vérification humaine du jeu.
 
