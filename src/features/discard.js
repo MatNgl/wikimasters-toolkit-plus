@@ -295,6 +295,23 @@
   const waitFor = async (fn, ms, step = 150) => { const end = Date.now() + ms; for (;;) { const v = fn(); if (v) return v; if (Date.now() > end) return null; await sleep(step); } };
   /** Liste affichée et prête : des cartes, ou « Aucune carte trouvée » (jamais pendant une erreur de chargement). */
   const listReady = () => !NATIVE.loadError() && (NATIVE.cards().length > 0 || NATIVE.empty());
+  /**
+   * Après une défausse, le jeu relit sa liste un peu plus tard : les cartes remontent d'une page à l'autre (5 pages deviennent 4…). On attend que
+   * la page affichée ne change plus (mêmes cartes, même « Page N / M ») pendant ~1 s avant de la lire, sinon on coche une carte qui va bouger.
+   */
+  async function settled(maxMs = 8000) {
+    const sig = () => `${norm(D.body?.innerText?.match(/Page \d+ \/ \d+/)?.[0] || '')}|${NATIVE.cards().map((c) => norm(c.querySelector('h3')?.textContent)).join('§')}`;
+    const end = Date.now() + maxMs;
+    let last = sig();
+    let since = Date.now();
+    while (Date.now() < end) {
+      await sleep(250);
+      const s = sig();
+      if (s !== last) { last = s; since = Date.now(); continue; }
+      if (Date.now() - since >= 1000 && listReady()) return true;
+    }
+    return listReady();
+  }
 
   /**
    * Filtres du jeu : raretés choisies (toutes : aucun bouton actif) et UNE vue d'étiquette (« Toutes les étiquettes », « Sans étiquette » ou « #NOM »).
@@ -498,12 +515,31 @@
         const advance = async () => {
           const nx = NATIVE.next();
           const pg = NATIVE.page();
-          if (nx && (!pg || pg.n < pg.of)) { nx.click(); page += 1; await sleep(600); await waitFor(listReady, 15000, 200); return true; }
+          if (nx && (!pg || pg.n < pg.of)) { nx.click(); page += 1; await sleep(600); await waitFor(listReady, 15000, 200); await settled(); return true; }
           if (dry || sweeps >= 3 || stats.copies === sweepFrom || !remaining()) return false;
           sweeps += 1; sweepFrom = stats.copies;
           showRun(`retour à la page 1 : cartes restantes à rattraper (passage ${sweeps + 1})…`);
           const e = await recover(view); if (e) return false;
+          // Les filtres étaient déjà les bons : la page affichée n'a pas changé. On revient nous-mêmes à la page 1 (« Précédent »).
+          for (let i = 0; i < 400 && (NATIVE.page()?.n || 1) > 1; i++) {
+            const pv = NATIVE.prev();
+            if (!pv) break;
+            pv.click();
+            await sleep(400);
+            await waitFor(listReady, 15000, 200);
+          }
+          await settled();
           page = 1;
+          return true;
+        };
+        let moved = 0; // relectures de suite d'une page dont une carte a bougé pendant la sélection
+        /** Une carte n'est plus là où on l'a lue (la liste du jeu s'est relue entre-temps) : on décoche tout, on attend la liste, on relit la page. */
+        const reread = async (what) => {
+          moved += 1;
+          if (moved > 3) return false;
+          showRun(`${view.label} · page ${page} : « ${what} » a bougé (liste du jeu relue), nouvelle lecture de la page…`);
+          await clearSelection();
+          await settled();
           return true;
         };
         for (let guard = 0; guard < 600; guard++) {
@@ -521,6 +557,7 @@
           showRun(`${view.label} · page ${page} : sélection de ${plural(targets.length, 'carte')}…`);
           if (NATIVE.count() !== 0) await clearSelection();
           const tkeys = new Set(targets.map((t) => `${t.title}|${t.rarity}`));
+          let lost = '';
           const all = NATIVE.selectAll();
           const usedAll = !!all && targets.length > seen.length / 2;
           if (usedAll) {
@@ -531,14 +568,19 @@
               if (tkeys.has(k)) continue;
               if (s.item?.starred) continue; // favorite cochée par « Tout sélectionner » : le jeu ne la défausse jamais, inutile de la décocher
               if (run.stop) break;
-              if (!(await toggleByKey(k, -1))) return abort(`page ${page} : impossible de décocher « ${s.title} ». Rien n’a été défaussé sur cette page.`);
+              if (!(await toggleByKey(k, -1))) { lost = s.title; break; }
             }
           } else {
             for (const t of targets) {
               if (run.stop) break;
-              if (!(await toggleByKey(`${t.title}|${t.rarity}`, 1))) return abort(`page ${page} : impossible de cocher « ${t.title} ». Rien n’a été défaussé sur cette page.`);
+              if (!(await toggleByKey(`${t.title}|${t.rarity}`, 1))) { lost = t.title; break; }
             }
           }
+          if (lost) {
+            if (await reread(lost)) continue;
+            return abort(`page ${page} : impossible de ${usedAll ? 'décocher' : 'cocher'} « ${lost} » (la liste du jeu bouge encore). Rien n’a été défaussé sur cette page.`);
+          }
+          moved = 0;
           if (run.stop) return abort(`arrêtée à votre demande : ${done(stats.copies)}.`);
           // Compteur : les cartes prévues, plus éventuellement les favorites laissées cochées (le jeu les omet ; la fenêtre, vérifiée ensuite, le confirme).
           const n = NATIVE.count();
@@ -588,6 +630,7 @@
           // La liste du jeu se relit (ou échoue) : on attend qu'elle soit prête, et on la relit nous-mêmes si besoin.
           await sleep(1200);
           if (!(await waitFor(listReady, 6000, 200))) { const e = await recover(view); if (e) return abort(`${e}. ${done(stats.copies)}.`); }
+          await settled(); // la liste du jeu peut encore se relire (cartes remontées) : on la laisse se poser avant de lire ou de changer de page
           if (NATIVE.count() == null) { const e = await applyFilters(rarities, view); if (e) return abort(`${e}. ${done(stats.copies)}.`); }
           // Cartes gardées (favorites, options) restées sur cette page : à partir de 30, on passe à la suivante.
           if (seen.length - targets.length >= KEEP_MAX) { showRun(`page ${page} : ${seen.length - targets.length} cartes gardées sur la page, passage à la suivante…`); if (!(await advance())) break; }

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WikiMasters Toolkit+",
-  "version": "0.31.3",
+  "version": "0.31.4",
   "description": "Prix du marché, ouverture de paquets en un clic, enchères automatiques et style de cartes pour WikiMasters.",
   "permissions": [
     "storage",
@@ -80,7 +80,7 @@
       "world": "MAIN"
     }
   ],
-  "version_name": "0.31.3 · défausse : message « N cartes défaussées » du jeu reconnu (la défausse continue après la 1re page)",
+  "version_name": "0.31.4 · défausse : attend que la liste du jeu se pose après chaque défausse, vrai retour à la page 1 pour les cartes remontées",
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",

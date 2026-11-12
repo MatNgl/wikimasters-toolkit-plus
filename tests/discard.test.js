@@ -14,7 +14,7 @@ const RAR = ['L', 'UR', 'SR', 'R', 'PC', 'C'];
  * jamais défaussées, message « N cartes défaussées (+N wikibidous). » qui reste affiché. `failAfterDiscard` : la liste échoue à se recharger une fois
  * (« Le chargement de la collection a échoué ») ; rechoisir une vue la relit.
  */
-function fakeGame(w, cards, { perPage = 50, failAfterDiscard = false } = {}) {
+function fakeGame(w, cards, { perPage = 50, failAfterDiscard = false, lateReload = 0 } = {}) {
   const d = w.document;
   const st = { selecting: false, sel: new Set(), page: 0, list: cards.map((c, i) => ({ ...c, uid: i })), discarded: [], dialogs: 0, view: 'all', rar: new Set(), menuOpen: false, banner: '', fail: false, lie: false };
   const main = d.createElement('main');
@@ -83,7 +83,9 @@ function fakeGame(w, cards, { perPage = 50, failAfterDiscard = false } = {}) {
     box.append(h3, p, button('Annuler', () => back.remove()), button('Défausser', () => {
       st.discarded.push(...chosen.map((c) => c.title));
       for (const c of chosen) c.count = (c.count || 1) - 1;
-      st.list = st.list.filter((c) => (c.count ?? 1) > 0);
+      // lateReload : comme le vrai jeu, la liste n'est relue qu'un peu plus tard (les cartes défaussées restent affichées, puis tout remonte d'un cran).
+      if (lateReload) setTimeout(() => { st.list = st.list.filter((c) => (c.count ?? 1) > 0); render(); }, lateReload);
+      else st.list = st.list.filter((c) => (c.count ?? 1) > 0);
       st.banner = `${chosen.length} carte${chosen.length > 1 ? 's' : ''} défaussée${chosen.length > 1 ? 's' : ''} (+${chosen.length} wikibidou${chosen.length > 1 ? 's' : ''}).`;
       st.sel.clear(); back.remove();
       if (failAfterDiscard && !st.failedOnce) { st.failedOnce = true; st.fail = true; } // la liste ne se recharge pas
@@ -311,6 +313,23 @@ test('défausse : 30 cartes gardées (favorites) sur une page font passer à la 
   await WMX.discard.start(WMX.discard.plan(p), { dry: false, visible: true, prefs: p });
   assert.equal(game.discarded.length, 60, 'toutes les communes sont défaussées');
   assert.ok(!game.discarded.some((t) => /Favorite/.test(t)), 'aucune favorite');
+  env.close();
+});
+
+test('défausse : la liste du jeu relue en retard après une défausse (cartes qui remontent d’une page) ne bloque plus : on attend qu’elle se pose', async () => {
+  // Page 1 : 43 cartes gardées (avec image) + 7 à défausser ; page 2 : 7 à défausser puis 43 gardées, puis 13 à défausser.
+  const kept = (n, from) => Array.from({ length: n }, (_, i) => ({ title: `Gardée ${from + i}`, rarity: 'C', image: 'x.jpg' }));
+  const gone = (n, from) => Array.from({ length: n }, (_, i) => ({ title: `Sans image ${from + i}`, rarity: 'C', image: '' }));
+  const cards = [...kept(43, 0), ...gone(7, 0), ...gone(7, 7), ...kept(43, 43), ...gone(13, 14)];
+  const { env, w, WMX, game } = setup(cards, { lateReload: 1500 });
+  await WMX.features.find((f) => f.name === 'discard').init();
+  const p = { rarities: ['C'], onlyNoImage: true, keepUnpriced: true };
+  const pl = WMX.discard.plan(p);
+  assert.equal(pl.copies, 27);
+  await WMX.discard.start(pl, { dry: false, visible: true, prefs: p });
+  assert.equal(game.discarded.length, 27, `les 27 cartes sans image sont défaussées : ${game.discarded.length}`);
+  assert.ok(!game.discarded.some((t) => /Gardée/.test(t)), 'aucune carte avec image');
+  assert.doesNotMatch(w.document.querySelector('.wmx-dc-run')?.textContent || '', /impossible de cocher|arrêtée/);
   env.close();
 });
 
