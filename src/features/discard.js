@@ -12,7 +12,7 @@
   const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim();
   const key = (s) => norm(s).toLowerCase();
   const plural = (n, w, p = `${w}s`) => `${fmt(n)} ${n > 1 ? p : w}`;
-  const DEFAULTS = { rarities: ['C'], tags: [], includeTagged: false, keepOne: false, useMax: true, maxAvg: 20, keepUnpriced: true, protectSale: true, onlyNoImage: false, keepRecent: false, protectTags: [] };
+  const DEFAULTS = { rarities: ['C'], tags: [], includeTagged: false, keepOne: false, useMax: true, maxAvg: 20, unpriced: 'keep', protectSale: true, onlyNoImage: false, keepRecent: false, protectTags: [] };
   let prefs = { ...DEFAULTS };
   const savePrefs = () => WMX.store.set('discardPrefs', prefs);
   const run = { on: false, stop: false };
@@ -28,7 +28,9 @@
     const recentIds = new Set(recent.map((it) => it.card_id));
     const res = WMX.logic.discardPlan(items.filter((it) => !recentIds.has(it.card_id)), {
       rarities: p.rarities, tags: p.tags || [], includeTagged: p.includeTagged, keepOne: p.keepOne, maxAvg: p.useMax ? Number(p.maxAvg) || 0 : 0,
-      unpriced: p.keepUnpriced ? 'keep' : 'discard', onlyNoImage: p.onlyNoImage, busy,
+      // Le prix ne compte que pour le seuil : sans seuil, une carte au prix inconnu est traitée comme les autres. Avec le seuil : « défausser »,
+      // sinon gardée pour l'instant (« attendre » et « en dernier » chargent son prix pendant la défausse, voir start()).
+      unpriced: !p.useMax || unpricedMode(p) === 'discard' ? 'discard' : 'keep', onlyNoImage: p.onlyNoImage, busy,
       protectTags: [...(p.protectTags || []), ...(p.protectSale ? saleTags() : [])],
       avg: (it) => WMX.prices.get(it.card_id, it.rarity)?.avg || 0, priced: (it) => WMX.prices.has(it.card_id),
     });
@@ -36,6 +38,9 @@
     if (inScope) res.kept.recent = inScope;
     return res;
   }
+  /** Cartes au prix jamais chargé : 'keep' (gardées), 'discard' (défaussées), 'wait' (prix chargés avant de commencer), 'last' (traitées à la fin). */
+  const unpricedMode = (p) => (['keep', 'discard', 'wait', 'last'].includes(p.unpriced) ? p.unpriced : p.keepUnpriced === false ? 'discard' : 'keep');
+  const UNPRICED = [['keep', 'Les garder'], ['wait', 'Attendre leur prix (chargé avant de commencer)'], ['last', 'Les traiter en dernier (prix chargé pendant la défausse)'], ['discard', 'Les défausser aussi']];
   const KEPT = { favorite: 'favorites', busy: 'en vente ou en file', protected: 'étiquette protégée', image: 'avec image', value: 'au-dessus du seuil', unpriced: 'prix jamais chargé', single: 'un seul exemplaire', recent: 'obtenues depuis moins de 24 h' };
   const keptText = (kept) => Object.entries(kept).filter(([, n]) => n).map(([k, n]) => `${fmt(n)} ${KEPT[k] || k}`).join(' · ');
   const byRarText = (byRar) => R.slice().reverse().filter((r) => byRar[r]).map((r) => `${fmt(byRar[r])} × ${r}`).join(' · ');
@@ -74,6 +79,14 @@
         body,
         el('div', { class: 'wmx-dlg-row' }, el('button', { class: 'wmx-btn wmx-btn--ghost', onclick: close }, 'Annuler'), go)));
     function set(patch) { Object.assign(prefs, patch); savePrefs(); render(); }
+    /** « Cartes au prix inconnu » : que faire des cartes dont la moyenne n'a jamais été chargée (seuil activé). */
+    function unpricedRow(n) {
+      const sel = el('select', { class: 'wmx-input wmx-select wmx-dc-unpriced' }, ...UNPRICED.map(([v, l]) => el('option', { value: v }, l)));
+      sel.value = unpricedMode(prefs);
+      sel.addEventListener('change', () => set({ unpriced: sel.value }));
+      return el('label', { class: 'wmx-dc-opt wmx-dc-optcol' }, el('span', {}, el('b', {}, 'Cartes au prix inconnu'),
+        el('small', {}, `Leur moyenne n’a jamais été chargée : impossible de savoir si elles dépassent le seuil.${n ? ` ${plural(n, 'carte')} concernée${n > 1 ? 's' : ''}.` : ''}`)), sel);
+    }
     function render() {
       const items = WMX.inventory.items();
       const tags = tagList();
@@ -112,11 +125,11 @@
       parts.push(el('div', { class: 'wmx-dc-h' }, 'Options'),
         sw(prefs.keepOne, (v) => set({ keepOne: v }), 'Garder 1 exemplaire', 'Ne défausse que les doublons : il reste toujours une carte de chaque.'),
         el('div', { class: 'wmx-dc-optrow' }, sw(prefs.useMax, (v) => set({ useMax: v }), 'Seuil de valeur', 'Ne jamais défausser une carte dont la moyenne du marché atteint ce montant (mieux vaut la vendre).'), el('span', { class: 'wmx-dc-w' }, maxIn, ' W')),
-        sw(prefs.keepUnpriced, (v) => set({ keepUnpriced: v }), 'Garder les cartes au prix inconnu', `Une carte dont le prix n’a jamais été chargé est gardée (sa valeur est inconnue).${unpricedN ? ` ${plural(unpricedN, 'carte')} concernée${unpricedN > 1 ? 's' : ''} : chargez leurs prix d’abord.` : ''}`),
+        ...(prefs.useMax ? [unpricedRow(unpricedN)] : []),
         sw(prefs.protectSale, (v) => set({ protectSale: v }), 'Protéger les étiquettes de vente', `Jamais une carte portant une étiquette de l’assistant de vente${saleTags().length ? ` (${saleTags().join(', ')})` : ''}.`),
         sw(prefs.onlyNoImage, (v) => set({ onlyNoImage: v }), 'Seulement les cartes sans image', 'Les cartes avec une illustration sont gardées.'),
         sw(prefs.keepRecent, (v) => set({ keepRecent: v }), 'Garder les cartes récentes', 'Obtenues depuis moins de 24 h : le temps de les regarder.'));
-      if (unpricedN && prefs.keepUnpriced) parts.push(el('button', { type: 'button', class: 'wmx-btn wmx-btn--ghost', onclick: () => WMX.inventory.openPriceModal() }, 'Charger les prix…'));
+      if (unpricedN && prefs.useMax && unpricedMode(prefs) === 'keep') parts.push(el('button', { type: 'button', class: 'wmx-btn wmx-btn--ghost', onclick: () => WMX.inventory.openPriceModal() }, 'Charger les prix…'));
       const kt = keptText(pl.kept);
       parts.push(el('div', { class: 'wmx-dc-sum', 'data-empty': String(!pl.copies) },
         el('b', {}, pl.copies ? `${plural(pl.copies, 'exemplaire')} à défausser` : (prefs.rarities.length ? 'Aucune carte ne correspond' : 'Choisissez au moins une rareté')),
@@ -157,7 +170,7 @@
     const close = () => back.remove();
     go.addEventListener('click', () => { if (!dry && !ok) return; close(); start(pl, { dry, visible, prefs: p }); });
     const filters = [p.rarities.map((r) => NAMES[r]).join(', '), (p.tags || []).length ? `étiquette${p.tags.length > 1 ? 's' : ''} ${p.tags.join(', ')}` : p.includeTagged ? 'étiquetées comprises' : 'sans étiquette',
-      p.keepOne && '1 exemplaire gardé', p.useMax && `gardées dès ${p.maxAvg} W`, p.keepUnpriced && 'prix inconnu gardé', p.protectSale && 'étiquettes de vente protégées', p.onlyNoImage && 'sans image seulement', p.keepRecent && 'récentes gardées'].filter(Boolean);
+      p.keepOne && '1 exemplaire gardé', p.useMax && `gardées dès ${p.maxAvg} W`, p.useMax && { keep: 'prix inconnu gardé', discard: 'prix inconnu défaussé', wait: 'prix inconnu chargé avant', last: 'prix inconnu traité en dernier' }[unpricedMode(p)], p.protectSale && 'étiquettes de vente protégées', p.onlyNoImage && 'sans image seulement', p.keepRecent && 'récentes gardées'].filter(Boolean);
     const back = el('div', { class: 'wmx-dlg-back wmx-dc', onmousedown: (e) => { if (e.target === back) close(); } },
       el('div', { class: 'wmx-dlg wmx-dlg--wide', role: 'alertdialog', 'aria-label': 'Confirmer la défausse' },
         el('h3', {}, `Défausser ${plural(pl.copies, 'exemplaire')} ?`),
@@ -372,12 +385,32 @@
       if (!ctx) { run.on = false; showRun('la page Collection n’a pas pu être préparée en arrière-plan (jeu lent ?) : rien n’a été défaussé. Réessayez, ou utilisez le mode visible.', 'warn'); return; }
       D = ctx.d; W = ctx.w; run.frame = ctx.frame || null;
     }
+    // Cartes au prix inconnu (seuil activé) : « attendre » charge leurs prix AVANT de commencer ; « en dernier » les charge pendant la défausse
+    // puis traite, à la fin, celles qui sont sous le seuil. Une carte dont le prix reste introuvable est gardée.
+    const mode = p.useMax ? unpricedMode(p) : 'keep';
+    const priceLoad = { done: 0, total: 0 };
+    const loadPrices = async (cards) => {
+      const todo = cards.filter((c) => !WMX.prices.has(c.card_id));
+      if (!todo.length) return;
+      Object.assign(priceLoad, { done: 0, total: todo.length });
+      WMX.prices.start(todo, { total: todo.length });
+      await waitFor(() => { priceLoad.done = todo.filter((c) => WMX.prices.has(c.card_id)).length; return run.stop || priceLoad.done >= todo.length || !WMX.prices.state().running; }, 60 * 60000, 1000);
+    };
+    if (mode === 'wait' && pl.unpricedCards?.length) {
+      const tick = setInterval(() => showRun(`chargement des prix inconnus avant de commencer : ${fmt(priceLoad.done)} / ${fmt(priceLoad.total)}…`), 1000);
+      await loadPrices(pl.unpricedCards);
+      clearInterval(tick);
+      if (run.stop) { run.on = false; ctx?.remove?.(); D = document; W = window; run.frame = null; showRun('arrêtée à votre demande pendant le chargement des prix : rien n’a été défaussé.', 'warn'); return; }
+      pl = plan({ ...p, unpriced: 'keep' }); // prix connus : le seuil s'applique ; les prix toujours introuvables restent gardés
+      run.prog.total = pl.copies;
+    }
+    const lastLoad = mode === 'last' && pl.unpricedCards?.length ? loadPrices(pl.unpricedCards) : null;
     // Exemplaires restants par carte (clé titre|rareté, comme la page du jeu les affiche).
     const left = new Map(pl.cards.map((c) => [`${norm(c.title)}|${c.rarity}`, { ...c }]));
     const remaining = () => [...left.values()].some((c) => c.copies > 0);
     const stats = { copies: 0, rounds: 0, reward: 0 };
     const label = dry ? 'Essai à blanc' : 'Défausse';
-    const rarities = [...new Set(pl.cards.map((c) => c.rarity))];
+    const rarities = (p.rarities || []).length ? [...p.rarities] : [...new Set(pl.cards.map((c) => c.rarity))];
     const done = (n) => `${plural(n, 'exemplaire')} ${dry ? 'vérifié' : 'défaussé'}${n > 1 ? 's' : ''}`;
     const finish = (text, kind = 'ok') => {
       run.on = false;
@@ -404,6 +437,7 @@
     }
     try {
       WMX.journal?.add('Défausse', `${label} lancée : ${plural(pl.copies, 'exemplaire')} (${byRarText(pl.byRar)})${run.frame ? ', en arrière-plan' : ''}`);
+      for (let phase = 0; phase < 2; phase++) {
       for (const view of viewsOf(p)) {
         if (!remaining()) break;
         showRun(`filtres du jeu : ${rarities.join(', ')} · ${view.label}…`);
@@ -511,6 +545,21 @@
           if (seen.length - targets.length >= KEEP_MAX) { showRun(`page ${page} : ${seen.length - targets.length} cartes gardées sur la page, passage à la suivante…`); if (!(await advance())) break; }
         }
       }
+      // « En dernier » : on attend la fin du chargement des prix, puis on ajoute les cartes désormais sous le seuil et on refait un passage.
+      if (phase > 0 || !lastLoad) break;
+      const tick = setInterval(() => showRun(`prix inconnus : ${fmt(priceLoad.done)} / ${fmt(priceLoad.total)} chargés, traitement à la fin…`), 1000);
+      await lastLoad;
+      clearInterval(tick);
+      if (run.stop) return abort(`arrêtée à votre demande : ${done(stats.copies)}.`);
+      let added = 0;
+      for (const c of plan({ ...p, unpriced: 'keep' }).cards) {
+        const k = `${norm(c.title)}|${c.rarity}`;
+        if (left.has(k)) continue;
+        left.set(k, { ...c }); added += c.copies; run.prog.total += c.copies;
+      }
+      if (!added) break;
+      showRun(`${plural(added, 'exemplaire')} au prix désormais connu, sous le seuil : défausse en dernier…`);
+      }
       const missing = [...left.values()].filter((c) => c.copies > 0);
       await clearSelection();
       const tail = missing.length ? ` · ${plural(missing.length, 'carte')} non trouvée${missing.length > 1 ? 's' : ''} avec les filtres du jeu` : '';
@@ -545,6 +594,7 @@
     async init() {
       prefs = { ...DEFAULTS, ...(await WMX.store.get('discardPrefs', {})) };
       if (prefs.tag && !(prefs.tags || []).length) prefs.tags = [prefs.tag]; // ancien réglage (une seule étiquette)
+      prefs.unpriced = unpricedMode(prefs); delete prefs.keepUnpriced; // ancien réglage (garder / défausser)
       delete prefs.tag;
     },
   });

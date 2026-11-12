@@ -258,7 +258,7 @@
       const want = new Set([...(o.tags || []), ...(o.tag ? [o.tag] : [])].map(key).filter(Boolean)); // une ou plusieurs étiquettes (vide : cartes sans étiquette)
       const protect = new Set((o.protectTags || []).map(key).filter(Boolean));
       const avg = (it) => (o.avg && o.avg(it)) || 0;
-      const plan = { cards: [], copies: 0, value: 0, byRar: {}, kept: {} };
+      const plan = { cards: [], copies: 0, value: 0, byRar: {}, kept: {}, unpricedCards: [] }; // unpricedCards : gardées faute de prix (à charger)
       const keep = (why) => { plan.kept[why] = (plan.kept[why] || 0) + 1; };
       for (const it of items || []) {
         if (!(it.count > 0) || !rar.has(it.rarity)) continue;
@@ -274,7 +274,7 @@
         else if (o.maxAvg > 0 && a >= o.maxAvg) why = 'value';
         else if (o.unpriced !== 'discard' && o.priced && !o.priced(it)) why = 'unpriced';
         else if (o.keepOne && it.count < 2) why = 'single';
-        if (why) { keep(why); continue; }
+        if (why) { keep(why); if (why === 'unpriced') plan.unpricedCards.push(it); continue; }
         const copies = o.keepOne ? it.count - 1 : it.count;
         plan.cards.push({ ...it, copies, avg: a });
         plan.copies += copies;

@@ -266,3 +266,26 @@ test('défausse : 30 cartes gardées (favorites) sur une page font passer à la 
   assert.ok(!game.discarded.some((t) => /Favorite/.test(t)), 'aucune favorite');
   env.close();
 });
+
+for (const mode of ['wait', 'last']) {
+  test(`défausse : cartes au prix inconnu « ${mode === 'wait' ? 'attendre leur prix' : 'traiter en dernier'} » (seuil 20 W : la pas chère défaussée, la chère et l’introuvable gardées)`, async () => {
+    const cards = [{ title: 'Connue', rarity: 'C' }, { title: 'Pas chère', rarity: 'C' }, { title: 'Chère', rarity: 'C' }, { title: 'Introuvable', rarity: 'C' }];
+    const { env, WMX, game, items } = setup(cards);
+    await WMX.features.find((f) => f.name === 'discard').init();
+    const known = new Map([['id0', 3]]); // seule « Connue » a un prix au départ
+    const later = { id1: 5, id2: 50 }; // « Introuvable » (id3) : le jeu ne donne jamais son prix
+    WMX.prices.has = (id) => known.has(id);
+    WMX.prices.get = (id) => (known.has(id) ? { avg: known.get(id) } : null);
+    let running = false;
+    WMX.prices.state = () => ({ running });
+    WMX.prices.start = (todo) => { running = true; setTimeout(() => { for (const c of todo) if (later[c.card_id] != null) known.set(c.card_id, later[c.card_id]); running = false; }, 1200); return todo.length; };
+    const p = { rarities: ['C'], useMax: true, maxAvg: 20, unpriced: mode };
+    const pl = WMX.discard.plan(p);
+    assert.deepEqual(Array.from(pl.cards, (c) => c.title), ['Connue'], 'au départ, seule la carte au prix connu est prévue');
+    assert.equal(pl.unpricedCards.length, 3);
+    await WMX.discard.start(pl, { dry: false, visible: true, prefs: p });
+    assert.deepEqual(game.discarded.sort(), ['Connue', 'Pas chère'], 'la carte devenue « pas chère » est défaussée ; la chère et l’introuvable restent');
+    assert.ok(items.length === 4);
+    env.close();
+  });
+}

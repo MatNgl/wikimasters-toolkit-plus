@@ -70,6 +70,14 @@
     const input = [...document.querySelectorAll('input')].find((i) => /Rechercher par titre/i.test(i.placeholder || ''));
     const grid = document.querySelector('main h3')?.closest('[class*="flex-wrap"]');
     if (!input) return;
+    // Barre déjà posée par une autre copie de l'extension (version du Chrome Web Store + version de développement) : signalé (content.js) ;
+    // la copie du Chrome Web Store lui laisse la place (une seule barre), la version de développement garde toujours la sienne.
+    const other = [...document.querySelectorAll('.wmx-nt-bar')].find((b) => b !== bar);
+    if (other) {
+      WMX.twinBar = true;
+      const fromStore = (() => { try { return !!chrome.runtime.getManifest().update_url; } catch (_) { return false; } })();
+      if (fromStore) return;
+    }
     let row = input;
     while (row.parentElement && !(grid && row.parentElement.contains(grid)) && row.parentElement !== document.body) row = row.parentElement;
     bar = bar || WMX.inventory.makePriceBar('wmx-nt-bar');
