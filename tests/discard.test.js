@@ -43,13 +43,15 @@ function fakeGame(w, cards, { perPage = 50, discardAllCopies = true } = {}) {
     st.dialogs += 1;
     const chosen = st.list.filter((c) => st.sel.has(c.uid) && !c.starred); // comme le jeu : une favorite sélectionnée n'est jamais défaussée
     const by = {};
-    for (const c of chosen) by[c.rarity] = (by[c.rarity] || 0) + (discardAllCopies ? c.count : 1);
+    for (const c of chosen) by[c.rarity] = (by[c.rarity] || 0) + 1; // comme le jeu : un exemplaire par carte cochée
+    if (st.lie) by.C = (by.C || 0) + 1;
     const dlg = d.createElement('div'); dlg.setAttribute('role', 'dialog');
     dlg.append(Object.assign(d.createElement('p'), { textContent: `Défausser ces cartes ? ${Object.entries(by).map(([r, n]) => `${n} × ${r}`).join(', ')}.` }),
       button('Annuler', () => dlg.remove()),
       button('Défausser', () => {
         st.discarded.push(...chosen.map((c) => c.title));
-        st.list = st.list.filter((c) => !st.sel.has(c.uid));
+        for (const c of chosen) c.count -= 1;
+        st.list = st.list.filter((c) => c.count > 0);
         st.toast = `${chosen.length} cartes défaussées`;
         st.sel.clear(); dlg.remove(); render();
       }));
@@ -137,15 +139,27 @@ test('défausse : essai à blanc (sélection vérifiée, rien de défaussé) pui
   env.close();
 });
 
-test('défausse : un nombre du jeu qui ne correspond pas arrête tout (doublons défaussés en entier)', async () => {
-  const cards = [{ title: 'Double', rarity: 'C', count: 3 }, { title: 'Simple', rarity: 'C' }];
-  const { env, w, WMX, game } = setup(cards);
+test('défausse : une carte cochée = un exemplaire ; « Garder 1 exemplaire » recoche la carte jusqu’au nombre prévu', async () => {
+  const cards = [{ title: 'Triple', rarity: 'C', count: 3 }, { title: 'Double', rarity: 'C', count: 2 }, { title: 'Simple', rarity: 'C' }];
+  const { env, WMX, game } = setup(cards);
   await WMX.features.find((f) => f.name === 'discard').init();
   const pl = WMX.discard.plan({ rarities: ['C'], keepOne: true, keepUnpriced: true });
-  assert.equal(pl.copies, 2, 'garder 1 exemplaire : 2 des 3 doubles');
+  assert.equal(pl.copies, 3, 'garder 1 exemplaire : 2 des 3 triples et 1 des 2 doubles');
   await WMX.discard.start(pl, { dry: false, visible: true });
-  assert.equal(game.discarded.length, 0, 'le jeu aurait défaussé les 3 exemplaires : rien n’est défaussé');
-  assert.match(w.document.querySelector('.wmx-dc-run').textContent, /3 × C au lieu de 2 × C.*Garder 1 exemplaire/);
+  assert.deepEqual(game.discarded.sort(), ['Double', 'Triple', 'Triple']);
+  assert.deepEqual(game.list.map((c) => [c.title, c.count]).sort(), [['Double', 1], ['Simple', 1], ['Triple', 1]], 'un exemplaire de chaque reste');
+  env.close();
+});
+
+test('défausse : un nombre du jeu qui ne correspond pas arrête tout', async () => {
+  const cards = [{ title: 'Une', rarity: 'C' }, { title: 'Deux', rarity: 'C' }];
+  const { env, w, WMX, game } = setup(cards);
+  await WMX.features.find((f) => f.name === 'discard').init();
+  game.lie = true; // la fenêtre du jeu annonce une carte de trop
+  const pl = WMX.discard.plan({ rarities: ['C'], keepUnpriced: true });
+  await WMX.discard.start(pl, { dry: false, visible: true });
+  assert.equal(game.discarded.length, 0, 'rien n’est défaussé');
+  assert.match(w.document.querySelector('.wmx-dc-run').textContent, /3 × C au lieu de 2 × C/);
   env.close();
 });
 

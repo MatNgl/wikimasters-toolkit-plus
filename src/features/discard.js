@@ -379,9 +379,10 @@
         const n = NATIVE.count();
         const favs = usedAll ? seen.filter((x) => x.item?.starred && !tkeys.has(`${x.title}|${x.rarity}`)).length : 0;
         if (n !== targets.length && n !== targets.length + favs) return abort(`page ${page} : le jeu compte ${n ?? '?'} carte(s) sélectionnée(s) au lieu de ${targets.length}${favs ? ` (ou ${targets.length + favs} avec les favorites)` : ''}. Rien n’a été défaussé sur cette page.`);
-        // Fenêtre de défausse du jeu : les nombres par rareté doivent correspondre aux exemplaires prévus.
+        // Fenêtre de défausse du jeu : une carte cochée = UN exemplaire défaussé (constaté : une carte en ×2 n'en perd qu'un). Les nombres par rareté
+        // doivent donc être exactement le nombre de cartes cochées ; une carte qui doit perdre plusieurs exemplaires est recochée au passage suivant.
         const want = {};
-        for (const t of targets) { const c = left.get(`${t.title}|${t.rarity}`); want[t.rarity] = (want[t.rarity] || 0) + c.copies; }
+        for (const t of targets) want[t.rarity] = (want[t.rarity] || 0) + 1;
         const db = NATIVE.discard();
         if (!db) return abort(`page ${page} : bouton « Défausser » du jeu introuvable. Rien n’a été défaussé.`);
         const reward = Number((/\+\s*(\d[\d\s ]*)/.exec(norm(db.textContent)) || [])[1]?.replace(/\D/g, '') || 0);
@@ -392,13 +393,11 @@
         const same = R.every((r) => (got[r] || 0) === (want[r] || 0));
         if (!same) {
           cancelDialog(dlg);
-          const multi = targets.some((t) => left.get(`${t.title}|${t.rarity}`).copies !== left.get(`${t.title}|${t.rarity}`).count);
-          return abort(`page ${page} : le jeu s’apprête à défausser ${byRarText(got) || '?'} au lieu de ${byRarText(want)}${multi ? ' (il défausse sans doute tous les exemplaires d’une carte : l’option « Garder 1 exemplaire » ne peut pas passer par la sélection du jeu)' : ''}. Rien n’a été défaussé.`);
+          return abort(`page ${page} : le jeu s’apprête à défausser ${byRarText(got) || '?'} au lieu de ${byRarText(want)}. Rien n’a été défaussé.`);
         }
         if (dry) {
           cancelDialog(dlg);
-          stats.copies += Object.values(want).reduce((a, b) => a + b, 0);
-          for (const t of targets) left.get(`${t.title}|${t.rarity}`).copies = 0; // vérifiées : on passe à la suite
+          for (const t of targets) { const c = left.get(`${t.title}|${t.rarity}`); stats.copies += c.copies; c.copies = 0; } // vérifiées (exemplaires suivants compris) : on passe à la suite
           await clearSelection();
           if (!(await advance())) break;
           continue;
@@ -409,12 +408,12 @@
         confirm.click();
         const ok = await waitFor(() => !dlg.isConnected && NATIVE.done(), 20000, 200);
         if (!ok) return finish(`page ${page} : le jeu n’a pas confirmé la défausse (vérifiez votre collection). ${plural(stats.copies, 'exemplaire')} défaussé${stats.copies > 1 ? 's' : ''} avant.`, 'warn');
-        stats.copies += Object.values(want).reduce((a, b) => a + b, 0);
+        stats.copies += targets.length;
         stats.reward += reward; stats.rounds += 1;
         for (const t of targets) {
           const c = left.get(`${t.title}|${t.rarity}`);
-          for (let i = 0; i < c.copies; i++) window.dispatchEvent(new CustomEvent('wmx:discard', { detail: { card_id: c.card_id } })); // inventaire de l'extension (page principale)
-          c.copies = 0;
+          window.dispatchEvent(new CustomEvent('wmx:discard', { detail: { card_id: c.card_id } })); // inventaire de l'extension (page principale) : un exemplaire de moins
+          c.copies -= 1; // d'autres exemplaires à défausser : la carte est recochée au passage suivant
         }
         await sleep(1500); // le jeu recharge la page : les cartes suivantes remontent
         await waitFor(() => NATIVE.cards().length, 15000);

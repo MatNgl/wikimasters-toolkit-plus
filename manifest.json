@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WikiMasters Toolkit+",
-  "version": "0.28.0",
+  "version": "0.28.1",
   "description": "Prix du marché, ouverture de paquets en un clic, enchères automatiques et style de cartes pour WikiMasters.",
   "permissions": [
     "storage",
@@ -79,7 +79,7 @@
       "world": "MAIN"
     }
   ],
-  "version_name": "0.28.0 · défausse en arrière-plan (page invisible, progression N / total) ou visible ; paquets : compte Pro (3 min) ou classique (10 min), heure exacte du prochain paquet ; défausse par critères (sélection native du jeu, essai à blanc) ; assistant de vente : raretés exclusives et dans l’ordre",
+  "version_name": "0.28.1 · défausse en arrière-plan (page invisible, progression N / total) ou visible ; paquets : compte Pro (3 min) ou classique (10 min), heure exacte du prochain paquet ; défausse par critères (sélection native du jeu, essai à blanc) ; assistant de vente : raretés exclusives et dans l’ordre",
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",
