@@ -116,7 +116,10 @@
           const on = chosen.some((x) => key(x) === key(t.name));
           const box = el('input', { type: 'checkbox' }); box.checked = on;
           const row = el('label', { class: 'wmx-dc-tagrow', role: 'option', 'aria-selected': String(on) }, box, el('span', {}, t.name), el('small', {}, fmt(t.n)));
-          box.addEventListener('change', () => set({ tags: box.checked ? [...chosen, t.name] : chosen.filter((x) => key(x) !== key(t.name)) }));
+          box.addEventListener('change', () => {
+            if (box.checked) WMX.inventory.syncTagged?.([t.name], { force: true }); // étiquette choisie : ses cartes sont relues (cartes ajoutées depuis)
+            set({ tags: box.checked ? [...chosen, t.name] : chosen.filter((x) => key(x) !== key(t.name)) });
+          });
           return row;
         }) : [el('span', { class: 'wmx-cp-empty' }, 'Aucune étiquette dans la collection')]));
       if (!S.tagOpen) tagPanel.hidden = true;
@@ -127,9 +130,16 @@
       const check = toCheck(pl, prefs);
       const noRar = !prefs.rarities.length;
       const loading = partial();
+      // Fraîcheur de la copie de la collection : les étiquettes sont relues à l'ouverture ; « Relire la collection » relit tout (cartes obtenues depuis…).
+      const age = WMX.inventory.age?.() ?? Infinity;
+      const reading = WMX.inventory.isLoading?.();
+      const fresh = el('div', { class: 'wmx-dc-fresh' },
+        el('small', {}, reading ? `Relecture de la collection en cours (${fmt(WMX.inventory.loaded?.() || 0)} cartes lues)…`
+          : Number.isFinite(age) ? `Collection lue il y a ${age < 60000 ? 'moins d’une minute' : `${Math.round(age / 60000)} min`} ; les étiquettes sont relues à l’ouverture.` : ''),
+        reading ? '' : el('button', { type: 'button', class: 'wmx-btn wmx-btn--ghost', title: 'Relit toute la collection (cartes obtenues ou étiquetées depuis la dernière lecture) : une à quelques minutes', onclick: () => { WMX.inventory.reload?.(); setTimeout(render, 300); } }, 'Relire la collection'));
       const parts = [
         ...(loading ? [el('div', { class: 'wmx-dc-loading', role: 'status' }, el('b', {}, 'Lecture de votre collection en cours…'),
-          el('small', {}, `${fmt(WMX.inventory.loaded?.() || items.length)} cartes lues pour l’instant : les nombres augmentent jusqu’à la fin de la lecture (quelques minutes la première fois, ensuite elle est gardée en mémoire). Vous pourrez continuer une fois la lecture terminée.`))] : []),
+          el('small', {}, `${fmt(WMX.inventory.loaded?.() || items.length)} cartes lues pour l’instant : les nombres augmentent jusqu’à la fin de la lecture (quelques minutes la première fois, ensuite elle est gardée en mémoire). Vous pourrez continuer une fois la lecture terminée.`))] : [fresh]),
         el('div', { class: 'wmx-dc-hrow' }, el('div', { class: 'wmx-dc-h' }, 'Raretés'),
           noRar ? (chosen.length ? el('span', { class: 'wmx-dc-hint' }, 'aucune cochée : toutes les raretés des étiquettes choisies') : el('span', { class: 'wmx-dc-err', role: 'alert' }, 'Choisissez au moins une rareté ou une étiquette')) : ''),
         el('div', { class: 'wmx-pm-chips' }, ...R.map((r) => chip(`${r} · ${fmt(items.filter((i) => i.rarity === r).reduce((n, i) => n + (i.count || 1), 0))}`, WMX.RARITY_RGB?.[r], prefs.rarities.includes(r),
@@ -179,6 +189,9 @@
     }
     document.body.append(back);
     render();
+    // Cartes étiquetées (ou désétiquetées) depuis la dernière lecture : une requête donne le nombre de cartes de chaque étiquette, et seules celles
+    // dont le nombre a changé sont relues ; la fenêtre se met à jour toute seule.
+    WMX.inventory.syncTagged?.([...new Set([...tagList().map((t) => t.name), ...(prefs.tags || [])])]);
     // Cartes lues ou prix arrivés : la fenêtre se met à jour, mais jamais pendant une saisie (seuil, liste « prix inconnu ») : après.
     let later = false;
     const typing = () => dlg.contains(document.activeElement) && /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName) && document.activeElement.type !== 'checkbox';
@@ -251,6 +264,8 @@
     selectAll: () => NATIVE.btn(/^Tout sélectionner/i),
     quit: () => NATIVE.btn(/^Quitter la sélection/i),
     discard: () => NATIVE.btn(/^Défausser\s*\(/i),
+    /** « Défausser (+0) » : rien de défaussable dans la sélection (favorites que la copie de la collection ignorait). */
+    zeroDiscard: () => NATIVE.buttons().find((b) => /^Défausser\s*\(\s*\+?\s*0\s*\)/i.test(norm(b.textContent))) || null,
     next: () => NATIVE.btn(/^Suivant/i),
     prev: () => NATIVE.btn(/^(←\s*)?Précédent/i),
     tagMenu: () => D.querySelector('button[aria-label="Filtrer par étiquette"]'),
@@ -269,7 +284,9 @@
     read(card) {
       const title = norm(card.querySelector('h3')?.textContent);
       const rarity = WMX.normRarity(norm(card.querySelector('div.absolute.top-2.left-2')?.textContent)) || '';
-      return title && rarity ? { title, rarity, item: WMX.inventory.find(title, rarity) } : null;
+      // Favorite : lue sur la carte elle-même (bouton « Retirer des favoris » du jeu), pas seulement dans la copie de la collection (peut dater).
+      const fav = !!(card.parentElement || card).querySelector('button[aria-label^="Retirer des favoris"], button[title^="Retirer des favoris"]');
+      return title && rarity ? { title, rarity, fav, item: WMX.inventory.find(title, rarity) } : null;
     },
     /** Fenêtre de défausse du jeu : titre « Défausser N cartes ? ». */
     dialog() {
@@ -409,20 +426,71 @@
   }
 
   // ---- déroulé ----
+  // Panneau de progression : « 120 / 340 exemplaires », étape en cours, « Arrêter » / « Fermer », « Afficher » (page invisible). Il se déplace en
+  // le tirant par son en-tête (position mémorisée, double-clic : place d'origine) ; la croix le masque pendant la défausse : une petite bulle
+  // « N / M » avec un anneau d'avancement prend sa place au-dessus du compteur de paquets, un clic sur la bulle le réaffiche.
   let panel = null;
-  /** Fenêtre de progression (page principale) : « 120 / 340 exemplaires », étape en cours, « Arrêter » / « Afficher ». */
-  /** Ferme le panneau de progression (« Fermer », ou 30 s après la fin) : il ne revient plus tout seul. */
-  function closePanel() { if (panel) { WMX.dom.release ? WMX.dom.release(panel) : panel.remove(); panel = null; } }
+  let bubble = null;
+  let panelHidden = false;
+  let panelPos = null; // { x, y } choisis par l'utilisateur (mémorisés)
+  WMX.store.get('discardPanelPos', null).then((v) => { if (v && Number.isFinite(v.x) && Number.isFinite(v.y)) panelPos = v; });
+  const release = (n) => (WMX.dom.release ? WMX.dom.release(n) : n?.remove());
+  /** Ferme le panneau (« Fermer », ou peu après la fin) et sa bulle : ils ne reviennent plus tout seuls. */
+  function closePanel() {
+    if (panel) { release(panel); panel = null; }
+    if (bubble) { release(bubble); bubble = null; }
+    panelHidden = false;
+  }
+  function placePanel() {
+    if (!panel || !panelPos) return;
+    const w = panel.offsetWidth || 420, h = panel.offsetHeight || 90;
+    const x = Math.min(Math.max(8, panelPos.x), Math.max(8, window.innerWidth - w - 8));
+    const y = Math.min(Math.max(8, panelPos.y), Math.max(8, window.innerHeight - h - 8));
+    Object.assign(panel.style, { left: `${x}px`, top: `${y}px`, bottom: 'auto', transform: 'none' });
+  }
+  function dragPanel(e) {
+    if (e.button !== 0 || e.target.closest('button')) return;
+    e.preventDefault();
+    const r = panel.getBoundingClientRect();
+    const dx = e.clientX - r.left, dy = e.clientY - r.top;
+    panel.classList.add('dragging');
+    const move = (ev) => { panelPos = { x: ev.clientX - dx, y: ev.clientY - dy }; placePanel(); };
+    const up = () => { panel?.classList.remove('dragging'); window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); if (panelPos) WMX.store.set('discardPanelPos', panelPos); };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  }
+  function hidePanel() { panelHidden = true; if (panel) panel.hidden = true; paintBubble(); }
+  function unhidePanel() { panelHidden = false; if (panel) panel.hidden = false; if (bubble) { release(bubble); bubble = null; } }
+  /** Bulle de progression (panneau masqué) : au-dessus du compteur de paquets (ou en bas à gauche). */
+  function paintBubble() {
+    if (!panelHidden) return;
+    const pr = run.prog || { done: 0, total: 0 };
+    const frac = pr.total ? Math.min(1, pr.done / pr.total) : 0;
+    if (!bubble?.isConnected) {
+      bubble = el('button', { type: 'button', class: 'wmx-dc-bubble', title: 'Défausse : cliquer pour afficher le détail', onclick: () => unhidePanel() });
+      bubble.innerHTML = '<svg viewBox="0 0 44 44" aria-hidden="true"><circle class="bg" cx="22" cy="22" r="19"/><circle class="fg" cx="22" cy="22" r="19" pathLength="100"/></svg><span class="wmx-dc-bubble-txt"><b></b><small>défausse</small></span>';
+      document.body.append(WMX.dom.keepAttached ? WMX.dom.keepAttached(bubble) : bubble);
+    }
+    bubble.querySelector('b').textContent = pr.total ? `${fmt(pr.done)}/${fmt(pr.total)}` : '…';
+    bubble.querySelector('.fg').style.strokeDashoffset = String(100 - Math.round(frac * 100));
+    bubble.dataset.kind = panel?.dataset.kind || 'ok';
+    const dial = document.querySelector('.wmx-pdial');
+    const r = dial?.getBoundingClientRect();
+    if (r && r.width) Object.assign(bubble.style, { left: `${Math.round(r.left + r.width / 2 - 34)}px`, bottom: `${Math.round(window.innerHeight - r.top + 10)}px` });
+  }
   function showRun(text, kind = 'ok') {
     if (!panel?.isConnected) {
       const peek = el('button', { class: 'wmx-btn wmx-btn--ghost wmx-dc-peek', title: 'Montrer ou cacher la page Collection où travaille l’extension' }, 'Afficher');
       peek.addEventListener('click', () => { const f = run.frame; if (!f) return; const on = !f.classList.contains('wmx-on'); f.classList.toggle('wmx-on', on); f.classList.toggle('wmx-dc-peek-on', on); peek.textContent = on ? 'Masquer' : 'Afficher'; });
-      panel = el('div', { class: 'wmx-dc-run', role: 'status' },
-        el('div', { class: 'wmx-dc-run-head' }, el('b', { class: 'wmx-dc-run-title' }, 'Défausse'), el('span', { class: 'wmx-dc-run-num' }), el('span', { class: 'wmx-dc-run-sp' }), peek,
-          el('button', { class: 'wmx-btn wmx-btn--ghost', onclick: () => { if (!run.on) { closePanel(); return; } run.stop = true; showRun('arrêt demandé : fin de l’étape en cours…', 'warn'); } }, 'Arrêter')),
-        el('div', { class: 'wmx-dc-run-bar' }, el('i')),
-        el('span', { class: 'wmx-dc-run-txt' }));
+      const head = el('div', { class: 'wmx-dc-run-head', title: 'Tirer pour déplacer · double-clic : place d’origine' }, el('b', { class: 'wmx-dc-run-title' }, 'Défausse'), el('span', { class: 'wmx-dc-run-num' }), el('span', { class: 'wmx-dc-run-sp' }), peek,
+        el('button', { class: 'wmx-btn wmx-btn--ghost wmx-dc-stop', onclick: () => { if (!run.on) { closePanel(); return; } run.stop = true; showRun('arrêt demandé : fin de l’étape en cours…', 'warn'); } }, 'Arrêter'),
+        el('button', { class: 'wmx-dc-hide', type: 'button', title: 'Masquer (une petite bulle montre l’avancement)', 'aria-label': 'Masquer', onclick: () => { if (run.on) hidePanel(); else closePanel(); } }, '×'));
+      head.addEventListener('mousedown', dragPanel);
+      head.addEventListener('dblclick', (e) => { if (e.target.closest('button')) return; panelPos = null; WMX.store.set('discardPanelPos', null); Object.assign(panel.style, { left: '', top: '', bottom: '', transform: '' }); });
+      panel = el('div', { class: 'wmx-dc-run', role: 'status' }, head, el('div', { class: 'wmx-dc-run-bar' }, el('i')), el('span', { class: 'wmx-dc-run-txt' }));
+      if (panelHidden) panel.hidden = true;
       document.body.append(WMX.dom.keepAttached ? WMX.dom.keepAttached(panel) : panel);
+      placePanel();
     }
     const pr = run.prog || { done: 0, total: 0 };
     panel.dataset.kind = kind;
@@ -431,7 +499,8 @@
     panel.querySelector('.wmx-dc-run-bar i').style.width = `${pr.total ? Math.round((pr.done / pr.total) * 100) : 0}%`;
     panel.querySelector('.wmx-dc-peek').hidden = !run.frame;
     panel.querySelector('.wmx-dc-run-txt').textContent = text;
-    panel.querySelector('.wmx-dc-run-head .wmx-btn:last-child').textContent = run.on ? 'Arrêter' : 'Fermer';
+    panel.querySelector('.wmx-dc-stop').textContent = run.on ? 'Arrêter' : 'Fermer';
+    paintBubble();
   }
   /** Page Collection invisible (arrière-plan) ; `reload()` la recharge (état propre) et rend le nouveau document. Remplacée dans les essais. */
   async function openFrame() {
@@ -508,6 +577,7 @@
     const done = (n) => `${plural(n, 'exemplaire')} ${dry ? 'vérifié' : 'défaussé'}${n > 1 ? 's' : ''}`;
     const finish = (text, kind = 'ok') => {
       run.on = false;
+      try { NATIVE.quit()?.click(); } catch (_) { /* page déjà fermée */ } // fin : on quitte le mode sélection du jeu
       const c = ctx; ctx = null;
       setTimeout(() => c?.remove?.(), 1500); // page invisible retirée (après la dernière réponse du jeu)
       D = document; W = window;
@@ -516,7 +586,8 @@
       run.frame = null;
       WMX.journal?.add('Défausse', text, kind === 'ok' ? undefined : 'warn');
       WMX.notify?.({ kind: kind === 'ok' ? 'info' : 'warn', key: 'discard', ms: 12000, title: kind === 'ok' ? `${label} terminée` : `${label} arrêtée`, text });
-      setTimeout(() => { if (!run.on) closePanel(); }, 30000);
+      // Réussite : le panneau se ferme seul après quelques secondes (la notification et le journal gardent le résultat) ; un arrêt reste lisible plus longtemps.
+      setTimeout(() => { if (!run.on) closePanel(); }, kind === 'ok' ? 5000 : 30000);
     };
     async function abort(text) { await clearSelection(); return finish(text, 'warn'); }
     /** Après une défausse : la liste du jeu doit se relire. En arrière-plan on recharge la page (état propre) ; en mode visible on rechoisit le filtre. */
@@ -580,7 +651,7 @@
      * (les cartes suivantes y remontent) ; on ne passe à la suivante que lorsqu'il n'y reste que des favorites (le jeu ne les défausse jamais).
      * Jamais plus que le total annoncé dans la confirmation. Rend '' si la vue est terminée, sinon le message d'arrêt (déjà affiché).
      */
-    const isFav = (s) => !!s.item?.starred;
+    const isFav = (s) => !!(s.fav || s.item?.starred);
     async function fastView(view) {
       let page = 1;
       for (let guard = 0; guard < 3000; guard++) {
@@ -616,8 +687,17 @@
         const n = NATIVE.count();
         const favs = seen.length - free.length;
         if (n !== pick.length && n !== pick.length + favs) { if (await orRetry(view, `page ${page} : le jeu compte ${n ?? '?'} carte(s) sélectionnée(s) au lieu de ${pick.length}. Rien n’a été défaussé sur cette page.`)) continue; return 'stop'; }
-        const db = NATIVE.discard();
-        if (!db) { if (await orRetry(view, `page ${page} : bouton « Défausser » du jeu introuvable. Rien n’a été défaussé.`)) continue; return 'stop'; }
+        const db = await waitFor(NATIVE.discard, 3000, 150);
+        if (!db) {
+          // « Défausser (+0) » grisé : les cartes cochées ne sont pas défaussables (favorites que la copie de la collection ignorait) : on passe à la page suivante.
+          if (NATIVE.zeroDiscard()) {
+            await clearSelection();
+            const nx = NATIVE.next(); const pg = NATIVE.page();
+            if (nx && (!pg || pg.n < pg.of)) { nx.click(); page += 1; await sleep(600); await waitFor(listReady, 15000, 200); await settled(); continue; }
+            return '';
+          }
+          if (await orRetry(view, `page ${page} : bouton « Défausser » du jeu introuvable. Rien n’a été défaussé.`)) continue; return 'stop';
+        }
         const reward = Number((/\+\s*(\d[\d\s ]*)/.exec(norm(db.textContent)) || [])[1]?.replace(/\D/g, '') || 0);
         db.click();
         const dlg = await waitFor(NATIVE.dialog, 6000);
@@ -743,7 +823,7 @@
             for (const s of seen) {
               const k = `${s.title}|${s.rarity}`;
               if (tkeys.has(k)) continue;
-              if (s.item?.starred) continue; // favorite cochée par « Tout sélectionner » : le jeu ne la défausse jamais, inutile de la décocher
+              if (s.fav || s.item?.starred) continue; // favorite cochée par « Tout sélectionner » : le jeu ne la défausse jamais, inutile de la décocher
               if (run.stop) break;
               if (!(await toggleByKey(k, -1))) { lost = s.title; break; }
             }
@@ -761,12 +841,12 @@
           if (run.stop) return abort(`arrêtée à votre demande : ${done(stats.copies)}.`);
           // Compteur : les cartes prévues, plus éventuellement les favorites laissées cochées (le jeu les omet ; la fenêtre, vérifiée ensuite, le confirme).
           const n = NATIVE.count();
-          const favs = usedAll ? seen.filter((x) => x.item?.starred && !tkeys.has(`${x.title}|${x.rarity}`)).length : 0;
+          const favs = usedAll ? seen.filter((x) => (x.fav || x.item?.starred) && !tkeys.has(`${x.title}|${x.rarity}`)).length : 0;
           if (n !== targets.length && n !== targets.length + favs) { if (await orRetry(view, `page ${page} : le jeu compte ${n ?? '?'} carte(s) sélectionnée(s) au lieu de ${targets.length}${favs ? ` (ou ${targets.length + favs} avec les favorites)` : ''}. Rien n’a été défaussé sur cette page.`)) continue; return; }
           // Fenêtre du jeu : une carte cochée = UN exemplaire ; les nombres par rareté doivent être exactement les cartes prévues.
           const want = {};
           for (const t of targets) want[t.rarity] = (want[t.rarity] || 0) + 1;
-          const db = NATIVE.discard();
+          const db = await waitFor(NATIVE.discard, 3000, 150);
           if (!db) { if (await orRetry(view, `page ${page} : bouton « Défausser » du jeu introuvable. Rien n’a été défaussé.`)) continue; return; }
           const reward = Number((/\+\s*(\d[\d\s ]*)/.exec(norm(db.textContent)) || [])[1]?.replace(/\D/g, '') || 0);
           db.click();

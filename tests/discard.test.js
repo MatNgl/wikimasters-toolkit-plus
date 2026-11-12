@@ -55,6 +55,7 @@ function fakeGame(w, cards, { perPage = 50, failAfterDiscard = false, lateReload
       const h3 = d.createElement('h3'); h3.textContent = c.title;
       card.append(badge, h3);
       card.addEventListener('click', () => { if (!st.selecting) return; st.sel.has(c.uid) ? st.sel.delete(c.uid) : st.sel.add(c.uid); render(); });
+      if (c.starred) { const fb = d.createElement('button'); fb.setAttribute('aria-label', 'Retirer des favoris (déverrouille la carte)'); host.append(fb); }
       const mark = d.createElement('span'); mark.className = 'pointer-events-none absolute';
       mark.innerHTML = st.sel.has(c.uid) ? '<svg class="lucide lucide-check"></svg>' : '<svg class="lucide lucide-square"></svg>';
       host.append(card, mark);
@@ -66,7 +67,7 @@ function fakeGame(w, cards, { perPage = 50, failAfterDiscard = false, lateReload
       const bar = d.createElement('div'); bar.className = 'fixed bottom-4 card-frame fake-bar'; // comme le jeu : barre fixée en bas, hors de <main>
       const n = d.createElement('div'); n.innerHTML = `<span>${st.sel.size}</span><span>carte${st.sel.size > 1 ? 's' : ''} sélectionnée${st.sel.size > 1 ? 's' : ''}</span>`;
       const real = st.list.filter((c) => st.sel.has(c.uid) && !c.starred).length;
-      bar.append(n, button('Tout sélectionner (page)', () => { for (const c of pageCards()) st.sel.add(c.uid); render(); }), button(`Défausser (+${real})`, openDialog));
+      bar.append(n, button('Tout sélectionner (page)', () => { for (const c of pageCards()) st.sel.add(c.uid); render(); }), button(`Défausser (+${real})`, openDialog, real ? {} : { disabled: '' }));
       d.body.append(bar);
     }
   }
@@ -110,7 +111,7 @@ function fakeGame(w, cards, { perPage = 50, failAfterDiscard = false, lateReload
 function setup(cards, opts) {
   const env = createEnv({ fetchImpl: async () => json({}) });
   const { w, WMX } = env;
-  const items = cards.map((c, i) => ({ id: `row${i}`, card_id: `id${i}`, title: c.title, rarity: c.rarity, count: c.count || 1, starred: !!c.starred, image: c.image ?? 'x.jpg', tags: c.tags || [], at: '' }));
+  const items = cards.map((c, i) => ({ id: `row${i}`, card_id: `id${i}`, title: c.title, rarity: c.rarity, count: c.count || 1, starred: !!c.starred && !c.domOnlyFav, image: c.image ?? 'x.jpg', tags: c.tags || [], at: '' }));
   WMX.inventory.items = () => items;
   WMX.inventory.find = (t, r) => items.find((it) => it.title === t && it.rarity === r) || null;
   WMX.inventory.ensure = async () => {};
@@ -418,6 +419,45 @@ test('défausse : « Fermer » retire vraiment le panneau de progression (il ne 
   [...panel.querySelectorAll('button')].find((b) => /Fermer/.test(b.textContent)).click();
   await sleep(1500);
   assert.equal(w.document.querySelector('.wmx-dc-run'), null, 'le panneau ne revient pas');
+  env.close();
+});
+
+test('défausse « tout défausser » : une favorite que la copie de la collection ignore est reconnue sur la carte (pas d’arrêt « Défausser introuvable »), et à la fin on quitte la sélection', async () => {
+  const cards = [];
+  for (let i = 0; i < 3; i++) cards.push({ title: `Fav cachée ${i}`, rarity: 'C', tags: TEST, starred: true, domOnlyFav: true });
+  for (let i = 0; i < 22; i++) cards.push({ title: `Test ${i}`, rarity: 'C', tags: TEST });
+  const { env, w, WMX, game } = setup(cards, { perPage: 20 });
+  await WMX.features.find((f) => f.name === 'discard').init();
+  WMX.prices.has = () => false;
+  const p = { rarities: [], tags: ['TEST'], useMax: false, keepOne: false, onlyNoImage: false, keepRecent: false, protectSale: false };
+  const pl = WMX.discard.plan(p);
+  assert.equal(pl.copies, 25, 'la copie de la collection croit pouvoir défausser les 3 favorites');
+  await WMX.discard.start(pl, { dry: false, visible: true, prefs: p });
+  assert.equal(game.discarded.length, 22, `les 22 cartes, jamais les favorites : ${game.discarded.length}`);
+  assert.doesNotMatch(w.document.querySelector('.wmx-dc-run')?.textContent || '', /introuvable|arrêtée/);
+  assert.ok([...w.document.querySelectorAll('button')].some((b) => b.textContent === 'Sélectionner'), 'fin : le mode sélection du jeu est quitté');
+  await sleep(5600);
+  assert.equal(w.document.querySelector('.wmx-dc-run'), null, 'réussite : le panneau se ferme seul');
+  env.close();
+});
+
+test('défausse : le panneau masqué pendant la défausse laisse une bulle « N / M » ; un clic sur la bulle le réaffiche', async () => {
+  const cards = Array.from({ length: 30 }, (_, i) => ({ title: `Commune ${i}`, rarity: 'C' }));
+  const { env, w, WMX } = setup(cards, { perPage: 10 });
+  await WMX.features.find((f) => f.name === 'discard').init();
+  const p = { rarities: ['C'], keepUnpriced: true };
+  const run = WMX.discard.start(WMX.discard.plan(p), { dry: false, visible: true, prefs: p });
+  await sleep(1500);
+  w.document.querySelector('.wmx-dc-hide').click();
+  await sleep(300);
+  assert.ok(w.document.querySelector('.wmx-dc-run').hidden, 'panneau masqué');
+  const bubble = w.document.querySelector('.wmx-dc-bubble');
+  assert.ok(bubble, 'bulle affichée');
+  assert.match(bubble.textContent, /\/30/, 'avancement N / 30');
+  bubble.click();
+  assert.ok(!w.document.querySelector('.wmx-dc-run').hidden, 'un clic sur la bulle réaffiche le panneau');
+  assert.equal(w.document.querySelector('.wmx-dc-bubble'), null);
+  await run;
   env.close();
 });
 

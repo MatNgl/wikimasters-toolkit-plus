@@ -922,3 +922,26 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-dc-prices { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 8px 10px; border-radius: 12px; background: #151d1a; }
 .wmx-dc-prices small { flex: 1 1 260px; color: #b9cbc2; font-size: 12.5px; line-height: 1.4; }
 .wmx-dc-fast { color: #93c5fd !important; }
+
+/* ---- Défausse : panneau déplaçable, masquable, et bulle d'avancement (0.31.8) ---- */
+.wmx-dc-run[hidden] { display: none !important; }
+.wmx-dc-run-head { cursor: grab; user-select: none; }
+.wmx-dc-run.dragging { cursor: grabbing; box-shadow: 0 24px 70px #000d, 0 0 0 1px #2dd4a055; }
+.wmx-dc-run.dragging .wmx-dc-run-head { cursor: grabbing; }
+.wmx-dc-hide { width: 26px; height: 26px; padding: 0; border-radius: 8px; border: 1px solid #ffffff1f; background: transparent; color: #cbd5d0; font-size: 16px; line-height: 1; cursor: pointer; flex: none; }
+.wmx-dc-hide:hover { background: #ffffff14; color: #fff; }
+.wmx-dc-bubble { position: fixed; left: 16px; bottom: 220px; z-index: 2147483000; width: 68px; height: 68px; padding: 0; border-radius: 50%; border: 1px solid #e5384f66; background: #101614f2; color: #e6efe9; cursor: pointer; display: grid; place-items: center; box-shadow: 0 10px 30px #000b; font-family: Outfit, system-ui, sans-serif; }
+.wmx-dc-bubble svg { position: absolute; inset: 3px; width: calc(100% - 6px); height: calc(100% - 6px); transform: rotate(-90deg); }
+.wmx-dc-bubble circle { fill: none; stroke-width: 3.5; }
+.wmx-dc-bubble .bg { stroke: #ffffff1a; }
+.wmx-dc-bubble .fg { stroke: #e5384f; stroke-dasharray: 100; stroke-dashoffset: 100; stroke-linecap: round; transition: stroke-dashoffset .4s ease; }
+.wmx-dc-bubble[data-kind="warn"] { border-color: #f59e0b88; }
+.wmx-dc-bubble[data-kind="warn"] .fg { stroke: #f59e0b; }
+.wmx-dc-bubble-txt { position: relative; display: flex; flex-direction: column; align-items: center; line-height: 1.05; }
+.wmx-dc-bubble-txt b { font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.wmx-dc-bubble-txt small { font-size: 9.5px; color: #9db5a8; }
+.wmx-dc-bubble:hover { border-color: #e5384f; }
+@media (prefers-reduced-motion: reduce) { .wmx-dc-bubble .fg { transition: none; } }
+.wmx-dc-fresh { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; }
+.wmx-dc-fresh small { flex: 1 1 240px; color: #8fa89c; font-size: 12px; }
+.wmx-dc-fresh .wmx-btn { padding: 5px 12px; font-size: 12.5px; }
