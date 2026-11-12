@@ -1,4 +1,4 @@
-// Images promotionnelles du Chrome Web Store : petite 440×280 (obligatoire) et grande 1400×560, en PNG 24 bits sans transparence.
+// Images promotionnelles : Chrome Web Store (petite 440×280 obligatoire, grande 1400×560) et Opera add-ons (300×188), en PNG 24 bits sans transparence.
 // Usage : node scripts/promo.js   -> release/promo/
 // Les cartes viennent de la capture « Animaux » de la collection (cartes neutres, prix et éclair visibles).
 const path = require('path');
@@ -73,4 +73,8 @@ async function make(name, W, H, layout) {
       <text x="64" y="352" font-size="30" font-weight="600" fill="#d7e6df">Des enchères qui se jouent seules.</text>
 `), 0, 0);
   });
+  // --- 300 × 188 : image promotionnelle d'Opera add-ons, tirée de la petite (même visuel, recadrage léger) ---
+  const opera = path.resolve(__dirname, '../release/promo/opera-300x188.png');
+  await sharp(path.resolve(__dirname, '../release/promo/petite-440x280.png')).resize(300, 188, { fit: 'cover', position: 'centre' }).flatten({ background: '#0a1411' }).removeAlpha().png().toFile(opera);
+  console.log('opera-300x188.png', '300x188');
 })();
