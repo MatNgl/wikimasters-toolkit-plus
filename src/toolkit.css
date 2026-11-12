@@ -921,3 +921,4 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-dc-loading small { color: #b9cbc2; font-size: 12px; line-height: 1.4; }
 .wmx-dc-prices { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 8px 10px; border-radius: 12px; background: #151d1a; }
 .wmx-dc-prices small { flex: 1 1 260px; color: #b9cbc2; font-size: 12.5px; line-height: 1.4; }
+.wmx-dc-fast { color: #93c5fd !important; }

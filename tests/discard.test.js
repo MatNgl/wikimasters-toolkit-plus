@@ -363,6 +363,64 @@ test('défausse : blocage « automatisation » du jeu → pause (message), nouve
   env.close();
 });
 
+test('défausse « prix inconnu : en dernier » sur plusieurs pages : le 2e passage repart de la page 1 (plus de cartes « non trouvées »)', async () => {
+  // 30 cartes à prix connu bas et 60 au prix inconnu (pas chères une fois chargées) mélangées, puis 30 gardées (avec image) en fin de liste ; pages de 20.
+  const cards = [];
+  for (let i = 0; i < 30; i++) cards.push({ title: `Connue ${i}`, rarity: 'C', image: '' }, { title: `Inconnue ${i}`, rarity: 'C', image: '' }, { title: `Inconnue bis ${i}`, rarity: 'C', image: '' });
+  for (let i = 0; i < 30; i++) cards.push({ title: `Gardée ${i}`, rarity: 'C' }); // comme chez vous : les dernières pages ne contiennent que des cartes gardées
+  cards.push({ title: 'Connue fin', rarity: 'C', image: '' }); // une carte au prix connu tout à la fin : le 1er passage finit sur la dernière page
+  const { env, w, WMX, game, items } = setup(cards, { perPage: 20 });
+  await WMX.features.find((f) => f.name === 'discard').init();
+  const known = new Map(items.filter((it) => /^Connue|^Gardée/.test(it.title)).map((it) => [it.card_id, 3]));
+  WMX.prices.has = (id) => known.has(id);
+  WMX.prices.get = (id) => (known.has(id) ? { avg: known.get(id) } : null);
+  let running = false;
+  WMX.prices.state = () => ({ running });
+  WMX.prices.start = (todo) => { running = true; setTimeout(() => { for (const c of todo) known.set(c.card_id, 4); running = false; }, 800); return todo.length; };
+  const p = { rarities: ['C'], useMax: true, maxAvg: 20, unpriced: 'last', onlyNoImage: true };
+  const pl = WMX.discard.plan(p);
+  assert.equal(pl.copies, 31);
+  assert.equal(pl.unpricedCards.length, 60);
+  await WMX.discard.start(pl, { dry: false, visible: true, prefs: p });
+  assert.equal(game.discarded.length, 91, `les 31 + 60 cartes sans image sont défaussées : ${game.discarded.length}`);
+  assert.ok(!game.discarded.some((t) => /Gardée/.test(t)));
+  assert.doesNotMatch(w.document.querySelector('.wmx-dc-run')?.textContent || '', /non trouvée/);
+  env.close();
+});
+
+test('défausse « tout défausser » (aucune option) : toutes les cartes de l’étiquette, page par page avec « Tout sélectionner », sauf les favorites', async () => {
+  const cards = [];
+  for (let i = 0; i < 70; i++) cards.push({ title: `Test ${i}`, rarity: i % 3 ? 'C' : 'R', tags: TEST, count: i === 5 ? 2 : 1 });
+  for (let i = 0; i < 4; i++) cards.push({ title: `Fav ${i}`, rarity: 'C', tags: TEST, starred: true });
+  cards.push({ title: 'Autre étiquette', rarity: 'C', tags: [{ name: 'animaux' }] }, { title: 'Sans étiquette', rarity: 'C' });
+  const { env, w, WMX, game } = setup(cards, { perPage: 20 });
+  await WMX.features.find((f) => f.name === 'discard').init();
+  WMX.prices.has = () => false; // prix inconnus : sans seuil, peu importe
+  const p = { rarities: [], tags: ['TEST'], useMax: false, keepOne: false, onlyNoImage: false, keepRecent: false, protectSale: false };
+  const pl = WMX.discard.plan(p);
+  assert.equal(pl.copies, 71, '70 cartes dont une en double, sans les 4 favorites');
+  await WMX.discard.start(pl, { dry: false, visible: true, prefs: p });
+  assert.equal(game.discarded.length, 71, `toutes les cartes TEST (et le 2e exemplaire) : ${game.discarded.length}`);
+  assert.ok(!game.discarded.some((t) => /Fav|Autre|Sans étiquette/.test(t)), 'ni favorite, ni autre étiquette, ni carte sans étiquette');
+  assert.match(w.document.querySelector('.wmx-dc-run').textContent, /71 exemplaires défaussés/);
+  const journal = (await WMX.journal.list()).map((e) => e.text).join(' | ');
+  assert.match(journal, /mode « tout défausser »/);
+  env.close();
+});
+
+test('défausse : « Fermer » retire vraiment le panneau de progression (il ne revient plus)', async () => {
+  const { env, w, WMX } = setup([{ title: 'Commune 1', rarity: 'C' }]);
+  await WMX.features.find((f) => f.name === 'discard').init();
+  const p = { rarities: ['C'], keepUnpriced: true };
+  await WMX.discard.start(WMX.discard.plan(p), { dry: true, visible: true, prefs: p });
+  const panel = w.document.querySelector('.wmx-dc-run');
+  assert.ok(panel);
+  [...panel.querySelectorAll('button')].find((b) => /Fermer/.test(b.textContent)).click();
+  await sleep(1500);
+  assert.equal(w.document.querySelector('.wmx-dc-run'), null, 'le panneau ne revient pas');
+  env.close();
+});
+
 for (const mode of ['wait', 'last']) {
   test(`défausse : cartes au prix inconnu « ${mode === 'wait' ? 'attendre leur prix' : 'traiter en dernier'} » (seuil 20 W : la pas chère défaussée, la chère et l’introuvable gardées)`, async () => {
     const cards = [{ title: 'Connue', rarity: 'C' }, { title: 'Pas chère', rarity: 'C' }, { title: 'Chère', rarity: 'C' }, { title: 'Introuvable', rarity: 'C' }];

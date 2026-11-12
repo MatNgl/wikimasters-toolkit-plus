@@ -20,6 +20,8 @@ WMX.dom = {
   },
   /** Garde un élément de l'extension dans la page : remis dans <body> s'il en est retiré par le jeu. */
   keepAttached(node) { kept.add(node); return node; },
+  /** Retire pour de bon un élément gardé par keepAttached (sinon il est remis dans la page aussitôt : bouton « Fermer » sans effet). */
+  release(node) { if (node) { kept.delete(node); node.remove(); } },
   el(tag, attrs = {}, ...children) {
     const n = document.createElement(tag);
     for (const [k, v] of Object.entries(attrs)) {
