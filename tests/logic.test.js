@@ -258,6 +258,31 @@ test('assistant de vente : ordre des cartes (meilleure moyenne par défaut, ou r
   assert.equal(ids({ order: 'avgLow' }), 'dbca', 'moyenne la plus basse d’abord');
   assert.equal(ids({ order: 'rarityHigh' }), 'dbca', 'raretés les plus hautes d’abord');
   assert.equal(ids({ order: 'rarityLow' }), 'acbd', 'raretés les plus basses d’abord');
-  assert.equal(ids({ priorityRar: ['UR'] }), 'bacd', 'une rareté prioritaire passe avant les autres (puis meilleure moyenne)');
-  assert.equal(ids({ priorityRar: ['L', 'ur'], order: 'avg' }), 'dbac', 'plusieurs raretés prioritaires, dans l’ordre donné (casse sans importance)');
+  assert.equal(ids({ priorityRar: ['UR'] }), 'b', 'liste de raretés : SEULE l’UR est vendue');
+  assert.equal(ids({ priorityRar: ['L', 'ur'] }), 'd', 'ordre strict : les UR attendent la fin des L (casse sans importance)');
+  assert.equal(ids({ priorityRar: ['L', 'ur'], strict: false }), 'db', 'sans ordre strict : L puis UR, aucune autre rareté');
+});
+
+test('assistant de vente : liste de raretés stricte (une rareté à la fois, cartes en vente comprises)', () => {
+  const tag = [{ name: 'VENTE' }];
+  const card = (id, rarity, over = {}) => ({ card_id: id, title: id, rarity, count: 1, starred: false, tags: tag, ...over });
+  const items = [card('u1', 'UR'), card('u2', 'UR'), card('s1', 'SR'), card('s2', 'SR'), card('c1', 'C')];
+  const plan = (o) => L.autoSellPlan(items, { tags: ['VENTE'], now: 0, priorityRar: ['UR', 'SR'], avg: () => 10, ...o });
+  let p = plan({});
+  assert.deepEqual(p.eligible.map((x) => x.card_id), ['u1', 'u2'], 'UR seulement');
+  assert.equal(p.current, 'UR');
+  assert.equal(p.outside, 1, 'la commune est hors liste, jamais vendue');
+  assert.equal(p.excluded.filter((e) => e.reason === 'later').length, 2, 'les SR attendent');
+  p = plan({ busy: new Set(['u1', 'u2']) });
+  assert.deepEqual(p.eligible, [], 'UR en file : on attend au lieu de passer aux SR');
+  assert.equal(p.current, 'UR');
+  p = L.autoSellPlan(items.filter((x) => x.rarity !== 'UR'), { tags: ['VENTE'], now: 0, priorityRar: ['UR', 'SR'], pending: [{ card_id: 'u9', rarity: 'UR' }] });
+  assert.deepEqual(p.eligible, [], 'une UR encore en vente (peut revenir invendue) retient les SR');
+  assert.equal(p.byRar.UR.onSale, 1);
+  p = plan({ cap: 50, avg: (it) => (it.rarity === 'UR' ? 900 : 10) });
+  assert.deepEqual(p.eligible.map((x) => x.card_id), ['s1', 's2'], 'des UR trop chères ne bloquent pas la liste');
+  assert.equal(p.byRar.UR.capped, 2, 'mais elles sont comptées (signalées dans la bulle)');
+  p = plan({ priorityRar: ['L'] });
+  assert.equal(p.current, null, 'plus aucune L : rien en cours');
+  assert.deepEqual(p.eligible, []);
 });

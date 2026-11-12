@@ -176,8 +176,9 @@
     pickAutoSell(items, o) { return L.autoSellPlan(items, o).eligible.slice(0, Math.max(0, o.free || 0)); },
     /**
      * Mêmes règles que pickAutoSell, détaillées : `tagged` (cartes portant une étiquette choisie), `eligible` (triées, les plus chères d'abord)
-     * et `excluded` : chaque carte étiquetée mise de côté avec sa raison ('gone' | 'favorite' | 'busy' | 'skipped' | 'capped' | 'perDay') et, pour
-     * 'skipped', la date de fin de l'écart. Sert à expliquer pourquoi telle carte n'est pas (re)mise en vente.
+     * et `excluded` : chaque carte étiquetée mise de côté avec sa raison ('gone' | 'favorite' | 'busy' | 'skipped' | 'capped' | 'perDay' | 'later' : rareté
+     * suivante, qui attend la fin de `after`) et, pour 'skipped', la date de fin de l'écart. Sert à expliquer pourquoi telle carte n'est pas (re)mise en vente.
+     * Avec une liste de raretés : `byRar` (par rareté : eligible, waiting, onSale, capped, favorite, gone), `current` (rareté servie), `outside`.
      */
     autoSellPlan(items, o) {
       const key = (s) => String(s || '').trim().toLowerCase();
@@ -185,11 +186,23 @@
       const day = 24 * L.HOUR;
       const perDay = o.perDay || 4;
       const avg = (it) => (o.avg && o.avg(it)) || 0;
-      const plan = { tagged: 0, eligible: [], excluded: [] };
+      // o.priorityRar : raretés à vendre, dans l'ordre (ex. ['UR', 'SR']). Liste vide : toutes les raretés. Liste donnée : SEULES ces raretés sont vendues
+      // (les autres sont comptées dans `outside`, jamais mises en vente). o.strict (vrai par défaut) : on ne passe à la rareté suivante que lorsque la
+      // rareté en cours n'a plus AUCUNE carte à vendre : ni éligible, ni écartée pour un temps (en file, écart, limite du jour), ni en vente (o.pending :
+      // [{ card_id, rarity }] cartes mises en vente par l'assistant, qui reviendront si elles ne trouvent pas preneur). Une favorite, une carte trop chère ou
+      // disparue ne retient jamais la rareté (sinon l'assistant resterait bloqué indéfiniment).
+      const only = [...new Set((o.priorityRar || []).map((r) => String(r).trim().toUpperCase()).filter(Boolean))];
+      const strict = o.strict !== false && only.length > 0;
+      const plan = { tagged: 0, eligible: [], excluded: [], outside: 0, order: only, current: null, byRar: {} };
+      const stat = (r) => (plan.byRar[r] = plan.byRar[r] || { eligible: 0, waiting: 0, onSale: 0, capped: 0, favorite: 0, gone: 0 });
+      only.forEach(stat);
+      const counted = new Set();
       if (!keys.size) return plan;
       for (const it of items || []) {
         if (!(it.count > 0) || !(it.tags || []).some((t) => keys.has(key(t.name)))) continue;
         plan.tagged += 1;
+        if (only.length && !only.includes(it.rarity)) { plan.outside += 1; continue; }
+        counted.add(it.card_id);
         let why = null;
         let until = null;
         if (o.gone && o.gone(it)) why = 'gone';
@@ -198,14 +211,26 @@
         else if ((o.skip && o.skip[it.card_id]) > o.now) { why = 'skipped'; until = o.skip[it.card_id]; }
         else if (o.cap > 0 && avg(it) > o.cap) why = 'capped';
         else if (((o.log && o.log[it.card_id]) || []).filter((t) => o.now - t < day).length >= perDay) why = 'perDay';
-        if (why) plan.excluded.push({ card_id: it.card_id, title: it.title, rarity: it.rarity, reason: why, until, avg: avg(it) });
-        else plan.eligible.push(it);
+        const s = stat(it.rarity);
+        if (why) {
+          plan.excluded.push({ card_id: it.card_id, title: it.title, rarity: it.rarity, reason: why, until, avg: avg(it) });
+          if (why === 'capped') s.capped += 1; else if (why === 'favorite') s.favorite += 1; else if (why === 'gone') s.gone += 1; else s.waiting += 1;
+        } else { plan.eligible.push(it); s.eligible += 1; }
       }
+      for (const p of o.pending || []) if (p && plan.byRar[p.rarity] && !counted.has(p.card_id)) { counted.add(p.card_id); plan.byRar[p.rarity].onSale += 1; } // une carte déjà comptée (revenue, étiquetée) ne l'est pas deux fois
       // Ordre de mise en vente : par défaut la meilleure moyenne d'abord. o.order : 'avg' | 'avgLow' (moyenne la plus basse d'abord) | 'rarityHigh' | 'rarityLow'
-      // (raretés hautes / basses d'abord, puis meilleure moyenne). o.priorityRar : raretés servies avant toutes les autres, dans l'ordre donné (ex. ['L', 'UR']).
+      // (raretés hautes / basses d'abord, puis meilleure moyenne). Avec une liste de raretés : d'abord l'ordre de la liste, puis o.order dans chaque rareté.
       const rank = { L: 5, UR: 4, SR: 3, R: 2, PC: 1, C: 0 };
-      const pri = (o.priorityRar || []).map((r) => String(r).trim().toUpperCase()).filter(Boolean);
+      const pri = only;
       const prank = (it) => { const i = pri.indexOf(it.rarity); return i < 0 ? pri.length : i; };
+      if (strict) {
+        const left = (r) => { const s = plan.byRar[r]; return s.eligible + s.waiting + s.onSale; };
+        plan.current = only.find((r) => left(r) > 0) || null;
+        const later = plan.eligible.filter((it) => it.rarity !== plan.current);
+        plan.eligible = plan.eligible.filter((it) => it.rarity === plan.current);
+        for (const it of later) plan.excluded.push({ card_id: it.card_id, title: it.title, rarity: it.rarity, reason: 'later', until: null, avg: avg(it), after: plan.current });
+      }
+      plan.excluded.sort((a, b) => prank(a) - prank(b) || (rank[b.rarity] ?? 0) - (rank[a.rarity] ?? 0));
       const by = {
         avg: (a, b) => avg(b) - avg(a),
         avgLow: (a, b) => avg(a) - avg(b),

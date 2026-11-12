@@ -8,7 +8,7 @@
     speed: 'normal', order: 'rarity', images: true,
     stopOn: 'off', reserve: 0, fullStockOpen: true, anticipate: true,
     quickCoef: 0.9, quickDuration: '1h', quickPrudent: false, auctionBubble: true, auctionNotify: true, autoReload: true,
-    autoDefaultMode: 'time', autoDefaultSecs: 35, autoCapMode: 'avg', autoCapW: 100, autoCapPct: 20, autoDefaultOn: false, watchMax: 12, autoSell: false, autoSellTags: 'VENTE', autoSellMax: 3, autoSellCap: 500, autoSellOrder: 'avg', autoSellPriorityRar: '', quickNoSalePrice: 10, cardStyle: true, cardShowDesc: true, cardShowStats: true,
+    autoDefaultMode: 'time', autoDefaultSecs: 35, autoCapMode: 'avg', autoCapW: 100, autoCapPct: 20, autoDefaultOn: false, watchMax: 12, autoSell: false, autoSellTags: 'VENTE', autoSellMax: 3, autoSellCap: 500, autoSellOrder: 'avg', autoSellPriorityRar: '', autoSellStrict: true, quickNoSalePrice: 10, cardStyle: true, cardShowDesc: true, cardShowStats: true,
   };
 
   // La mise à jour automatique n'existe que dans la version de développement (permission « alarms ») : absente de la version publiée.
@@ -59,9 +59,10 @@
         { key: 'autoSellTags', type: 'tags', label: 'Étiquettes à vendre', desc: 'Cochez une ou plusieurs étiquettes de votre compte. Seules les cartes qui en portent une sont concernées.' },
         { key: 'autoSellCap', type: 'number', min: 1, max: 1000000, step: 10, label: 'Prix de départ maximum (W)', desc: 'Garde-fou : l’assistant ne met jamais en vente une carte dont le prix de départ dépasserait ce montant (500 W par défaut). Pour une carte plus chère, utilisez le bouton ⚡ vous-même.' },
         { key: 'autoSellMax', type: 'number', min: 1, max: 10, step: 1, label: 'Enchères actives visées', desc: 'L’assistant complète jusqu’à ce nombre d’enchères en cours (vos ventes manuelles comptent). 10 = limite du jeu.' },
-        { key: 'autoSellOrder', type: 'select', label: 'Ordre de mise en vente', desc: 'Quelles cartes étiquetées l’assistant met en vente en premier quand il y a plus de cartes que de places.',
+        { key: 'autoSellPriorityRar', type: 'rarityOrder', label: 'Raretés à vendre', desc: '« Toutes les raretés » : aucune restriction. « Seulement celles-ci » : l’assistant ne vend QUE les raretés de la liste, dans leur ordre (n°1 d’abord). Les cartes étiquetées d’une autre rareté ne sont jamais mises en vente. Quand il n’en reste plus, la bulle des enchères le dit.' },
+        { key: 'autoSellStrict', type: 'toggle', label: 'Une rareté à la fois', desc: 'Activé (recommandé) : la rareté n°2 n’est mise en vente que lorsqu’il ne reste plus aucune carte n°1 à vendre, y compris celles déjà en vente qui pourraient revenir invendues. Les places restent libres en attendant. Désactivé : les places libres sont complétées avec la rareté suivante. Une favorite ou une carte au-dessus du prix maximum ne retient jamais la liste.' },
+        { key: 'autoSellOrder', type: 'select', label: 'Ordre dans une même rareté', desc: 'Quelles cartes l’assistant met en vente en premier (sans liste de raretés : parmi toutes les cartes étiquetées).',
           options: [['avg', 'Meilleure moyenne d’abord'], ['avgLow', 'Moyenne la plus basse d’abord'], ['rarityHigh', 'Raretés les plus hautes d’abord'], ['rarityLow', 'Raretés les plus basses d’abord']] },
-        { key: 'autoSellPriorityRar', type: 'rarityOrder', label: 'Raretés prioritaires (facultatif)', desc: 'Classez les raretés comme un podium : les cartes de la rareté n°1 sont mises en vente d’abord, puis la n°2, etc. Les raretés hors podium passent ensuite, selon l’ordre choisi ci-dessus. « Aucune priorité » : rien n’est privilégié.' },
       ],
     },
     {
@@ -150,7 +151,7 @@
         return s;
       }
       if (it.type === 'rarityOrder') {
-        // Podium des raretés : la n°1 est traitée d'abord, puis la n°2… « Aucune priorité » : rien n'est privilégié. Valeur : codes séparés par des virgules (ex. « L,UR »).
+        // Raretés à vendre, dans l'ordre : la n°1 est traitée d'abord, puis la n°2… « Toutes les raretés » : aucune restriction. Valeur : codes séparés par des virgules (ex. « UR,SR »).
         const NAMES = { L: 'Légendaire', UR: 'Ultra rare', SR: 'Super rare', R: 'Rare', PC: 'Peu commune', C: 'Commune' };
         const wrap = el('div', { class: 'wmx-rord' });
         const get = () => [...new Set(String(draft[it.key] || '').split(/[\s,;]+/).map((x) => x.trim().toUpperCase()).filter((x) => NAMES[x]))];
@@ -162,12 +163,12 @@
           const rest = Object.keys(NAMES).filter((r) => !ord.includes(r));
           const mode = (label, on, onClick) => { const b = el('button', { type: 'button', class: 'wmx-seg-btn', 'aria-pressed': String(on) }, label); b.addEventListener('click', onClick); return b; };
           wrap.replaceChildren(
-            el('div', { class: 'wmx-seg' }, mode('Aucune priorité', !ord.length, () => set([])), mode('Choisir un ordre', !!ord.length, () => { if (!ord.length) set(['L', 'UR', 'SR']); })),
+            el('div', { class: 'wmx-seg' }, mode('Toutes les raretés', !ord.length, () => set([])), mode('Seulement celles-ci', !!ord.length, () => { if (!ord.length) set(['UR']); })),
             ...(ord.length ? [el('ol', { class: 'wmx-rord-list' }, ...ord.map((r, i) => el('li', {}, el('span', { class: 'wmx-rord-n' }, `n°${i + 1}`), badge(r), el('span', { class: 'wmx-rord-name' }, NAMES[r]),
               btn('↑', 'Monter', () => { const a = [...ord]; [a[i - 1], a[i]] = [a[i], a[i - 1]]; set(a); }, i ? {} : { disabled: '' }),
               btn('↓', 'Descendre', () => { const a = [...ord]; [a[i + 1], a[i]] = [a[i], a[i + 1]]; set(a); }, i < ord.length - 1 ? {} : { disabled: '' }),
-              btn('×', 'Retirer du podium', () => set(ord.filter((x) => x !== r))))))] : []),
-            ...(ord.length && rest.length ? [el('div', { class: 'wmx-rord-add' }, el('small', {}, 'Ajouter au podium :'), ...rest.map((r) => btn(r, `Ajouter ${NAMES[r]}`, () => set([...ord, r]), { class: 'wmx-rord-btn wmx-rord-plus' })))] : []));
+              btn('×', 'Retirer de la liste', () => set(ord.filter((x) => x !== r))))))] : []),
+            ...(ord.length && rest.length ? [el('div', { class: 'wmx-rord-add' }, el('small', {}, 'Ajouter :'), ...rest.map((r) => btn(r, `Ajouter ${NAMES[r]}`, () => set([...ord, r]), { class: 'wmx-rord-btn wmx-rord-plus' })))] : []));
         };
         draw();
         return wrap;

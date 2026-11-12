@@ -700,7 +700,7 @@ test('mise automatique : jamais de surenchère sur soi-même (état réel de l\'
   env.close();
 });
 
-test('réglages : podium des raretés prioritaires de l’assistant (aucune priorité par défaut, ordre modifiable, enregistré)', async () => {
+test('réglages : raretés à vendre de l’assistant (toutes par défaut, liste ordonnée modifiable, enregistrée)', async () => {
   const env = createEnv({ fetchImpl: async () => json({}) });
   const { w, WMX } = env;
   WMX.openSettings();
@@ -708,21 +708,26 @@ test('réglages : podium des raretés prioritaires de l’assistant (aucune prio
   assert.ok(wrap, 'le podium est dans les réglages');
   assert.equal(wrap.querySelectorAll('.wmx-rord-list li').length, 0, 'aucune priorité au départ');
   const pressed = () => [...w.document.querySelectorAll('.wmx-rord .wmx-seg-btn')].find((b) => b.getAttribute('aria-pressed') === 'true').textContent;
-  assert.equal(pressed(), 'Aucune priorité');
-  [...w.document.querySelectorAll('.wmx-rord .wmx-seg-btn')].find((b) => b.textContent === 'Choisir un ordre').click();
+  assert.equal(pressed(), 'Toutes les raretés');
+  [...w.document.querySelectorAll('.wmx-rord .wmx-seg-btn')].find((b) => b.textContent === 'Seulement celles-ci').click();
   const rows = () => [...w.document.querySelectorAll('.wmx-rord-list li')].map((li) => li.querySelector('.wmx-rord-r').textContent);
-  assert.deepEqual(rows(), ['L', 'UR', 'SR'], 'un podium proposé : légendaires, ultra rares, super rares');
+  assert.deepEqual(rows(), ['UR'], 'une liste proposée : les ultra rares seulement');
+  const add = (r) => [...w.document.querySelectorAll('.wmx-rord-add .wmx-rord-btn')].find((b) => b.textContent === r).click();
+  add('L'); add('SR');
+  assert.deepEqual(rows(), ['UR', 'L', 'SR']);
   w.document.querySelectorAll('.wmx-rord-list li')[1].querySelector('button[title="Monter"]').click();
-  assert.deepEqual(rows(), ['UR', 'L', 'SR'], 'les ultra rares passent devant');
-  [...w.document.querySelectorAll('.wmx-rord-add .wmx-rord-btn')].find((b) => b.textContent === 'R').click();
-  assert.deepEqual(rows(), ['UR', 'L', 'SR', 'R'], 'une rareté ajoutée au podium');
-  w.document.querySelectorAll('.wmx-rord-list li')[3].querySelector('button[title="Retirer du podium"]').click();
+  assert.deepEqual(rows(), ['L', 'UR', 'SR'], 'les légendaires passent devant');
+  w.document.querySelectorAll('.wmx-rord-list li')[1].querySelector('button[title="Monter"]').click();
+  assert.deepEqual(rows(), ['UR', 'L', 'SR'], 'les ultra rares repassent devant');
+  add('R');
+  assert.deepEqual(rows(), ['UR', 'L', 'SR', 'R'], 'une rareté ajoutée à la liste');
+  w.document.querySelectorAll('.wmx-rord-list li')[3].querySelector('button[title="Retirer de la liste"]').click();
   assert.deepEqual(rows(), ['UR', 'L', 'SR']);
   [...w.document.querySelectorAll('.wmx-modal footer .wmx-btn')].find((b) => b.textContent === 'Appliquer').click();
   await sleep(300);
   assert.equal(WMX.settings.autoSellPriorityRar, 'UR,L,SR', 'l’ordre est enregistré');
   WMX.openSettings();
-  [...w.document.querySelectorAll('.wmx-rord .wmx-seg-btn')].find((b) => b.textContent === 'Aucune priorité').click();
+  [...w.document.querySelectorAll('.wmx-rord .wmx-seg-btn')].find((b) => b.textContent === 'Toutes les raretés').click();
   assert.equal(w.document.querySelectorAll('.wmx-rord-list li').length, 0, 'retour à aucune priorité');
   [...w.document.querySelectorAll('.wmx-modal footer .wmx-btn')].find((b) => b.textContent === 'Appliquer').click();
   await sleep(300);

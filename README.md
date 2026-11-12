@@ -22,7 +22,7 @@ Extension Chrome (Manifest V3) pour [WikiMasters](https://www.wiki-masters.com) 
 | **Marché** | moyenne et verdict (bonne affaire / prix correct / trop cher) sous chaque enchère, bouton « Miser le minimum » (file d'attente), verdict bénéfice/perte sur mes ventes |
 | **Échanges** | bouton « Valeurs » sur chaque offre (cartes, wikibidous, total, écart) |
 | **Partout** | cadran des paquets (stock, alerte « stock plein ») ; bulle « Enchères » (mes enchères, mes ventes, redimensionnable, liens vers le Marché, surenchère au minimum, annulation), alertes (surenchéri, moins de 2 min), mises automatiques (dès surenchère ou X s avant la fin) |
-| **Assistant de vente** | désactivé par défaut : garde des enchères actives avec les cartes portant les étiquettes choisies (menu des étiquettes du compte) et remet en vente les invendues ; état et raisons visibles (bulle des enchères, fenêtre « Détails »), plafond de prix, jamais une favorite ni une carte déjà vendue |
+| **Assistant de vente** | désactivé par défaut : garde des enchères actives avec les cartes portant les étiquettes choisies (menu des étiquettes du compte), seulement les raretés choisies et dans leur ordre (une rareté à la fois), et remet en vente les invendues ; état et raisons visibles (bulle des enchères, fenêtre « Détails »), plafond de prix, jamais une favorite ni une carte déjà vendue |
 | **Réglages** | ⚙ : paquets, enchère rapide, assistant, enchères, style de carte, journal d'activité (« Copier le diagnostic ») |
 
 ## Règles de prix

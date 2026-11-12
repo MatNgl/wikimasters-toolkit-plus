@@ -19,7 +19,20 @@
   const tags = () => String(WMX.settings?.autoSellTags || '').split(',').map((t) => t.trim()).filter(Boolean);
   const cap = () => Math.max(1, Number(WMX.settings?.autoSellCap) || 500);
   const maxActive = () => Math.max(1, Math.min(10, Number(WMX.settings?.autoSellMax) || 3));
-  const REASONS = { gone: 'plus dans votre collection (vendue ?)', favorite: 'favorite (verrouillée)', busy: 'déjà en vente ou en file', skipped: 'écartée temporairement', capped: 'trop chère pour l’assistant', perDay: 'limite de 4 mises en vente par jour' };
+  /** Raretés à vendre, dans l'ordre (vide : toutes). */
+  const rarList = () => [...new Set(String(WMX.settings?.autoSellPriorityRar || '').split(/[\s,;]+/).map((r) => r.trim().toUpperCase()).filter(Boolean))];
+  const strict = () => WMX.settings?.autoSellStrict !== false;
+  const RNAME = { L: 'Légendaire', UR: 'Ultra rare', SR: 'Super rare', R: 'Rare', PC: 'Peu commune', C: 'Commune' };
+  const REASONS = { gone: 'plus dans votre collection (vendue ?)', favorite: 'favorite (verrouillée)', busy: 'déjà en vente ou en file', skipped: 'écartée temporairement', capped: 'trop chère pour l’assistant', perDay: 'limite de 4 mises en vente par jour', later: 'rareté suivante : attend la fin de la précédente' };
+  const plural = (n, w) => `${n} ${w}${n > 1 ? 's' : ''}`;
+  /** Cartes mises en vente par l'assistant qui peuvent encore revenir (en vente, ou revenues invendues et en attente de leur étiquette). */
+  const pendingSales = () => Object.entries(retag.mem).filter(([id]) => WMX.quick.selling(id) || retag.queued.has(id)).map(([card_id, m]) => ({ card_id, rarity: m.rarity }));
+  /** « 2 à vendre · 1 en vente · 3 trop chères (> 500 W) » pour une rareté. */
+  function rarSummary(b, capW) {
+    if (!b) return '';
+    return [b.eligible && `${b.eligible} à vendre`, b.onSale && `${b.onSale} en vente`, b.waiting && `${plural(b.waiting, 'écartée')} pour un temps`,
+      b.capped && `${b.capped} trop chère${b.capped > 1 ? 's' : ''} (> ${capW} W)`, b.favorite && plural(b.favorite, 'favorite')].filter(Boolean).join(' · ');
+  }
 
   async function skipCard(id, ms) {
     const cur = await WMX.store.get('autoSellSkip', {}); // relu avant d'écrire : un autre onglet a pu écarter d'autres cartes
@@ -43,7 +56,7 @@
     const st = S.shared;
     if (!st || Date.now() - st.t > 4 * 60000) return { text: 'en attente d’un onglet actif… (gardez une page du jeu ouverte)', cls: 'wait' };
     const head = `${st.active ?? 0}/${st.target} en vente${st.queued ? ` · ${st.queued} en file` : ''}`;
-    return { text: `${head} · ${st.reason}`, cls: st.state === 'listed' ? 'go' : st.state === 'nothing' || st.state === 'no-inventory' || st.state === 'paused' ? 'warn' : 'ok' };
+    return { text: `${head} · ${st.reason}`, cls: st.state === 'listed' ? 'go' : st.state === 'nothing' || st.state === 'waiting' || st.state === 'no-inventory' || st.state === 'paused' ? 'warn' : 'ok' };
   }
   const WAIT_HELP = 'Aucune page du jeu n’a lancé de passe depuis plus de 4 minutes. L’assistant tourne dans une page ouverte de wiki-masters.com : gardez-en une ouverte (n’importe laquelle). Si vous venez d’activer l’assistant ou de mettre l’extension à jour, actualisez la page (F5) : la première passe a lieu environ 20 secondes après le chargement. Une page en arrière-plan ou « en veille » (économiseur de mémoire de Chrome) ne travaille pas : affichez-la.';
   function paintAll() { S.painters.forEach((p) => { try { p(); } catch (_) { /* élément retiré */ } }); }
@@ -77,7 +90,7 @@
       const active = WMX.quick.count();
       const free = Math.min(st.target - active, WMX.quick.max() - active);
       const busy = new Set(items.filter((it) => WMX.quick.stateOf(it.card_id) !== 'idle').map((it) => it.card_id));
-      const plan = WMX.logic.autoSellPlan(items, { tags: st.tags, busy, gone: (it) => WMX.quick.notOwned(it.card_id), skip: S.skip, log: S.log, now, perDay: 4, cap: st.cap, order: WMX.settings?.autoSellOrder, priorityRar: String(WMX.settings?.autoSellPriorityRar || '').split(/[\s,;]+/).filter(Boolean), avg: (it) => WMX.prices.get(it.card_id, it.rarity)?.avg || 0 });
+      const plan = WMX.logic.autoSellPlan(items, { tags: st.tags, busy, gone: (it) => WMX.quick.notOwned(it.card_id), skip: S.skip, log: S.log, now, perDay: 4, cap: st.cap, order: WMX.settings?.autoSellOrder, priorityRar: rarList(), strict: strict(), pending: pendingSales(), avg: (it) => WMX.prices.get(it.card_id, it.rarity)?.avg || 0 });
       // Les cartes que le jeu dit ne plus être à nous sont retirées de l'inventaire en mémoire (une seule fois).
       for (const e of plan.excluded) {
         if (e.reason !== 'gone' || S.purged.has(e.card_id)) continue;
@@ -88,13 +101,24 @@
       for (const e of plan.excluded) counts[e.reason] = (counts[e.reason] || 0) + 1;
       const detail = {
         active, queued: 0, free: Math.max(0, free), tagged: plan.tagged, eligible: plan.eligible.length, counts,
+        order: plan.order, current: plan.current, byRar: plan.byRar, outside: plan.outside, strict: strict() && plan.order.length > 0,
         gameTagged: (() => { const n = st.tags.map((t) => WMX.inventory.tagCount(t)).filter((x) => x != null); return n.length ? n.reduce((a, b) => a + b, 0) : null; })(), // nombre annoncé par le jeu : sert à repérer une copie périmée
         next: plan.eligible.slice(0, 10).map((it) => ({ title: it.title, rarity: it.rarity, avg: Math.round(WMX.prices.get(it.card_id, it.rarity)?.avg || 0) })),
         excluded: plan.excluded.slice(0, 60).map((e) => ({ title: e.title, rarity: e.rarity, reason: e.reason, until: e.until, avg: Math.round(e.avg || 0) })),
       };
-      if (free <= 0) return done('full', `toutes les enchères visées sont en cours (${active}/${st.target})`, detail);
+      noteRarityProgress(plan, st);
+      if (free <= 0) return done('full', `toutes les enchères visées sont en cours (${active}/${st.target})${plan.current ? ` · ${plan.current} en cours` : ''}`, detail);
       const picks = plan.eligible.slice(0, free);
       if (!picks.length) {
+        if (plan.order.length) {
+          const capped = plan.order.reduce((n, r) => n + (plan.byRar[r]?.capped || 0), 0);
+          const capTxt = capped ? ` · ${capped} au-dessus du plafond de ${st.cap} W (Paramètres)` : '';
+          if (plan.current) { // ordre strict : la rareté en cours n'a plus de carte libre, mais il en reste en vente ou écartées pour un temps
+            const next = plan.order[plan.order.indexOf(plan.current) + 1];
+            return done('waiting', `${plan.current} : ${rarSummary(plan.byRar[plan.current], st.cap)}${next ? ` · les ${next} attendent la fin des ${plan.current}` : ''}`, detail);
+          }
+          return done('nothing', `plus aucune carte ${plan.order.join(', ')} à vendre (${st.tags.join(', ')})${capTxt}${plan.outside ? ` · ${plan.outside} d’autres raretés ignorée${plan.outside > 1 ? 's' : ''}` : ''}`, detail);
+        }
         const why = plan.tagged ? `aucune carte éligible sur ${plan.tagged} étiquetée${plan.tagged > 1 ? 's' : ''} (voir Détails)` : 'aucune carte ne porte ces étiquettes';
         return done('nothing', why, detail);
       }
@@ -104,6 +128,25 @@
       WMX.quick.bulk('launch', picks, { cap: st.cap });
       return done('listed', `${picks.length} carte${picks.length > 1 ? 's' : ''} mise${picks.length > 1 ? 's' : ''} en file à ${fmtAt(now)}`, { ...detail, queued: picks.length });
     } finally { S.busy = false; }
+  }
+
+  /**
+   * Avec une liste de raretés : journal quand on passe d'une rareté à la suivante, et notification (une fois) quand plus aucune rareté choisie
+   * n'a de carte à vendre. Mémorisé par réglage (étiquettes + raretés) : changer de réglage réarme l'alerte.
+   */
+  function noteRarityProgress(plan, st) {
+    if (!plan.order.length) return;
+    const k = `${st.tags.join(',')}|${plan.order.join(',')}`;
+    const prev = S.progress?.k === k ? S.progress : { k, current: plan.current, emptyNotified: false };
+    if (plan.current && prev.current && plan.current !== prev.current) WMX.journal?.add('Assistant de vente', `Plus aucune ${prev.current} à vendre : passage aux ${plan.current}`);
+    const left = plan.order.some((r) => { const b = plan.byRar[r]; return b && b.eligible + b.waiting + b.onSale > 0; });
+    if (!left && !prev.emptyNotified) {
+      const capped = plan.order.reduce((n, r) => n + (plan.byRar[r]?.capped || 0), 0);
+      WMX.journal?.add('Assistant de vente', `Plus aucune carte ${plan.order.join(', ')} à vendre`, 'warn');
+      WMX.notify?.({ kind: 'warn', key: 'autosell-empty', ms: 12000, title: `Plus de carte ${plan.order.join(', ')} à vendre`,
+        text: `Aucune carte ${plan.order.map((r) => RNAME[r] || r).join(', ')} à vendre avec l’étiquette ${st.tags.join(', ')}${capped ? ` (${capped} au-dessus du plafond de ${st.cap} W)` : ''}. L’assistant attend : étiquetez d’autres cartes ou changez les raretés dans les Paramètres.` });
+    }
+    S.progress = { k, current: plan.current, emptyNotified: !left };
   }
 
   /** Un onglet pilote l'assistant : celui qui prend le verrou. Demandé seulement si l'assistant est activé, rendu dès qu'il est désactivé. */
@@ -218,10 +261,17 @@
         parts.push(el('div', { class: 'wmx-as-meta' },
           `Dernière passe : ${fmtAt(st.t)} · prochaine dans ${fmtIn(st.nextAt - Date.now())} · ${st.target} enchère${st.target > 1 ? 's' : ''} visée${st.target > 1 ? 's' : ''} · plafond de départ ${st.cap} W`));
         parts.push(el('div', { class: 'wmx-as-meta' }, `Étiquettes : ${(st.tags || []).join(', ') || '—'} · ${st.tagged ?? 0} carte(s) étiquetée(s)${st.gameTagged != null && st.gameTagged !== st.tagged ? ` (le jeu en compte ${st.gameTagged} : mise à jour en cours)` : ''} · ${st.eligible ?? 0} éligible(s)`));
+        if (st.order?.length) {
+          parts.push(el('h4', {}, `Raretés à vendre${st.strict ? ' (dans l’ordre, une à la fois)' : ' (dans l’ordre)'}`));
+          st.order.forEach((r, i) => parts.push(el('div', { class: 'wmx-as-row', 'data-current': String(r === st.current) }, el('b', {}, `${i + 1}. ${r}`),
+            el('span', {}, r === st.current ? 'en cours' : st.strict && st.current && st.order.indexOf(r) > st.order.indexOf(st.current) ? 'attend' : ''),
+            el('small', {}, rarSummary(st.byRar?.[r], st.cap) || 'aucune carte'))));
+          if (st.outside) parts.push(el('div', { class: 'wmx-as-meta' }, `${plural(st.outside, 'carte')} étiquetée${st.outside > 1 ? 's' : ''} d’une autre rareté : jamais mise${st.outside > 1 ? 's' : ''} en vente.`));
+        }
         if (st.counts && Object.keys(st.counts).length) parts.push(el('div', { class: 'wmx-as-meta' }, 'Écartées : ' + Object.entries(st.counts).map(([k, n]) => `${n} ${REASONS[k] || k}`).join(' · ')));
         parts.push(el('h4', {}, 'Prochaines cartes mises en vente'), ...rows(st.next || [], (c) => el('div', { class: 'wmx-as-row' }, el('b', {}, c.rarity), el('span', {}, c.title), el('small', {}, c.avg ? `Moy. ${c.avg} W` : 'prix à charger'))));
         parts.push(el('h4', {}, 'Cartes étiquetées mises de côté'), ...rows(st.excluded || [], (c) => el('div', { class: 'wmx-as-row' }, el('b', {}, c.rarity), el('span', {}, c.title),
-          el('small', {}, c.reason === 'capped' ? `trop chère : moyenne ${c.avg} W, au-dessus du maximum de ${st.cap} W (Paramètres → Assistant de vente → Prix de départ maximum)` : `${REASONS[c.reason] || c.reason}${c.until ? ` jusqu’à ${fmtAt(c.until)}` : ''}`))));
+          el('small', {}, c.reason === 'later' ? `attend la fin des ${c.after || 'raretés précédentes'}` : c.reason === 'capped' ? `trop chère : moyenne ${c.avg} W, au-dessus du maximum de ${st.cap} W (Paramètres → Assistant de vente → Prix de départ maximum)` : `${REASONS[c.reason] || c.reason}${c.until ? ` jusqu’à ${fmtAt(c.until)}` : ''}`))));
       }
       body.replaceChildren(...parts);
       toggleBtn.textContent = on() ? 'Désactiver l’assistant' : 'Activer l’assistant';
