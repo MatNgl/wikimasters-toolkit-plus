@@ -30,7 +30,7 @@ function fakeGame(w, cards, { perPage = 50, failAfterDiscard = false } = {}) {
     main.replaceChildren();
     if (!st.selecting) main.append(button('Sélectionner', () => { st.selecting = true; st.sel.clear(); render(); }));
     else main.append(button('Quitter la sélection', () => { st.selecting = false; st.sel.clear(); render(); }));
-    if (st.banner) { const b = d.createElement('div'); const sp = d.createElement('span'); sp.textContent = st.banner; b.append(sp); main.append(b); }
+    if (st.banner) { const b = d.createElement('div'); b.className = 'card-frame p-3 flex items-start'; /* comme le vrai jeu : message dans un encadré card-frame */ const sp = d.createElement('span'); sp.textContent = st.banner; b.append(sp); main.append(b); }
     const viewText = st.view === 'all' ? 'Toutes les étiquettes' : st.view === 'none' ? 'Sans étiquette' : `#${st.view} (${tagsOf().get(st.view) || 0})`;
     main.append(button(viewText, () => { st.menuOpen = !st.menuOpen; render(); }, { 'aria-label': 'Filtrer par étiquette', 'aria-haspopup': 'listbox' }));
     if (st.menuOpen) {

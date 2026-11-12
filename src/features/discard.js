@@ -279,9 +279,13 @@
     },
     /** « 12 × C · 3 × PC » lu dans la fenêtre de défausse du jeu. */
     dialogCounts(d) { const out = {}; for (const m of String(d.innerText || d.textContent).matchAll(/(\d+)\s*[×x]\s*(L|UR|SR|PC|R|C)(?![A-Za-z])/g)) out[m[2]] = (out[m[2]] || 0) + Number(m[1]); return out; },
-    /** Message « N cartes défaussées (+N wikibidous). » : l'élément le plus précis qui le contient. */
+    /**
+     * Message « N cartes défaussées (+N wikibidous). » : l'élément le plus précis qui le contient. Relevé sur le vrai jeu : il est affiché dans un
+     * encadré « card-frame » (comme la fenêtre de défausse) ; on n'écarte donc que ce qui est DANS la fenêtre de défausse elle-même.
+     */
     banner() {
-      const all = [...D.querySelectorAll('main *')].filter((e) => /^\d+ cartes? défaussées?/i.test(norm(e.textContent)) && !e.closest('.card-frame'));
+      const dlg = NATIVE.dialog();
+      const all = [...D.querySelectorAll('main *')].filter((e) => /^\d+ cartes? défaussées?/i.test(norm(e.textContent)) && !(dlg && dlg.contains(e)) && !e.closest('.wmx-dc, .wmx-dc-run'));
       return all.find((e) => ![...e.children].some((c) => /^\d+ cartes? défaussées?/i.test(norm(c.textContent)))) || null;
     },
     loadError: () => /chargement de la collection a échoué/i.test(pageText()),
