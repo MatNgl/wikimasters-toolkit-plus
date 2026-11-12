@@ -338,3 +338,16 @@ test('paquets : stock estimé d’après l’heure exacte du prochain paquet (3 
   assert.equal(L.packEstimate({ packs: 12, t, nextAt: null }, t, 600).packs, 10);
   assert.equal(L.packEstimate(null, t, 600), null);
 });
+
+test('marché : fraîcheur d’une moyenne (à jour sous 24 h, sinon non à jour depuis X, actualisation en cours)', () => {
+  const H = 3600000;
+  assert.equal(L.ageText(10 * 60000), 'moins d’une heure');
+  assert.equal(L.ageText(5 * H), '5 h');
+  assert.equal(L.ageText(49 * H), '2 jours');
+  assert.deepEqual(L.priceFreshness(3 * H), { state: 'fresh', icon: '✓', line: 'Moyenne à jour · chargée il y a 3 h' });
+  assert.equal(L.priceFreshness(30 * H).state, 'stale');
+  assert.match(L.priceFreshness(30 * H).line, /non à jour depuis 1 jour/);
+  assert.equal(L.priceFreshness(30 * H, true).state, 'loading');
+  assert.match(L.priceFreshness(30 * H, true).line, /actualisation en cours/);
+  assert.equal(L.priceFreshness(null, true).state, 'loading');
+});

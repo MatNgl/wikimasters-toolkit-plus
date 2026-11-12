@@ -1642,3 +1642,38 @@ test('paquets : compte Pro repéré sur la page Paquets, heure exacte du prochai
   assert.match(env2.w.document.querySelector('.wmx-fab-txt').title, /Prochain paquet dans 2:(4\d|50)/, 'le suivant dans ~2 min 50 (3 min après le précédent)');
   env2.close();
 });
+
+test('marché : une moyenne de plus de 24 h reste affichée (icône « non à jour ») puis est relue ; à jour : icône ✓ et « chargée il y a … » au survol', async () => {
+  const end = (m) => new Date(Date.now() + m * 60000).toISOString();
+  const mk = (id, cardId, price, m) => ({ id, card_id: cardId, snapshot_rarity: 'L', base_amount: price, current_bid: null, end_at: end(m), card: { wikipedia_title: id, rarity: 'L' } });
+  const list = [mk('vieux', 'k1', 900, 30), mk('frais', 'k2', 900, 5)];
+  const asked = [];
+  let release = null;
+  const gate = new Promise((r) => { release = r; });
+  const env = createEnv({ fetchImpl: async (u) => {
+    const s = String(u);
+    if (s.includes('/sales')) { const id = s.match(/cards\/([^/]+)\//)[1]; asked.push(id); await gate; return json({ summary: { L: { average: 1500, count: 8, latest: 1400 } } }); }
+    return json({ auctions: list });
+  } });
+  const { w, mem, WMX } = env;
+  const H = 3600000;
+  mem.priceCache = { k1: { t: Date.now() - 30 * H, s: { L: { average: 1000, count: 8, latest: 990 } } }, k2: { t: Date.now() - 2 * H, s: { L: { average: 1000, count: 8, latest: 990 } } } };
+  await WMX.prices.load();
+  w.history.pushState({}, '', '/marketplace');
+  w.document.body.innerHTML = list.map((a) => `<a class="card-frame block" href="/marketplace/${a.id}"><div>${a.id}</div></a>`).join('');
+  for (const f of WMX.features) if (f.name === 'market') f.init();
+  const chip = (id) => w.document.querySelector(`a[href$="/${id}"] .wmx-mk`);
+  for (let i = 0; i < 40 && !(chip('vieux') && chip('frais') && !chip('vieux').classList.contains('wait')); i++) await sleep(150);
+  await sleep(600);
+  assert.match(chip('vieux').textContent, /Moy\. 1\s000 W/, 'l’ancienne moyenne reste affichée pendant l’actualisation');
+  assert.ok(chip('vieux').querySelector('.wmx-age.loading, .wmx-age.stale'), 'icône « non à jour »');
+  assert.match(chip('vieux').querySelector('.wmx-age').title, /non à jour depuis 1 jour/);
+  assert.ok(chip('frais').querySelector('.wmx-age.fresh'), 'moyenne de 2 h : icône « à jour »');
+  assert.match(chip('frais').querySelector('.wmx-age').title, /à jour · chargée il y a 2 h/);
+  assert.deepEqual(asked, ['k1'], 'seule la moyenne de plus de 24 h est relue');
+  release();
+  for (let i = 0; i < 40 && !/1s500 W/.test(chip('vieux').textContent); i++) await sleep(150);
+  assert.match(chip('vieux').textContent, /Moy\. 1\s500 W/, 'la nouvelle moyenne remplace l’ancienne');
+  assert.ok(chip('vieux').querySelector('.wmx-age.fresh'), 'et passe « à jour »');
+  env.close();
+});

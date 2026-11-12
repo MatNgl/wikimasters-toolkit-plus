@@ -5,8 +5,14 @@
 // Les enchères affichées sont reconnues par leur identifiant (lien /marketplace/{id}) grâce aux réponses de /api/marketplace
 // déjà demandées par le jeu ; à défaut, une requête identique est faite une fois. La moyenne n'est demandée que pour les
 // cartes réellement visibles à l'écran (file prioritaire de prices.js, une requête à la fois).
+// Les moyennes bougent vite : une moyenne de plus de 24 h reste affichée mais est relue (enchères qui finissent le plus tôt d'abord),
+// et une petite icône dit si elle est à jour (✓), en retard (!) ou en cours d'actualisation (↻) ; au survol : « à jour / non à jour depuis X ».
 (() => {
   const { el } = WMX.dom;
+  /** Icône de fraîcheur de la moyenne (✓ à jour, ! en retard, ↻ actualisation) ; la ligne d'explication est dans `title`. */
+  const freshIcon = (f) => el('i', { class: `wmx-age ${f.state}`, title: f.line, 'aria-label': f.line }, f.icon);
+  /** Signature de fraîcheur : change quand l'état change (et une fois par heure pour l'âge affiché au survol). */
+  const freshSig = (cardId, f) => `${f.state}|${Math.floor((WMX.prices.age(cardId) ?? -1) / 3600000)}`;
   const byAuction = new Map(); // id d'enchère -> { card_id, rarity, price }
   let io = null;
   let timer = null;
@@ -132,16 +138,17 @@
     let b = a.querySelector(':scope > .wmx-mk');
     if (!b) { b = el('div', { class: 'wmx-mk' }); a.append(b); }
     const p = WMX.prices.get(info.card_id, info.rarity);
-    if (!p && !WMX.prices.fresh(info.card_id)) { if (b.dataset.sig !== 'wait') { b.dataset.sig = 'wait'; b.className = 'wmx-mk wait'; b.textContent = 'Moy. …'; } return; }
+    if (!p && !WMX.prices.has(info.card_id)) { if (b.dataset.sig !== 'wait') { b.dataset.sig = 'wait'; b.className = 'wmx-mk wait'; b.textContent = 'Moy. …'; } return; } // jamais chargée : on attend
+    const f = WMX.prices.freshness(info.card_id);
     const v = role === 'sale' ? WMX.logic.saleVerdict(info.price, p?.avg, p?.count) : WMX.logic.dealVerdict(info.price, p?.avg, p?.count);
-    const vsig = [role, p ? Math.round(p.avg) : 'x', p?.count, p ? Math.round(p.last) : '', v.kind, v.pct, info.price].join('|');
+    const vsig = [role, p ? Math.round(p.avg) : 'x', p?.count, p ? Math.round(p.last) : '', v.kind, v.pct, info.price, freshSig(info.card_id, f)].join('|');
     if (b.dataset.sig === vsig) return; // même verdict : pas de réécriture
     b.dataset.sig = vsig;
     b.className = `wmx-mk ${v.kind}`;
     b.replaceChildren(
-      el('span', {}, p ? `Moy. ${Math.round(p.avg).toLocaleString('fr-FR')} W` : 'Sans vente'),
+      el('span', { class: 'wmx-mk-avg' }, p ? `Moy. ${Math.round(p.avg).toLocaleString('fr-FR')} W` : 'Sans vente', freshIcon(f)),
       el('b', {}, v.kind === 'unknown' ? v.label : `${v.pct > 0 ? '+' : ''}${v.pct} % · ${v.label}`));
-    b.title = (role === 'sale' ? 'Votre vente comparée à la moyenne du marché (bénéfice ou vente sous la moyenne). ' : '') + (p ? `Moyenne de ${p.count} vente${p.count > 1 ? 's' : ''} de cette rareté · dernière vente ${Math.round(p.last).toLocaleString('fr-FR')} W${v.low ? ' · peu de ventes : estimation fragile' : ''}` : 'Aucune vente de cette rareté sur le marché');
+    b.title = `${f.line}\n` + (role === 'sale' ? 'Votre vente comparée à la moyenne du marché (bénéfice ou vente sous la moyenne). ' : '') + (p ? `Moyenne de ${p.count} vente${p.count > 1 ? 's' : ''} de cette rareté · dernière vente ${Math.round(p.last).toLocaleString('fr-FR')} W${v.low ? ' · peu de ventes : estimation fragile' : ''}` : 'Aucune vente de cette rareté sur le marché');
   }
 
   /** Une carte devient visible : on récupère sa moyenne si elle manque, puis on affiche le verdict. */
@@ -149,10 +156,7 @@
     const info = byAuction.get(idOf(a));
     if (!info) { delete a.dataset.wmxMk; return; } // liste pas encore connue : sera reprise au prochain passage
     paint(a);
-    if (!WMX.prices.get(info.card_id, info.rarity) && !WMX.prices.fresh(info.card_id)) {
-      await WMX.prices.fetchOne(info.card_id);
-      if (a.isConnected) paint(a);
-    }
+    WMX.prices.keepFresh(info.card_id, info.endAt ?? Infinity); // jamais chargée ou de plus de 24 h : relue (repeinte à l'arrivée du prix)
   }
 
   // --- Page d'UNE enchère (/marketplace/{id}) : moyenne du marché et verdict sous « Mise actuelle » ---------------------------
@@ -175,16 +179,17 @@
     const price = shownPrice > 0 ? shownPrice : info.price;
     const role = roleOf(id, info) === 'sale' ? 'sale' : 'buy';
     const p = WMX.prices.get(info.card_id, info.rarity);
-    const waiting = !p && !WMX.prices.fresh(info.card_id);
+    const waiting = !p && !WMX.prices.has(info.card_id);
+    WMX.prices.keepFresh(info.card_id, info.endAt ?? Infinity); // jamais chargée ou de plus de 24 h : relue, l'ancienne reste affichée
+    const f = WMX.prices.freshness(info.card_id);
     const n = waiting ? null : WMX.logic.priceNote(role, price, p);
-    const sig = waiting ? 'wait' : [n.kind, n.avg, n.verdict].join('|');
+    const sig = waiting ? 'wait' : [n.kind, n.avg, n.verdict, freshSig(info.card_id, f)].join('|');
     let chip = row.parentElement.querySelector(':scope > .wmx-dk');
     if (chip && chip.dataset.sig === sig) return; // rien n'a changé : on ne touche pas à la page (évite de se rappeler soi-même)
     if (!chip) { chip = el('div', { class: 'wmx-dk' }); row.after(chip); }
     chip.dataset.sig = sig;
     if (waiting) { chip.className = 'wmx-dk wait'; chip.title = ''; chip.replaceChildren(el('span', {}, 'Moyenne du marché…')); }
-    else { chip.className = 'wmx-dk ' + n.kind; chip.title = n.title; chip.replaceChildren(el('span', {}, n.avg), el('b', {}, n.verdict)); }
-    if (waiting) { await WMX.prices.fetchOne(info.card_id); if (chip.isConnected) paintDetail(); }
+    else { chip.className = 'wmx-dk ' + n.kind; chip.title = `${f.line}\n${n.title}`; chip.replaceChildren(el('span', { class: 'wmx-mk-avg' }, n.avg, freshIcon(f)), el('b', {}, n.verdict)); }
   }
 
   async function scan() {
@@ -224,7 +229,7 @@
       // Repeintures regroupées : une rafale d'événements (prix qui arrivent, mises) ne repeint la page qu'une fois.
       const later = (fn, ms) => { let t = null; return () => { if (t) return; t = setTimeout(() => { t = null; try { fn(); } catch (_) { /* page fermée */ } }, ms); }; };
       window.addEventListener('wmx:bids', later(() => { anchors().forEach(paintBid); paintDetailWatch(); }, 200));
-      WMX.prices.onProgress(later(() => anchors().forEach((a) => { if (a.querySelector(':scope > .wmx-mk')) paint(a); }), 500));
+      WMX.prices.onProgress(later(() => { anchors().forEach((a) => { if (a.querySelector(':scope > .wmx-mk')) paint(a); }); if (isDetail()) paintDetail(); }, 500));
       schedule();
     },
   });

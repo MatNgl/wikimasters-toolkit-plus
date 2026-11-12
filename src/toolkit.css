@@ -896,3 +896,12 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-dc-tagrow:hover { background: #18211d; }
 .wmx-dc-tagrow input { accent-color: #e5384f; }
 .wmx-dc-tagrow small { color: #8fa89c; }
+
+/* ---- Fraîcheur des moyennes du marché (✓ à jour < 24 h, ! en retard, ↻ actualisation) ---- */
+.wmx-mk-avg { display: inline-flex; align-items: center; gap: 5px; }
+.wmx-age { display: inline-grid; place-items: center; width: 14px; height: 14px; border-radius: 50%; font: 700 9px/1 system-ui, sans-serif; font-style: normal; flex: none; cursor: help; }
+.wmx-age.fresh { background: rgb(45 212 160 / .18); color: #2dd4a0; }
+.wmx-age.stale { background: rgb(245 158 11 / .2); color: #fbbf24; }
+.wmx-age.loading { background: rgb(124 198 255 / .18); color: #8fd0ff; animation: wmx-age-spin 1.1s linear infinite; }
+@keyframes wmx-age-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .wmx-age.loading { animation: none; } }

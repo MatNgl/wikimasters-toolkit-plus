@@ -20,6 +20,7 @@
   const TIMEOUT = 30000;        // une requête sans réponse au bout de 30 s est coupée puis réessayée
   let lat = 0;                  // latence moyenne des réponses (ms) : quand le jeu est lent, un second ouvrier travaille en parallèle
   let ticker = null;
+  const fresh = { want: new Map(), asked: new Map(), timer: null }; // actualisation des moyennes du marché (keepFresh)
 
   const slow = () => lat; // latence moyenne observée (ms), exposée pour l'affichage
   const waitLeft = () => Math.max(0, Math.ceil((sched.penaltyUntil - Date.now()) / 1000));
@@ -166,6 +167,40 @@
     has(cardId) { return !!cache?.[cardId]; },
     fresh(cardId) {
       return L.isFresh(cache?.[cardId]);
+    },
+    /** Fraîcheur de la moyenne de cette carte pour le marché : { state: 'fresh' | 'stale' | 'loading', icon, line } (voir logic.priceFreshness). */
+    freshness(cardId) { return L.priceFreshness(WMX.prices.age(cardId), sched.pending.has(cardId)); },
+    /**
+     * Marché : garde la moyenne de cette carte à jour. Jamais chargée ou de plus de 24 h : relue (l'ancienne reste affichée en attendant).
+     * Les demandes sont regroupées puis servies dans l'ordre de `endAt` (les enchères qui finissent le plus tôt d'abord) ; une carte n'est pas
+     * redemandée plus d'une fois toutes les 10 minutes (si le jeu ne répond pas, on ne boucle pas).
+     */
+    keepFresh(cardId, endAt = Infinity) {
+      if (!cardId) return;
+      const age = WMX.prices.age(cardId);
+      if (age != null && age < L.MARKET_TTL) return;
+      if (sched.pending.has(cardId) || Date.now() - (fresh.asked.get(cardId) || 0) < 10 * 60000) return;
+      fresh.want.set(cardId, Math.min(Number.isFinite(endAt) ? endAt : Infinity, fresh.want.get(cardId) ?? Infinity));
+      clearTimeout(fresh.timer);
+      fresh.timer = setTimeout(async () => {
+        await load();
+        const list = [...fresh.want.entries()].sort((a, b) => a[1] - b[1]);
+        fresh.want.clear();
+        for (const [id] of list) { fresh.asked.set(id, Date.now()); schedule(id, true, false); }
+        emit(); // les moyennes concernées passent à « actualisation en cours »
+      }, 300);
+    },
+    /** Âge du prix chargé pour cette carte (ms), ou null s'il n'a jamais été chargé. */
+    age(cardId) { const t = cache?.[cardId]?.t; return Number.isFinite(t) ? Date.now() - t : null; },
+    /** Vrai pendant qu'une lecture de ce prix est en file ou en cours (actualisation). */
+    loading(cardId) { return sched.pending.has(cardId); },
+    /**
+     * Actualise le prix d'une carte (file prioritaire, sans passer devant les clics ⚡ de l'utilisateur) : l'ancien prix reste affiché en attendant.
+     * Rien n'est redemandé si une lecture de cette carte est déjà en cours.
+     */
+    async refresh(cardId) {
+      await load();
+      return schedule(cardId, true, false);
     },
     /** Prix d'UNE carte tout de suite (enchère rapide), prioritaire sur le chargement par lots. */
     async fetchOne(cardId) {

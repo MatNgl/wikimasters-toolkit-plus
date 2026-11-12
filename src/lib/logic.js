@@ -8,6 +8,28 @@
     priceTtl() {
       return 96 * HOUR;
     },
+    /** Sur le marché (liste, page d'une enchère, bulle), une moyenne de plus de 24 h est relue : les moyennes bougent vite. */
+    MARKET_TTL: 24 * HOUR,
+    /** « moins d'une heure », « 3 h », « 2 jours ». */
+    ageText(ms) {
+      const h = Math.floor(Math.max(0, ms) / HOUR);
+      if (h < 1) return 'moins d’une heure';
+      if (h < 24) return `${h} h`;
+      const d = Math.floor(h / 24);
+      return `${d} jour${d > 1 ? 's' : ''}`;
+    },
+    /**
+     * Fraîcheur d'une moyenne affichée sur le marché : `ageMs` (âge du prix), `loading` (relecture en cours).
+     * Rend { state: 'fresh' | 'stale' | 'loading', icon, line } : `line` est la ligne affichée au survol.
+     */
+    priceFreshness(ageMs, loading = false) {
+      if (ageMs == null) return { state: loading ? 'loading' : 'stale', icon: loading ? '↻' : '!', line: loading ? 'Moyenne en cours de chargement…' : 'Moyenne jamais chargée' };
+      const stale = ageMs >= L.MARKET_TTL;
+      if (!stale) return { state: 'fresh', icon: '✓', line: `Moyenne à jour · chargée il y a ${L.ageText(ageMs)}` };
+      return loading
+        ? { state: 'loading', icon: '↻', line: `Moyenne non à jour depuis ${L.ageText(ageMs)} · actualisation en cours…` }
+        : { state: 'stale', icon: '!', line: `Moyenne non à jour depuis ${L.ageText(ageMs)} · elle sera actualisée` };
+    },
     /** Entrée de cache { t, s } encore valable ? */
     isFresh(entry, now = Date.now()) {
       return !!entry && Number.isFinite(entry.t) && now - entry.t < L.priceTtl(entry.s);

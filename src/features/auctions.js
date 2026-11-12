@@ -664,16 +664,26 @@
   const timeEl = (a) => el('span', { class: 'wmx-auc-time', 'data-end': a.end_at }, fmtLeft(msLeft(a)));
   const rarityTag = (r) => el('span', { class: 'wmx-auc-rar', style: `color:rgb(${WMX.RARITY_RGB[r]})` }, r);
 
-  /** Moyenne du marché et verdict, à côté de la mise actuelle. La moyenne manquante est demandée une fois par carte (file des prix). */
+  /**
+   * Moyenne du marché et verdict, à côté de la mise actuelle. Jamais chargée ou de plus de 24 h : relue (l'ancienne reste affichée en attendant),
+   * avec une icône de fraîcheur (✓ à jour, ! en retard, ↻ actualisation) et, au survol, « à jour / non à jour depuis X ».
+   */
   function avgChip(a, role) {
     const p = WMX.prices.get(a.card_id, rarityOf(a));
-    if (!p && !WMX.prices.fresh(a.card_id)) {
-      if (!(S.avgAsked ||= new Set()).has(a.card_id)) { S.avgAsked.add(a.card_id); WMX.prices.fetchOne(a.card_id).then(() => { if (S.bubbleOpen) renderAll(); }); }
+    WMX.prices.keepFresh(a.card_id, a.end_at ? new Date(a.end_at).getTime() : Infinity);
+    if (!p && !WMX.prices.has(a.card_id)) {
+      if (!S.avgHooked) { S.avgHooked = true; WMX.prices.onProgress(() => { if (S.bubbleOpen) renderSoon(); }); }
       return el('div', { class: 'wmx-auc-mk wait' }, 'Moy. …');
     }
+    if (!S.avgHooked) { S.avgHooked = true; WMX.prices.onProgress(() => { if (S.bubbleOpen) renderSoon(); }); }
+    const f = WMX.prices.freshness(a.card_id);
     const n = WMX.logic.priceNote(role, a.current_bid || a.base_amount, p);
-    return el('div', { class: 'wmx-auc-mk ' + n.kind, title: n.title }, el('span', {}, n.avg), el('b', {}, n.verdict));
+    return el('div', { class: 'wmx-auc-mk ' + n.kind, title: `${f.line}\n${n.title}` },
+      el('span', { class: 'wmx-mk-avg' }, n.avg, el('i', { class: `wmx-age ${f.state}`, title: f.line, 'aria-label': f.line }, f.icon)), el('b', {}, n.verdict));
   }
+  /** Repeinture de la bulle regroupée (des prix qui arrivent en rafale ne la repeignent qu'une fois). */
+  let renderSoonT = null;
+  function renderSoon() { if (renderSoonT) return; renderSoonT = setTimeout(() => { renderSoonT = null; try { renderAll(); } catch (_) { /* bulle fermée */ } }, 600); }
 
   function row(a, kind) {
     const r = rarityOf(a);
