@@ -155,7 +155,7 @@
     ack.hidden = true;
     const visOpt = sw(visible, (v) => { visible = v; }, 'Mode visible', 'Pilote la page Collection affichée, sous vos yeux (pour les premiers essais). Désactivé : la défausse se fait dans une page invisible, vous pouvez continuer à naviguer.');
     const close = () => back.remove();
-    go.addEventListener('click', () => { if (!dry && !ok) return; close(); start(pl, { dry, visible }); });
+    go.addEventListener('click', () => { if (!dry && !ok) return; close(); start(pl, { dry, visible, prefs: p }); });
     const filters = [p.rarities.map((r) => NAMES[r]).join(', '), (p.tags || []).length ? `étiquette${p.tags.length > 1 ? 's' : ''} ${p.tags.join(', ')}` : p.includeTagged ? 'étiquetées comprises' : 'sans étiquette',
       p.keepOne && '1 exemplaire gardé', p.useMax && `gardées dès ${p.maxAvg} W`, p.keepUnpriced && 'prix inconnu gardé', p.protectSale && 'étiquettes de vente protégées', p.onlyNoImage && 'sans image seulement', p.keepRecent && 'récentes gardées'].filter(Boolean);
     const back = el('div', { class: 'wmx-dlg-back wmx-dc', onmousedown: (e) => { if (e.target === back) close(); } },
@@ -171,79 +171,147 @@
   }
 
   // ---- pilotage de la sélection native du jeu ----
-  // Tout ce qui dépend de la page du jeu est ici (d'après la page observée : vue Collection, mode « Sélectionner », 50 cartes par page, liste
-  // virtualisée, case à cocher dans le coin haut droit de la carte, compteur « N cartes sélectionnées », « Défausser », fenêtre « N × C »,
-  // message « N cartes défaussées », « Suivant → »).
+  // Relevé sur le vrai jeu (page Collection) :
+  //  - filtres : menu « Filtrer par étiquette » (options role=option : « Toutes les étiquettes », « Sans étiquette », « #NOM (n) » ; UNE seule à la fois),
+  //    boutons de rareté L…C (plusieurs à la fois ; actif = sans « opacity-50 ») ; F5 remet tout à zéro et l'adresse ne change jamais ;
+  //  - « Sélectionner » → barre : « N cartes sélectionnées », « Tout sélectionner (page) », « Défausser (+N) » (N = wikibidous) ; un clic sur la carte
+  //    la coche (icône « check ») ; « Tout sélectionner » coche aussi les favorites, que le jeu ne défausse jamais ;
+  //  - fenêtre (sans role=dialog) : titre h3 « Défausser N cartes ? », ligne « N × C », titres, « Annuler » / « Défausser » ; une carte cochée = UN exemplaire ;
+  //  - après : message « N cartes défaussées (+N wikibidous). », la sélection reste ouverte ; la liste se recharge… ou affiche « Le chargement de la
+  //    collection a échoué » : il faut alors la relire (filtre choisi de nouveau, ou page rechargée en arrière-plan).
   const KEEP_MAX = 30; // cartes gardées sur une page au-delà desquelles on passe à la page suivante (défausse plus efficace)
   // Page pilotée : la page Collection affichée (mode visible) ou une page Collection invisible (arrière-plan, par défaut).
   let D = document;
   let W = window;
   const pageText = () => (D.body ? (D.body.innerText ?? D.body.textContent ?? '') : '');
+  const tagKey = (s) => key(s).replace(/^#/, '');
   const NATIVE = {
-    buttons: () => [...D.querySelectorAll('button, [role=button], a')].filter((b) => !b.closest('.wmx-dc, .wmx-dc-run, .wmx-bubble, .wmx-modal-backdrop')),
+    buttons: () => [...D.querySelectorAll('button, [role=button], a')].filter((b) => !b.closest('.wmx-dc, .wmx-dc-run, .wmx-bubble, .wmx-modal-backdrop, .wmx-cp-prices')),
     btn: (re) => NATIVE.buttons().find((b) => re.test(norm(b.textContent)) && !b.disabled && b.getAttribute('aria-disabled') !== 'true'),
     select: () => NATIVE.btn(/^Sélectionner$/i),
     selectAll: () => NATIVE.btn(/^Tout sélectionner/i),
     quit: () => NATIVE.btn(/^Quitter la sélection/i),
-    discard: () => NATIVE.btn(/^Défausser/i),
+    discard: () => NATIVE.btn(/^Défausser\s*\(/i),
     next: () => NATIVE.btn(/^Suivant/i),
     prev: () => NATIVE.btn(/^(←\s*)?Précédent/i),
-    count() { const m = /(\d[\d\s ]*)\s+cartes?\s+sélectionnées?/i.exec(pageText()); return m ? Number(m[1].replace(/\D/g, '')) : (NATIVE.quit() ? 0 : null); },
-    cards: () => [...D.querySelectorAll('main h3')].map((h3) => h3.closest('[class*="rounded-2xl"]')).filter((c) => c && !c.closest('.wmx-dc, .wmx-dc-run, [role=dialog]')),
+    tagMenu: () => D.querySelector('button[aria-label="Filtrer par étiquette"]'),
+    tagOptions: () => [...D.querySelectorAll('[role=option]')],
+    rarityChips: () => NATIVE.buttons().filter((b) => b.closest('main') && /^(L|UR|SR|R|PC|C)$/.test(norm(b.textContent))),
+    chipOn: (b) => !/\bopacity-50\b/.test(String(b.className)),
+    /** Compteur « 50 cartes sélectionnées » : <span>50</span><span>cartes sélectionnées</span>, dans la barre fixée en bas de page (hors de <main>). */
+    count() {
+      const re = /^(\d[\d\s ]*?)\s*cartes?\s+sélectionnées?$/i;
+      const elx = [...D.querySelectorAll('body div, body p, body span')].find((e) => re.test(norm(e.textContent)) && ![...e.children].some((c) => re.test(norm(c.textContent))) && !e.closest('.wmx-dc, .wmx-dc-run')); // barre fixée en bas de page, hors de <main>
+      if (elx) return Number(re.exec(norm(elx.textContent))[1].replace(/\D/g, ''));
+      return NATIVE.quit() ? 0 : null;
+    },
+    cards: () => [...D.querySelectorAll('main h3')].map((h3) => h3.closest('[class*="rounded-2xl"]')).filter((c) => c && !c.closest('.wmx-dc, .wmx-dc-run, .card-frame')),
+    checked: (card) => !!(card.parentElement || card).querySelector('svg.lucide-check'),
     read(card) {
       const title = norm(card.querySelector('h3')?.textContent);
       const rarity = WMX.normRarity(norm(card.querySelector('div.absolute.top-2.left-2')?.textContent)) || '';
       return title && rarity ? { title, rarity, item: WMX.inventory.find(title, rarity) } : null;
     },
-    dialog: () => [...D.querySelectorAll('[role=dialog], [role=alertdialog]')].find((d) => !d.closest('.wmx-dc, .wmx-dc-run') && /défauss/i.test(d.textContent)),
+    /** Fenêtre de défausse du jeu : titre « Défausser N cartes ? ». */
+    dialog() {
+      const h = [...D.querySelectorAll('h2, h3')].find((e) => /^Défausser \d+ cartes? \?$/i.test(norm(e.textContent)));
+      if (!h) return null;
+      let box = h.closest('.card-frame, [role=dialog], [role=alertdialog]') || h.parentElement;
+      while (box && !box.querySelector('button') && box.parentElement) box = box.parentElement;
+      return box;
+    },
     /** « 12 × C · 3 × PC » lu dans la fenêtre de défausse du jeu. */
-    dialogCounts(d) { const out = {}; for (const m of String(d.innerText || d.textContent).matchAll(/(\d+)\s*[×x]\s*(L|UR|SR|PC|R|C)\b/g)) out[m[2]] = (out[m[2]] || 0) + Number(m[1]); return out; },
-    done: () => /(\d+)\s+cartes?\s+défaussées?/i.exec(pageText()),
+    dialogCounts(d) { const out = {}; for (const m of String(d.innerText || d.textContent).matchAll(/(\d+)\s*[×x]\s*(L|UR|SR|PC|R|C)(?![A-Za-z])/g)) out[m[2]] = (out[m[2]] || 0) + Number(m[1]); return out; },
+    /** Message « N cartes défaussées (+N wikibidous). » : l'élément le plus précis qui le contient. */
+    banner() {
+      const all = [...D.querySelectorAll('main *')].filter((e) => /^\d+ cartes? défaussées?/i.test(norm(e.textContent)) && !e.closest('.card-frame'));
+      return all.find((e) => ![...e.children].some((c) => /^\d+ cartes? défaussées?/i.test(norm(c.textContent)))) || null;
+    },
+    loadError: () => /chargement de la collection a échoué/i.test(pageText()),
+    empty: () => /Aucune carte trouvée/i.test(pageText()),
+    page() { const m = /Page\s+(\d+)\s*\/\s*(\d+)/i.exec(pageText()); return m ? { n: Number(m[1]), of: Number(m[2]) } : null; },
   };
-  /** Clic « comme une souris » : les clics JavaScript simples ne cochent pas les cartes du jeu. */
-  function press(node, x, y) {
-    const o = { bubbles: true, cancelable: true, view: W, clientX: x, clientY: y, button: 0 };
-    const Ptr = W.PointerEvent || W.MouseEvent;
-    for (const t of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) node.dispatchEvent(new (t.startsWith('pointer') ? Ptr : W.MouseEvent)(t, o));
-  }
   const waitFor = async (fn, ms, step = 150) => { const end = Date.now() + ms; for (;;) { const v = fn(); if (v) return v; if (Date.now() > end) return null; await sleep(step); } };
-  /** Coche ou décoche une carte (case du coin haut droit) ; vérifie que le compteur bouge de 1. */
+  /** Liste affichée et prête : des cartes, ou « Aucune carte trouvée » (jamais pendant une erreur de chargement). */
+  const listReady = () => !NATIVE.loadError() && (NATIVE.cards().length > 0 || NATIVE.empty());
+
+  /**
+   * Filtres du jeu : raretés choisies (toutes : aucun bouton actif) et UNE vue d'étiquette (« Toutes les étiquettes », « Sans étiquette » ou « #NOM »).
+   * Choisir l'option du menu relance aussi la lecture de la liste (utile après « le chargement a échoué »). Rend un message d'erreur, ou ''.
+   */
+  async function applyFilters(rarities, view) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const menu = await waitFor(NATIVE.tagMenu, 15000);
+      if (!menu) return 'menu « Filtrer par étiquette » du jeu introuvable';
+      const want = (o) => { const t = norm(o.textContent); return view.kind === 'all' ? /^Toutes les étiquettes$/i.test(t) : view.kind === 'none' ? /^Sans étiquette$/i.test(t) : tagKey(t.replace(/\s*\(\d[\d\s ]*\)\s*$/, '')) === tagKey(view.tag); };
+      if (attempt > 0 || !want({ textContent: norm(menu.textContent) })) {
+        if (attempt > 0) { // relecture forcée : on passe par une autre vue puis on revient
+          menu.click();
+          const other = await waitFor(() => NATIVE.tagOptions().find((o) => !want(o) && /^(Toutes les étiquettes|Sans étiquette)$/i.test(norm(o.textContent))), 4000);
+          other?.click();
+          await sleep(800);
+        }
+        NATIVE.tagMenu().click();
+        const opt = await waitFor(() => NATIVE.tagOptions().find(want), 5000);
+        if (!opt) { D.body.dispatchEvent(new W.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return view.kind === 'tag' ? `l’étiquette « ${view.tag} » n’existe pas dans le menu du jeu` : 'vue du menu des étiquettes introuvable'; }
+        opt.click();
+        await sleep(400);
+      }
+      const all = rarities.length >= 6;
+      for (const b of NATIVE.rarityChips()) {
+        const on = all ? false : rarities.includes(norm(b.textContent));
+        if (NATIVE.chipOn(b) !== on) { b.click(); await sleep(250); }
+      }
+      const okChips = NATIVE.rarityChips().every((b) => NATIVE.chipOn(b) === (all ? false : rarities.includes(norm(b.textContent))));
+      if (!okChips) return 'les filtres de rareté du jeu ne répondent pas';
+      if (!want({ textContent: norm(NATIVE.tagMenu()?.textContent) })) return 'le filtre d’étiquette du jeu ne s’est pas appliqué';
+      if (await waitFor(listReady, 15000, 250)) {
+        if (!NATIVE.quit()) {
+          const s = await waitFor(NATIVE.select, 6000);
+          if (!s) return 'bouton « Sélectionner » du jeu introuvable';
+          s.click();
+          if (!(await waitFor(() => NATIVE.count() === 0, 5000))) return 'le mode sélection du jeu ne s’est pas ouvert';
+        }
+        return '';
+      }
+      await sleep(2000 * (attempt + 1)); // « le chargement a échoué » : le jeu se reprend, on relit la liste
+    }
+    return 'la collection du jeu ne se charge pas (« le chargement de la collection a échoué ») : réessayez dans un instant';
+  }
+
+  /** Coche ou décoche une carte (clic sur la carte, en mode sélection) ; vérifie que le compteur bouge de 1. */
   async function toggleCard(card, delta) {
     card.scrollIntoView?.({ block: 'center' });
-    await sleep(120);
-    const r = card.getBoundingClientRect();
-    const x = r.right - 17; const y = r.top + 17;
-    const target = D.elementFromPoint?.(x, y) || card;
-    if (target.closest('.wmx-nt-bolt, .wmx-nt-price, input, a[href*="wikipedia"]')) return false; // jamais le ⚡ ni le lien Wikipédia
+    await sleep(80);
     const before = NATIVE.count();
-    press(target, x, y);
-    return !!(await waitFor(() => { const n = NATIVE.count(); return n != null && before != null && n === before + delta; }, 1500, 120));
+    card.click();
+    return !!(await waitFor(() => { const n = NATIVE.count(); return n != null && before != null && n === before + delta; }, 1500, 100));
   }
-  /** Parcourt la page affichée (liste virtualisée : par paliers) et rend les cartes vues, dans l'ordre. */
+  /** Parcourt la page affichée et rend les cartes vues, dans l'ordre (par paliers, au cas où la liste serait virtualisée). */
   async function scanPage() {
     const seen = new Map();
     const scroller = D.scrollingElement || D.documentElement;
     scroller.scrollTo?.(0, 0);
-    await sleep(200);
+    await sleep(150);
     for (let i = 0; i < 60; i++) {
       for (const c of NATIVE.cards()) { const info = NATIVE.read(c); if (info && !seen.has(`${info.title}|${info.rarity}`)) seen.set(`${info.title}|${info.rarity}`, info); }
       const atEnd = scroller.scrollTop + W.innerHeight >= scroller.scrollHeight - 4;
       if (atEnd) break;
-      scroller.scrollBy?.(0, 300);
-      await sleep(160);
+      scroller.scrollBy?.(0, 400);
+      await sleep(120);
     }
     return [...seen.values()];
   }
   const findCard = (k) => NATIVE.cards().find((c) => { const i = NATIVE.read(c); return i && `${i.title}|${i.rarity}` === k; });
-  /** Amène une carte de la page à l'écran (liste virtualisée) puis la coche ou la décoche. */
+  /** Trouve une carte de la page puis la coche ou la décoche (un seul nouvel essai si le clic rate, vérifié par le compteur). */
   async function toggleByKey(k, delta) {
     const scroller = D.scrollingElement || D.documentElement;
     let card = findCard(k);
-    for (let y = 0; !card && y < scroller.scrollHeight; y += 300) { scroller.scrollTo?.(0, y); await sleep(140); card = findCard(k); }
+    for (let y = 0; !card && y < scroller.scrollHeight; y += 400) { scroller.scrollTo?.(0, y); await sleep(120); card = findCard(k); }
     if (!card) return false;
     if (await toggleCard(card, delta)) return true;
     await sleep(400);
-    return NATIVE.count() != null && (await toggleCard(card, delta)); // un clic peut rater : un seul nouvel essai, vérifié par le compteur
+    return NATIVE.count() != null && (await toggleCard(card, delta));
   }
 
   // ---- déroulé ----
@@ -269,13 +337,16 @@
     panel.querySelector('.wmx-dc-run-txt').textContent = text;
     panel.querySelector('.wmx-dc-run-head .wmx-btn:last-child').textContent = run.on ? 'Arrêter' : 'Fermer';
   }
-  /** Page Collection invisible (arrière-plan) : remplacée dans les essais par une fausse page. */
+  /** Page Collection invisible (arrière-plan) ; `reload()` la recharge (état propre) et rend le nouveau document. Remplacée dans les essais. */
   async function openFrame() {
     const f = el('iframe', { class: 'wmx-sheet-frame wmx-dc-frame', src: '/collection#wmx-discard', title: 'Défausse', tabindex: '-1' }); // pas #wmx-auto : aucune confirmation n'est acceptée d'office
     document.body.append(f);
-    const ready = await waitFor(() => { try { return f.contentDocument?.readyState === 'complete' && f.contentDocument.querySelector('main h3') ? f : null; } catch (_) { return null; } }, 45000, 300);
-    if (!ready) { f.remove(); return null; }
-    return { d: f.contentDocument, w: f.contentWindow, frame: f, remove: () => f.remove() };
+    const ready = () => waitFor(() => { try { return f.contentDocument?.readyState === 'complete' && f.contentDocument.querySelector('button[aria-label="Filtrer par étiquette"]') ? f : null; } catch (_) { return null; } }, 45000, 300);
+    if (!(await ready())) { f.remove(); return null; }
+    return {
+      d: f.contentDocument, w: f.contentWindow, frame: f, remove: () => f.remove(),
+      async reload() { try { f.contentWindow.location.reload(); } catch (_) { return null; } await sleep(800); return (await ready()) ? { d: f.contentDocument, w: f.contentWindow } : null; },
+    };
   }
   /** Vérification humaine du jeu dans la page invisible : on la montre au centre de l'écran et on attend qu'elle soit faite. */
   async function humanGate() {
@@ -286,7 +357,11 @@
     run.frame.classList.remove('wmx-on', 'wmx-human');
     return !!ok && !run.stop;
   }
-  async function start(pl, { dry, visible = false }) {
+  /** Vues à parcourir : une par étiquette choisie (le jeu n'en filtre qu'une à la fois), sinon « Sans étiquette » ou « Toutes les étiquettes ». */
+  const viewsOf = (p) => ((p.tags || []).length ? p.tags.map((tag) => ({ kind: 'tag', tag, label: `étiquette ${tag}` }))
+    : p.includeTagged ? [{ kind: 'all', label: 'toutes les étiquettes' }] : [{ kind: 'none', label: 'sans étiquette' }]);
+
+  async function start(pl, { dry, visible = false, prefs: p = prefs }) {
     if (run.on) return;
     if (visible && !/^\/collection\/?$/.test(location.pathname)) return WMX.toast?.('Mode visible : ouvrez la page Collection pour lancer la défausse.', 5000);
     run.on = true; run.stop = false; run.dry = dry; run.prog = { done: 0, total: pl.copies }; run.frame = null;
@@ -297,10 +372,13 @@
       if (!ctx) { run.on = false; showRun('la page Collection n’a pas pu être préparée en arrière-plan (jeu lent ?) : rien n’a été défaussé. Réessayez, ou utilisez le mode visible.', 'warn'); return; }
       D = ctx.d; W = ctx.w; run.frame = ctx.frame || null;
     }
-    // Copies restantes par carte (clé titre|rareté, comme la page du jeu les affiche).
+    // Exemplaires restants par carte (clé titre|rareté, comme la page du jeu les affiche).
     const left = new Map(pl.cards.map((c) => [`${norm(c.title)}|${c.rarity}`, { ...c }]));
+    const remaining = () => [...left.values()].some((c) => c.copies > 0);
     const stats = { copies: 0, rounds: 0, reward: 0 };
     const label = dry ? 'Essai à blanc' : 'Défausse';
+    const rarities = [...new Set(pl.cards.map((c) => c.rarity))];
+    const done = (n) => `${plural(n, 'exemplaire')} ${dry ? 'vérifié' : 'défaussé'}${n > 1 ? 's' : ''}`;
     const finish = (text, kind = 'ok') => {
       run.on = false;
       const c = ctx; ctx = null;
@@ -313,136 +391,145 @@
       WMX.notify?.({ kind: kind === 'ok' ? 'info' : 'warn', key: 'discard', ms: 12000, title: kind === 'ok' ? `${label} terminée` : `${label} arrêtée`, text });
       setTimeout(() => { if (!run.on) panel?.remove(); }, 30000);
     };
+    async function abort(text) { await clearSelection(); return finish(text, 'warn'); }
+    /** Après une défausse : la liste du jeu doit se relire. En arrière-plan on recharge la page (état propre) ; en mode visible on rechoisit le filtre. */
+    async function recover(view) {
+      if (ctx?.reload) {
+        showRun('relecture de la collection (page rechargée en arrière-plan)…');
+        const r = await ctx.reload();
+        if (!r) return 'la page en arrière-plan n’a pas pu être rechargée';
+        D = r.d; W = r.w;
+      }
+      return applyFilters(rarities, view);
+    }
     try {
-      WMX.journal?.add('Défausse', `${label} lancée : ${plural(pl.copies, 'exemplaire')} (${byRarText(pl.byRar)})`);
-      showRun('ouverture de la sélection du jeu…');
-      if (!NATIVE.quit()) {
-        const b = await waitFor(NATIVE.select, 8000);
-        if (!b) return finish('bouton « Sélectionner » du jeu introuvable sur la page Collection : rien n’a été défaussé.', 'warn');
-        b.click();
-        if (!(await waitFor(() => NATIVE.count() === 0, 5000))) return finish('le mode sélection du jeu ne s’est pas ouvert : rien n’a été défaussé.', 'warn');
-      } else if (NATIVE.count() !== 0) return finish('une sélection est déjà en cours sur la page : videz-la (« Quitter la sélection ») puis relancez.', 'warn');
-      // On part de la première page (une passe précédente a pu s'arrêter plus loin).
-      const goFirst = async () => { for (let i = 0; i < 300 && NATIVE.prev(); i++) { NATIVE.prev().click(); await sleep(600); await waitFor(() => NATIVE.cards().length, 15000); } };
-      await goFirst();
-      let page = 1;
-      // Page suivante ; arrivé au bout, un nouveau passage depuis la page 1 rattrape les cartes remontées d'une page à l'autre après une défausse
-      // (au plus 3 passages, et seulement si le précédent a défaussé quelque chose).
-      let sweeps = 0;
-      let sweepFrom = 0;
-      const advance = async () => {
-        const nx = NATIVE.next();
-        if (nx) { nx.click(); page += 1; await sleep(1500); await waitFor(() => NATIVE.cards().length, 15000); return true; }
-        if (dry || sweeps >= 3 || stats.copies === sweepFrom || ![...left.values()].some((c) => c.copies > 0)) return false;
-        sweeps += 1; sweepFrom = stats.copies;
-        showRun(`retour à la page 1 : cartes restantes à rattraper (passage ${sweeps + 1})…`);
-        await goFirst(); page = 1;
-        return true;
-      };
-      for (let guard = 0; guard < 400; guard++) {
-        if (run.stop) return finish(`arrêtée à votre demande : ${plural(stats.copies, 'exemplaire')} ${dry ? 'vérifié' : 'défaussé'}${stats.copies > 1 ? 's' : ''}.`, 'warn');
-        if (![...left.values()].some((c) => c.copies > 0)) break;
-        if (run.frame && !run.frame.isConnected) return finish(`la page en arrière-plan a été fermée : ${plural(stats.copies, 'exemplaire')} ${dry ? 'vérifié' : 'défaussé'}${stats.copies > 1 ? 's' : ''}.`, 'warn');
-        if (!(await humanGate())) return abort('la vérification du jeu n’a pas été faite : arrêtée.');
-        run.prog.done = stats.copies;
-        showRun(`page ${page} : lecture des cartes…`);
-        const seen = await scanPage();
-        const targets = seen.filter((s) => left.get(`${s.title}|${s.rarity}`)?.copies > 0);
-        if (!targets.length) {
-          if (!(await advance())) break;
-          continue;
-        }
-        // Cocher : « Tout sélectionner (page) » puis décocher les autres si la page est surtout à défausser, sinon carte par carte.
-        showRun(`page ${page} : sélection de ${plural(targets.length, 'carte')}…`);
-        const tkeys = new Set(targets.map((t) => `${t.title}|${t.rarity}`));
-        const all = NATIVE.selectAll();
-        const usedAll = !!all && targets.length > seen.length / 2;
-        if (usedAll) {
-          all.click();
-          if (!(await waitFor(() => NATIVE.count() >= targets.length, 6000))) return finish(`page ${page} : « Tout sélectionner » n’a pas coché les cartes. Rien n’a été défaussé sur cette page.`, 'warn');
-          for (const s of seen) {
-            const k = `${s.title}|${s.rarity}`;
-            if (tkeys.has(k)) continue;
-            if (s.item?.starred) continue; // favorite cochée par « Tout sélectionner » : le jeu ne la défausse jamais, inutile de la décocher
-            if (run.stop) break;
-            if (!(await toggleByKey(k, -1))) return abort(`page ${page} : impossible de décocher « ${s.title} ». Rien n’a été défaussé sur cette page.`);
+      WMX.journal?.add('Défausse', `${label} lancée : ${plural(pl.copies, 'exemplaire')} (${byRarText(pl.byRar)})${run.frame ? ', en arrière-plan' : ''}`);
+      for (const view of viewsOf(p)) {
+        if (!remaining()) break;
+        showRun(`filtres du jeu : ${rarities.join(', ')} · ${view.label}…`);
+        const err = await applyFilters(rarities, view);
+        if (err) return abort(`${err}. Rien n’a été défaussé${stats.copies ? ' de plus' : ''}.`);
+        let page = 1;
+        let sweeps = 0;
+        let sweepFrom = stats.copies;
+        // Page suivante ; au bout, un nouveau passage depuis la page 1 rattrape les cartes remontées après une défausse (3 au plus, s'il a servi).
+        const advance = async () => {
+          const nx = NATIVE.next();
+          const pg = NATIVE.page();
+          if (nx && (!pg || pg.n < pg.of)) { nx.click(); page += 1; await sleep(600); await waitFor(listReady, 15000, 200); return true; }
+          if (dry || sweeps >= 3 || stats.copies === sweepFrom || !remaining()) return false;
+          sweeps += 1; sweepFrom = stats.copies;
+          showRun(`retour à la page 1 : cartes restantes à rattraper (passage ${sweeps + 1})…`);
+          const e = await recover(view); if (e) return false;
+          page = 1;
+          return true;
+        };
+        for (let guard = 0; guard < 600; guard++) {
+          if (run.stop) return abort(`arrêtée à votre demande : ${done(stats.copies)}.`);
+          if (!remaining()) break;
+          if (run.frame && !run.frame.isConnected) return finish(`la page en arrière-plan a été fermée : ${done(stats.copies)}.`, 'warn');
+          if (!(await humanGate())) return abort('la vérification du jeu n’a pas été faite : arrêtée.');
+          if (NATIVE.loadError()) { const e = await recover(view); if (e) return abort(`${e}. ${done(stats.copies)}.`); }
+          run.prog.done = stats.copies;
+          showRun(`${view.label} · page ${page} : lecture des cartes…`);
+          const seen = await scanPage();
+          const targets = seen.filter((s) => left.get(`${s.title}|${s.rarity}`)?.copies > 0);
+          if (!targets.length) { if (!(await advance())) break; continue; }
+          // Cocher : « Tout sélectionner (page) » puis décocher les cartes gardées si la page est surtout à défausser, sinon carte par carte.
+          showRun(`${view.label} · page ${page} : sélection de ${plural(targets.length, 'carte')}…`);
+          if (NATIVE.count() !== 0) await clearSelection();
+          const tkeys = new Set(targets.map((t) => `${t.title}|${t.rarity}`));
+          const all = NATIVE.selectAll();
+          const usedAll = !!all && targets.length > seen.length / 2;
+          if (usedAll) {
+            all.click();
+            if (!(await waitFor(() => NATIVE.count() >= targets.length, 6000))) return abort(`page ${page} : « Tout sélectionner » n’a pas coché les cartes. Rien n’a été défaussé sur cette page.`);
+            for (const s of seen) {
+              const k = `${s.title}|${s.rarity}`;
+              if (tkeys.has(k)) continue;
+              if (s.item?.starred) continue; // favorite cochée par « Tout sélectionner » : le jeu ne la défausse jamais, inutile de la décocher
+              if (run.stop) break;
+              if (!(await toggleByKey(k, -1))) return abort(`page ${page} : impossible de décocher « ${s.title} ». Rien n’a été défaussé sur cette page.`);
+            }
+          } else {
+            for (const t of targets) {
+              if (run.stop) break;
+              if (!(await toggleByKey(`${t.title}|${t.rarity}`, 1))) return abort(`page ${page} : impossible de cocher « ${t.title} ». Rien n’a été défaussé sur cette page.`);
+            }
           }
-        } else {
+          if (run.stop) return abort(`arrêtée à votre demande : ${done(stats.copies)}.`);
+          // Compteur : les cartes prévues, plus éventuellement les favorites laissées cochées (le jeu les omet ; la fenêtre, vérifiée ensuite, le confirme).
+          const n = NATIVE.count();
+          const favs = usedAll ? seen.filter((x) => x.item?.starred && !tkeys.has(`${x.title}|${x.rarity}`)).length : 0;
+          if (n !== targets.length && n !== targets.length + favs) return abort(`page ${page} : le jeu compte ${n ?? '?'} carte(s) sélectionnée(s) au lieu de ${targets.length}${favs ? ` (ou ${targets.length + favs} avec les favorites)` : ''}. Rien n’a été défaussé sur cette page.`);
+          // Fenêtre du jeu : une carte cochée = UN exemplaire ; les nombres par rareté doivent être exactement les cartes prévues.
+          const want = {};
+          for (const t of targets) want[t.rarity] = (want[t.rarity] || 0) + 1;
+          const db = NATIVE.discard();
+          if (!db) return abort(`page ${page} : bouton « Défausser » du jeu introuvable. Rien n’a été défaussé.`);
+          const reward = Number((/\+\s*(\d[\d\s ]*)/.exec(norm(db.textContent)) || [])[1]?.replace(/\D/g, '') || 0);
+          db.click();
+          const dlg = await waitFor(NATIVE.dialog, 6000);
+          if (!dlg) return abort(`page ${page} : la fenêtre de défausse du jeu ne s’est pas ouverte. Rien n’a été défaussé.`);
+          const got = NATIVE.dialogCounts(dlg);
+          if (!R.every((r) => (got[r] || 0) === (want[r] || 0))) {
+            cancelDialog(dlg);
+            return abort(`page ${page} : le jeu s’apprête à défausser ${byRarText(got) || '?'} au lieu de ${byRarText(want)}. Rien n’a été défaussé.`);
+          }
+          if (dry) {
+            cancelDialog(dlg);
+            await waitFor(() => !NATIVE.dialog(), 3000);
+            for (const t of targets) { const c = left.get(`${t.title}|${t.rarity}`); stats.copies += c.copies; c.copies = 0; } // vérifiées (exemplaires suivants compris)
+            await clearSelection();
+            if (!(await advance())) break;
+            continue;
+          }
+          const confirm = [...dlg.querySelectorAll('button')].reverse().find((b) => /^Défausser$/i.test(norm(b.textContent)) && !b.disabled);
+          if (!confirm) { cancelDialog(dlg); return abort(`page ${page} : bouton de confirmation du jeu introuvable. Rien n’a été défaussé.`); }
+          // L'ancien message « N cartes défaussées » reste affiché : on le note pour ne pas le prendre pour la réponse à cette défausse.
+          const oldBanner = NATIVE.banner();
+          const oldText = oldBanner ? norm(oldBanner.textContent) : '';
+          showRun(`${view.label} · page ${page} : défausse de ${byRarText(want)}…`);
+          confirm.click();
+          const expect = new RegExp(`^${targets.length} cartes? défaussées?`, 'i');
+          const ok = await waitFor(() => { if (NATIVE.dialog()) return null; const b = NATIVE.banner(); return b && expect.test(norm(b.textContent)) && (b !== oldBanner || norm(b.textContent) !== oldText) ? b : null; }, 20000, 200)
+            || (await waitFor(() => !NATIVE.dialog() && NATIVE.banner() && expect.test(norm(NATIVE.banner().textContent)), 2500, 200)); // même message qu'avant (même nombre) : la fenêtre fermée suffit
+          if (!ok) return finish(`page ${page} : le jeu n’a pas confirmé la défausse (vérifiez votre collection). ${done(stats.copies)} avant.`, 'warn');
+          stats.copies += targets.length;
+          stats.reward += reward; stats.rounds += 1;
+          run.prog.done = stats.copies;
           for (const t of targets) {
-            if (run.stop) break;
-            if (!(await toggleByKey(`${t.title}|${t.rarity}`, 1))) return abort(`page ${page} : impossible de cocher « ${t.title} ». Rien n’a été défaussé sur cette page.`);
+            const c = left.get(`${t.title}|${t.rarity}`);
+            window.dispatchEvent(new CustomEvent('wmx:discard', { detail: { card_id: c.card_id } })); // inventaire de l'extension (page principale) : un exemplaire de moins
+            c.copies -= 1; // d'autres exemplaires à défausser : la carte est recochée au passage suivant
           }
+          // La liste du jeu se relit (ou échoue) : on attend qu'elle soit prête, et on la relit nous-mêmes si besoin.
+          await sleep(1200);
+          if (!(await waitFor(listReady, 6000, 200))) { const e = await recover(view); if (e) return abort(`${e}. ${done(stats.copies)}.`); }
+          if (NATIVE.count() == null) { const e = await applyFilters(rarities, view); if (e) return abort(`${e}. ${done(stats.copies)}.`); }
+          // Cartes gardées (favorites, options) restées sur cette page : à partir de 30, on passe à la suivante.
+          if (seen.length - targets.length >= KEEP_MAX) { showRun(`page ${page} : ${seen.length - targets.length} cartes gardées sur la page, passage à la suivante…`); if (!(await advance())) break; }
         }
-        if (run.stop) return abort(`arrêtée à votre demande : ${plural(stats.copies, 'exemplaire')} ${dry ? 'vérifié' : 'défaussé'}${stats.copies > 1 ? 's' : ''}.`);
-        // Compteur du jeu : les cartes prévues, plus éventuellement les favorites laissées cochées par « Tout sélectionner » (le jeu les omet à la défausse ;
-        // la fenêtre de défausse, vérifiée ensuite, le confirme : sinon rien n'est défaussé).
-        const n = NATIVE.count();
-        const favs = usedAll ? seen.filter((x) => x.item?.starred && !tkeys.has(`${x.title}|${x.rarity}`)).length : 0;
-        if (n !== targets.length && n !== targets.length + favs) return abort(`page ${page} : le jeu compte ${n ?? '?'} carte(s) sélectionnée(s) au lieu de ${targets.length}${favs ? ` (ou ${targets.length + favs} avec les favorites)` : ''}. Rien n’a été défaussé sur cette page.`);
-        // Fenêtre de défausse du jeu : une carte cochée = UN exemplaire défaussé (constaté : une carte en ×2 n'en perd qu'un). Les nombres par rareté
-        // doivent donc être exactement le nombre de cartes cochées ; une carte qui doit perdre plusieurs exemplaires est recochée au passage suivant.
-        const want = {};
-        for (const t of targets) want[t.rarity] = (want[t.rarity] || 0) + 1;
-        const db = NATIVE.discard();
-        if (!db) return abort(`page ${page} : bouton « Défausser » du jeu introuvable. Rien n’a été défaussé.`);
-        const reward = Number((/\+\s*(\d[\d\s ]*)/.exec(norm(db.textContent)) || [])[1]?.replace(/\D/g, '') || 0);
-        db.click();
-        const dlg = await waitFor(NATIVE.dialog, 6000);
-        if (!dlg) return abort(`page ${page} : la fenêtre de défausse du jeu ne s’est pas ouverte. Rien n’a été défaussé.`);
-        const got = NATIVE.dialogCounts(dlg);
-        const same = R.every((r) => (got[r] || 0) === (want[r] || 0));
-        if (!same) {
-          cancelDialog(dlg);
-          return abort(`page ${page} : le jeu s’apprête à défausser ${byRarText(got) || '?'} au lieu de ${byRarText(want)}. Rien n’a été défaussé.`);
-        }
-        if (dry) {
-          cancelDialog(dlg);
-          for (const t of targets) { const c = left.get(`${t.title}|${t.rarity}`); stats.copies += c.copies; c.copies = 0; } // vérifiées (exemplaires suivants compris) : on passe à la suite
-          await clearSelection();
-          if (!(await advance())) break;
-          continue;
-        }
-        const confirm = [...dlg.querySelectorAll('button')].reverse().find((b) => /^(Défausser|Confirmer|Oui|Valider)/i.test(norm(b.textContent)) && !b.disabled);
-        if (!confirm) { cancelDialog(dlg); return abort(`page ${page} : bouton de confirmation du jeu introuvable. Rien n’a été défaussé.`); }
-        showRun(`page ${page} : défausse de ${byRarText(want)}…`);
-        confirm.click();
-        const ok = await waitFor(() => !dlg.isConnected && NATIVE.done(), 20000, 200);
-        if (!ok) return finish(`page ${page} : le jeu n’a pas confirmé la défausse (vérifiez votre collection). ${plural(stats.copies, 'exemplaire')} défaussé${stats.copies > 1 ? 's' : ''} avant.`, 'warn');
-        stats.copies += targets.length;
-        stats.reward += reward; stats.rounds += 1;
-        for (const t of targets) {
-          const c = left.get(`${t.title}|${t.rarity}`);
-          window.dispatchEvent(new CustomEvent('wmx:discard', { detail: { card_id: c.card_id } })); // inventaire de l'extension (page principale) : un exemplaire de moins
-          c.copies -= 1; // d'autres exemplaires à défausser : la carte est recochée au passage suivant
-        }
-        await sleep(1500); // le jeu recharge la page : les cartes suivantes remontent
-        await waitFor(() => NATIVE.cards().length, 15000);
-        if (NATIVE.count() == null) { const b = await waitFor(NATIVE.select, 5000); b?.click(); await waitFor(() => NATIVE.count() === 0, 5000); }
-        // Cartes gardées (favorites, étiquetées, options) restées sur cette page : à partir de 30, elle ne laisserait plus que quelques places
-        // aux cartes à défausser à chaque passe ; on passe à la page suivante (les cartes remontées seront rattrapées au passage suivant).
-        if (seen.length - targets.length >= KEEP_MAX) { showRun(`page ${page} : ${seen.length - targets.length} cartes gardées sur la page, passage à la suivante…`); if (!(await advance())) break; }
       }
       const missing = [...left.values()].filter((c) => c.copies > 0);
-      await clearSelection(true);
-      const tail = missing.length ? ` · ${plural(missing.length, 'carte')} non trouvée${missing.length > 1 ? 's' : ''} sur les pages parcourues` : '';
-      return finish(dry ? `essai réussi : ${plural(stats.copies, 'exemplaire')} coché${stats.copies > 1 ? 's' : ''} et vérifié${stats.copies > 1 ? 's' : ''}, rien n’a été défaussé${tail}. Relancez sans « Essai à blanc » pour défausser.`
-        : `${plural(stats.copies, 'exemplaire')} défaussé${stats.copies > 1 ? 's' : ''}${stats.reward ? ` (+${fmt(stats.reward)})` : ''}${tail}.`);
+      await clearSelection();
+      const tail = missing.length ? ` · ${plural(missing.length, 'carte')} non trouvée${missing.length > 1 ? 's' : ''} avec les filtres du jeu` : '';
+      return finish(dry ? `essai réussi : ${done(stats.copies)}, rien n’a été défaussé${tail}. Relancez sans « Essai à blanc » pour défausser.`
+        : `${done(stats.copies)}${stats.reward ? ` (+${fmt(stats.reward)} wikibidou${stats.reward > 1 ? 's' : ''})` : ''}${tail}.`);
     } catch (e) {
       console.warn('[WMX] défausse', e);
       return finish(`erreur inattendue (${e?.message || e}) : arrêtée.`, 'warn');
     }
-    async function abort(text) { await clearSelection(true); return finish(text, 'warn'); }
   }
   function cancelDialog(dlg) {
     const b = [...dlg.querySelectorAll('button')].find((x) => /^(Annuler|Fermer|Non)$/i.test(norm(x.textContent)) || /fermer/i.test(x.getAttribute('aria-label') || ''));
     if (b) b.click(); else dlg.dispatchEvent(new W.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   }
-  /** Vide la sélection (« Quitter la sélection » puis, si demandé, rien d'autre ; sinon on la rouvre pour la page suivante). */
-  async function clearSelection(leave = false) {
-    await sleep(300);
+  /** Vide la sélection en restant en mode sélection (« Quitter la sélection » puis « Sélectionner »). */
+  async function clearSelection() {
+    await sleep(200);
     const q = NATIVE.quit();
     if (q) { q.click(); await waitFor(() => !NATIVE.quit(), 4000); }
-    if (leave) return;
     const s = await waitFor(NATIVE.select, 4000);
     if (s) { s.click(); await waitFor(() => NATIVE.count() === 0, 4000); }
   }

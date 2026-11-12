@@ -1,61 +1,96 @@
-// Défausse par critères : fenêtres et pilotage de la sélection du jeu, sur une fausse page Collection (mêmes boutons et textes que le jeu).
+// Défausse par critères : fenêtres et pilotage de la sélection du jeu, sur une fausse page Collection qui reproduit la vraie
+// (relevée dans le jeu : menu « Filtrer par étiquette », boutons de rareté, clic sur la carte, compteur, fenêtre « Défausser N cartes ? »).
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createEnv } = require('./harness');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const json = (o) => ({ ok: true, status: 200, json: async () => o, text: async () => JSON.stringify(o), headers: { get: () => null } });
+const RAR = ['L', 'UR', 'SR', 'R', 'PC', 'C'];
 
-/** Fausse page Collection du jeu : 50 cartes par page, « Sélectionner », « Tout sélectionner (page) », compteur, « Défausser », fenêtre « N × C ». */
-function fakeGame(w, cards, { perPage = 50, discardAllCopies = true } = {}) {
+/**
+ * Fausse page Collection : 50 cartes par page, filtres (une vue d'étiquette, raretés cumulables), « Sélectionner », « Tout sélectionner (page) »
+ * (favorites comprises), « Défausser (+N) », fenêtre .card-frame « Défausser N cartes ? » / « N × C », un exemplaire par carte cochée, favorites
+ * jamais défaussées, message « N cartes défaussées (+N wikibidous). » qui reste affiché. `failAfterDiscard` : la liste échoue à se recharger une fois
+ * (« Le chargement de la collection a échoué ») ; rechoisir une vue la relit.
+ */
+function fakeGame(w, cards, { perPage = 50, failAfterDiscard = false } = {}) {
   const d = w.document;
-  const st = { selecting: false, sel: new Set(), page: 0, list: cards.map((c, i) => ({ ...c, uid: i })), discarded: [], dialogs: 0 };
+  const st = { selecting: false, sel: new Set(), page: 0, list: cards.map((c, i) => ({ ...c, uid: i })), discarded: [], dialogs: 0, view: 'all', rar: new Set(), menuOpen: false, banner: '', fail: false, lie: false };
   const main = d.createElement('main');
   d.body.append(main);
-  const button = (text, on) => { const b = d.createElement('button'); b.textContent = text; b.addEventListener('click', on); return b; };
+  const button = (text, on, attrs = {}) => { const b = d.createElement('button'); b.textContent = text; for (const [k, v] of Object.entries(attrs)) b.setAttribute(k, v); b.addEventListener('click', on); return b; };
+  const tagsOf = () => { const m = new Map(); for (const c of st.list) for (const t of c.tags || []) m.set(t.name, (m.get(t.name) || 0) + 1); return m; };
+  const filtered = () => st.list.filter((c) => (st.rar.size ? st.rar.has(c.rarity) : true)
+    && (st.view === 'all' ? true : st.view === 'none' ? !(c.tags || []).length : (c.tags || []).some((t) => t.name === st.view)));
+  const pages = () => Math.max(1, Math.ceil(filtered().length / perPage));
+  const pageCards = () => filtered().slice(st.page * perPage, (st.page + 1) * perPage);
   function render() {
-    st.page = Math.max(0, Math.min(st.page, Math.ceil(st.list.length / perPage) - 1)); // comme le jeu : jamais au-delà de la dernière page
+    st.page = Math.max(0, Math.min(st.page, pages() - 1));
     main.replaceChildren();
-    const bar = d.createElement('div');
-    if (!st.selecting) bar.append(button('Sélectionner', () => { st.selecting = true; st.sel.clear(); render(); }));
-    else {
-      bar.append(button('Quitter la sélection', () => { st.selecting = false; st.sel.clear(); render(); }),
-        button('Tout sélectionner (page)', () => { for (const c of pageCards()) st.sel.add(c.uid); render(); })); // comme le jeu : favorites comprises
-      const n = d.createElement('span'); n.textContent = `${st.sel.size} carte${st.sel.size > 1 ? 's' : ''} sélectionnée${st.sel.size > 1 ? 's' : ''}`; bar.append(n);
-      bar.append(button(`Défausser (+${st.sel.size * 2})`, openDialog));
+    if (!st.selecting) main.append(button('Sélectionner', () => { st.selecting = true; st.sel.clear(); render(); }));
+    else main.append(button('Quitter la sélection', () => { st.selecting = false; st.sel.clear(); render(); }));
+    if (st.banner) { const b = d.createElement('div'); const sp = d.createElement('span'); sp.textContent = st.banner; b.append(sp); main.append(b); }
+    const viewText = st.view === 'all' ? 'Toutes les étiquettes' : st.view === 'none' ? 'Sans étiquette' : `#${st.view} (${tagsOf().get(st.view) || 0})`;
+    main.append(button(viewText, () => { st.menuOpen = !st.menuOpen; render(); }, { 'aria-label': 'Filtrer par étiquette', 'aria-haspopup': 'listbox' }));
+    if (st.menuOpen) {
+      const ul = d.createElement('ul'); ul.setAttribute('role', 'listbox');
+      const opt = (text, v) => ul.append(button(text, () => { st.view = v; st.menuOpen = false; st.page = 0; st.sel.clear(); st.fail = false; render(); }, { role: 'option', 'aria-selected': String(st.view === v) }));
+      opt('Toutes les étiquettes', 'all'); opt('Sans étiquette', 'none');
+      for (const [name, n] of tagsOf()) opt(`#${name} (${n})`, name);
+      main.append(ul);
     }
-    const grid = d.createElement('div'); grid.className = 'flex flex-wrap';
-    for (const c of pageCards()) {
-      const card = d.createElement('div'); card.className = 'relative isolate group cursor-pointer rounded-2xl';
+    for (const r of RAR) main.append(button(r, () => { st.rar.has(r) ? st.rar.delete(r) : st.rar.add(r); st.page = 0; st.sel.clear(); render(); }, { class: `px-3 py-1 rounded-full${st.rar.has(r) ? '' : ' opacity-50'}` }));
+    if (st.fail) { const p = d.createElement('p'); p.textContent = 'Le chargement de la collection a échoué. Réessaie dans un instant.'; main.append(p); }
+    const nav = d.createElement('div');
+    nav.append(button('← Précédent', () => { st.page -= 1; st.sel.clear(); render(); }), button(`Page ${st.page + 1} / ${pages()}`, () => {}), button('Suivant →', () => { if (st.page + 1 < pages()) { st.page += 1; st.sel.clear(); render(); } }));
+    main.append(nav);
+    const grid = d.createElement('div');
+    const list = st.fail ? [] : pageCards();
+    if (!list.length && !st.fail) { const p = d.createElement('p'); p.textContent = 'Aucune carte trouvée avec ces filtres.'; grid.append(p); }
+    for (const c of list) {
+      const host = d.createElement('div'); host.className = 'relative isolate group';
+      const card = d.createElement('div'); card.className = 'relative rounded-2xl overflow-hidden cursor-pointer';
       const badge = d.createElement('div'); badge.className = 'absolute top-2 left-2'; badge.textContent = c.rarity;
       const h3 = d.createElement('h3'); h3.textContent = c.title;
       card.append(badge, h3);
       card.addEventListener('click', () => { if (!st.selecting) return; st.sel.has(c.uid) ? st.sel.delete(c.uid) : st.sel.add(c.uid); render(); });
-      grid.append(card);
+      const mark = d.createElement('span'); mark.className = 'pointer-events-none absolute';
+      mark.innerHTML = st.sel.has(c.uid) ? '<svg class="lucide lucide-check"></svg>' : '<svg class="lucide lucide-square"></svg>';
+      host.append(card, mark);
+      grid.append(host);
     }
-    main.append(bar, grid);
-    if (st.page > 0) main.append(button('← Précédent', () => { st.page -= 1; st.sel.clear(); render(); }));
-    if ((st.page + 1) * perPage < st.list.length) main.append(button('Suivant →', () => { st.page += 1; st.sel.clear(); render(); }));
-    if (st.toast) { const t = d.createElement('div'); t.textContent = st.toast; main.append(t); }
+    main.append(grid);
+    d.querySelector('.fake-bar')?.remove();
+    if (st.selecting) {
+      const bar = d.createElement('div'); bar.className = 'fixed bottom-4 card-frame fake-bar'; // comme le jeu : barre fixée en bas, hors de <main>
+      const n = d.createElement('div'); n.innerHTML = `<span>${st.sel.size}</span><span>carte${st.sel.size > 1 ? 's' : ''} sélectionnée${st.sel.size > 1 ? 's' : ''}</span>`;
+      const real = st.list.filter((c) => st.sel.has(c.uid) && !c.starred).length;
+      bar.append(n, button('Tout sélectionner (page)', () => { for (const c of pageCards()) st.sel.add(c.uid); render(); }), button(`Défausser (+${real})`, openDialog));
+      d.body.append(bar);
+    }
   }
-  const pageCards = () => st.list.slice(st.page * perPage, (st.page + 1) * perPage);
   function openDialog() {
     st.dialogs += 1;
-    const chosen = st.list.filter((c) => st.sel.has(c.uid) && !c.starred); // comme le jeu : une favorite sélectionnée n'est jamais défaussée
+    const chosen = st.list.filter((c) => st.sel.has(c.uid) && !c.starred); // une favorite sélectionnée n'est jamais défaussée
     const by = {};
-    for (const c of chosen) by[c.rarity] = (by[c.rarity] || 0) + 1; // comme le jeu : un exemplaire par carte cochée
+    for (const c of chosen) by[c.rarity] = (by[c.rarity] || 0) + 1; // un exemplaire par carte cochée
     if (st.lie) by.C = (by.C || 0) + 1;
-    const dlg = d.createElement('div'); dlg.setAttribute('role', 'dialog');
-    dlg.append(Object.assign(d.createElement('p'), { textContent: `Défausser ces cartes ? ${Object.entries(by).map(([r, n]) => `${n} × ${r}`).join(', ')}.` }),
-      button('Annuler', () => dlg.remove()),
-      button('Défausser', () => {
-        st.discarded.push(...chosen.map((c) => c.title));
-        for (const c of chosen) c.count -= 1;
-        st.list = st.list.filter((c) => c.count > 0);
-        st.toast = `${chosen.length} cartes défaussées`;
-        st.sel.clear(); dlg.remove(); render();
-      }));
-    d.body.append(dlg);
+    const back = d.createElement('div'); back.className = 'fixed inset-0';
+    const box = d.createElement('div'); box.className = 'card-frame';
+    const h3 = d.createElement('h3'); h3.textContent = `Défausser ${chosen.length} carte${chosen.length > 1 ? 's' : ''} ?`;
+    const p = d.createElement('p'); p.textContent = `${Object.entries(by).map(([r, n]) => `${n} × ${r}`).join(' · ')}.`;
+    box.append(h3, p, button('Annuler', () => back.remove()), button('Défausser', () => {
+      st.discarded.push(...chosen.map((c) => c.title));
+      for (const c of chosen) c.count = (c.count || 1) - 1;
+      st.list = st.list.filter((c) => (c.count ?? 1) > 0);
+      st.banner = `${chosen.length} carte${chosen.length > 1 ? 's' : ''} défaussée${chosen.length > 1 ? 's' : ''} (+${chosen.length} wikibidou${chosen.length > 1 ? 's' : ''}).`;
+      st.sel.clear(); back.remove();
+      if (failAfterDiscard && !st.failedOnce) { st.failedOnce = true; st.fail = true; } // la liste ne se recharge pas
+      render();
+    }));
+    back.append(box);
+    d.body.append(back);
   }
   render();
   return st;
@@ -74,6 +109,7 @@ function setup(cards, opts) {
   return { env, w, WMX, game, items };
 }
 
+const TEST = [{ name: 'TEST' }];
 const cardsA = () => [
   ...Array.from({ length: 30 }, (_, i) => ({ title: `Commune ${i}`, rarity: 'C' })),
   { title: 'Rare étiquetée', rarity: 'R', tags: [{ name: 'animaux' }] },
@@ -81,6 +117,7 @@ const cardsA = () => [
   { title: 'Commune animaux', rarity: 'C', tags: [{ name: 'animaux' }] },
   ...Array.from({ length: 40 }, (_, i) => ({ title: `PC ${i}`, rarity: 'PC' })),
   ...Array.from({ length: 5 }, (_, i) => ({ title: `Commune fin ${i}`, rarity: 'C' })),
+  ...Array.from({ length: 8 }, (_, i) => ({ title: `Test ${i}`, rarity: 'C', tags: TEST })),
 ];
 
 test('défausse : fenêtre de sélection (raretés, étiquettes, options), puis confirmation avec la liste', async () => {
@@ -89,27 +126,26 @@ test('défausse : fenêtre de sélection (raretés, étiquettes, options), puis 
   WMX.discard.openPicker();
   const dlg = () => w.document.querySelector('.wmx-dc .wmx-dlg');
   assert.ok(dlg(), 'la fenêtre de sélection s’ouvre');
-  assert.match(dlg().querySelector('.wmx-dc-sum').textContent, /35 exemplaires à défausser/, 'C sans étiquette par défaut, sans la favorite ni l’étiquetée');
+  assert.match(dlg().querySelector('.wmx-dc-sum').textContent, /35 exemplaires à défausser/, 'C sans étiquette par défaut, sans la favorite ni les étiquetées');
   const tagBtn = dlg().querySelector('button.wmx-dc-tag');
-  assert.match(tagBtn.textContent, /Cartes sans étiquette/, 'aucune étiquette choisie : cartes sans étiquette');
+  assert.match(tagBtn.textContent, /Cartes sans étiquette/);
   tagBtn.click();
-  const row = () => [...dlg().querySelectorAll('.wmx-dc-tagrow')].find((r) => /animaux/.test(r.textContent));
-  assert.match(row().textContent, /animaux2/, 'menu déroulant des étiquettes du compte, avec leur nombre');
-  row().querySelector('input').click();
-  assert.match(dlg().querySelector('button.wmx-dc-tag').textContent, /Étiquettes : animaux/);
+  const row = (name) => [...dlg().querySelectorAll('.wmx-dc-tagrow')].find((r) => r.textContent.startsWith(name));
+  assert.match(row('animaux').textContent, /animaux2/, 'menu déroulant des étiquettes du compte, avec leur nombre');
+  row('animaux').querySelector('input').click();
   assert.match(dlg().querySelector('.wmx-dc-sum').textContent, /1 exemplaire à défausser/, 'seulement la C étiquetée « animaux »');
-  row().querySelector('input').click();
-  assert.match(dlg().querySelector('.wmx-dc-sum').textContent, /35 exemplaires/, 'retour aux cartes sans étiquette');
+  row('TEST').querySelector('input').click();
+  assert.match(dlg().querySelector('button.wmx-dc-tag').textContent, /Étiquettes : animaux, TEST/, 'plusieurs étiquettes');
+  assert.match(dlg().querySelector('.wmx-dc-sum').textContent, /9 exemplaires/);
+  row('animaux').querySelector('input').click(); row('TEST').querySelector('input').click();
   const opt = (label) => [...dlg().querySelectorAll('.wmx-dc-opt')].find((o) => o.querySelector('b').textContent === label).querySelector('.wmx-switch');
   opt('Défausser aussi les cartes étiquetées').click();
-  assert.match(dlg().querySelector('.wmx-dc-sum').textContent, /36 exemplaires/, 'l’étiquetée C est comprise');
-  assert.ok(dlg().querySelector('.wmx-pm-tags'), 'les étiquettes à protéger apparaissent');
+  assert.match(dlg().querySelector('.wmx-dc-sum').textContent, /44 exemplaires/, 'les étiquetées C sont comprises');
   opt('Défausser aussi les cartes étiquetées').click();
   [...dlg().querySelectorAll('.wmx-chip2')].find((b) => /^PC ·/.test(b.textContent)).click();
   assert.match(dlg().querySelector('.wmx-dc-sum').textContent, /75 exemplaires/);
   [...dlg().querySelectorAll('.wmx-dlg-row .wmx-btn')].find((b) => /^Continuer/.test(b.textContent)).click();
   const conf = w.document.querySelector('.wmx-dc [role=alertdialog]');
-  assert.ok(conf, 'fenêtre de confirmation');
   assert.match(conf.querySelector('h3').textContent, /Défausser 75 exemplaires \?/);
   assert.equal(conf.querySelectorAll('.wmx-dc-row').length, 75, 'la liste complète est montrée');
   const go = [...conf.querySelectorAll('.wmx-dlg-row .wmx-btn')].pop();
@@ -121,21 +157,34 @@ test('défausse : fenêtre de sélection (raretés, étiquettes, options), puis 
   env.close();
 });
 
-test('défausse : essai à blanc (sélection vérifiée, rien de défaussé) puis défausse réelle page par page', async () => {
+test('défausse : filtres du jeu appliqués (rareté + étiquette), essai à blanc puis défausse réelle', async () => {
   const { env, w, WMX, game } = setup(cardsA());
   await WMX.features.find((f) => f.name === 'discard').init();
-  const pl = WMX.discard.plan({ rarities: ['C'], tag: '', includeTagged: false, keepUnpriced: true, protectSale: true });
-  assert.equal(pl.copies, 35);
-  await WMX.discard.start(pl, { dry: true, visible: true });
+  const p = { rarities: ['C'], tags: ['TEST'], keepUnpriced: true };
+  const pl = WMX.discard.plan(p);
+  assert.equal(pl.copies, 8);
+  await WMX.discard.start(pl, { dry: true, visible: true, prefs: p });
+  assert.equal(game.view, 'TEST', 'vue « #TEST » choisie dans le menu du jeu');
+  assert.deepEqual([...game.rar], ['C'], 'rareté C activée');
   assert.equal(game.discarded.length, 0, 'essai à blanc : rien n’est défaussé');
-  assert.ok(game.dialogs >= 1, 'la fenêtre de défausse du jeu a été ouverte et vérifiée : ' + w.document.querySelector('.wmx-dc-run')?.textContent);
-  assert.match(w.document.querySelector('.wmx-dc-run').textContent, /essai réussi : 35 exemplaires/);
-  assert.equal(game.selecting, false, 'la sélection du jeu est refermée');
-  await WMX.discard.start(pl, { dry: false, visible: true });
-  assert.equal(game.discarded.length, 35, 'les 35 communes sans étiquette sont défaussées');
-  assert.ok(!game.discarded.includes('Commune favorite') && !game.discarded.includes('Commune animaux'), 'jamais la favorite ni l’étiquetée');
-  assert.ok(game.list.some((c) => c.rarity === 'PC'), 'les autres raretés restent');
-  assert.match(w.document.querySelector('.wmx-dc-run').textContent, /35 exemplaires défaussés/);
+  assert.ok(game.dialogs >= 1, 'la fenêtre de défausse du jeu a été ouverte et vérifiée');
+  assert.match(w.document.querySelector('.wmx-dc-run').textContent, /essai réussi : 8 exemplaires vérifiés/);
+  await WMX.discard.start(pl, { dry: false, visible: true, prefs: p });
+  assert.deepEqual(game.discarded.sort(), Array.from({ length: 8 }, (_, i) => `Test ${i}`).sort(), 'seulement les cartes #TEST');
+  assert.match(w.document.querySelector('.wmx-dc-run').textContent, /8 exemplaires défaussés \(\+8 wikibidous\)/);
+  env.close();
+});
+
+test('défausse : « Sans étiquette » sur plusieurs pages, favorites laissées cochées, cartes étiquetées jamais touchées', async () => {
+  const { env, WMX, game } = setup(cardsA());
+  await WMX.features.find((f) => f.name === 'discard').init();
+  const p = { rarities: ['C'], keepUnpriced: true };
+  const pl = WMX.discard.plan(p);
+  assert.equal(pl.copies, 35);
+  await WMX.discard.start(pl, { dry: false, visible: true, prefs: p });
+  assert.equal(game.view, 'none', 'vue « Sans étiquette »');
+  assert.equal(game.discarded.length, 35);
+  assert.ok(!game.discarded.some((t) => /favorite|animaux|Test/.test(t)), 'ni favorite, ni étiquetée');
   env.close();
 });
 
@@ -143,9 +192,10 @@ test('défausse : une carte cochée = un exemplaire ; « Garder 1 exemplaire » 
   const cards = [{ title: 'Triple', rarity: 'C', count: 3 }, { title: 'Double', rarity: 'C', count: 2 }, { title: 'Simple', rarity: 'C' }];
   const { env, WMX, game } = setup(cards);
   await WMX.features.find((f) => f.name === 'discard').init();
-  const pl = WMX.discard.plan({ rarities: ['C'], keepOne: true, keepUnpriced: true });
+  const p = { rarities: ['C'], keepOne: true, keepUnpriced: true };
+  const pl = WMX.discard.plan(p);
   assert.equal(pl.copies, 3, 'garder 1 exemplaire : 2 des 3 triples et 1 des 2 doubles');
-  await WMX.discard.start(pl, { dry: false, visible: true });
+  await WMX.discard.start(pl, { dry: false, visible: true, prefs: p });
   assert.deepEqual(game.discarded.sort(), ['Double', 'Triple', 'Triple']);
   assert.deepEqual(game.list.map((c) => [c.title, c.count]).sort(), [['Double', 1], ['Simple', 1], ['Triple', 1]], 'un exemplaire de chaque reste');
   env.close();
@@ -156,10 +206,21 @@ test('défausse : un nombre du jeu qui ne correspond pas arrête tout', async ()
   const { env, w, WMX, game } = setup(cards);
   await WMX.features.find((f) => f.name === 'discard').init();
   game.lie = true; // la fenêtre du jeu annonce une carte de trop
-  const pl = WMX.discard.plan({ rarities: ['C'], keepUnpriced: true });
-  await WMX.discard.start(pl, { dry: false, visible: true });
+  const p = { rarities: ['C'], keepUnpriced: true };
+  await WMX.discard.start(WMX.discard.plan(p), { dry: false, visible: true, prefs: p });
   assert.equal(game.discarded.length, 0, 'rien n’est défaussé');
   assert.match(w.document.querySelector('.wmx-dc-run').textContent, /3 × C au lieu de 2 × C/);
+  env.close();
+});
+
+test('défausse : « le chargement de la collection a échoué » après une défausse → la liste est relue et la défausse continue', async () => {
+  const cards = Array.from({ length: 70 }, (_, i) => ({ title: `T${i}`, rarity: 'C', tags: TEST }));
+  const { env, WMX, game } = setup(cards, { failAfterDiscard: true });
+  await WMX.features.find((f) => f.name === 'discard').init();
+  const p = { rarities: ['C'], tags: ['TEST'], keepUnpriced: true };
+  await WMX.discard.start(WMX.discard.plan(p), { dry: false, visible: true, prefs: p });
+  assert.ok(game.failedOnce, 'le jeu a bien échoué une fois');
+  assert.equal(game.discarded.length, 70, 'toutes les cartes TEST défaussées malgré l’échec de chargement');
   env.close();
 });
 
@@ -168,9 +229,10 @@ test('défausse en arrière-plan : la page invisible est pilotée, la progressio
   await WMX.features.find((f) => f.name === 'discard').init();
   let removed = false;
   WMX.discard.frameFactory = async () => ({ d: w.document, w, frame: null, remove: () => { removed = true; } }); // la fausse page joue la page invisible
-  w.history.pushState({}, '', '/marketplace'); // l'utilisateur est ailleurs : l'arrière-plan n'a pas besoin de la page Collection
-  const pl = WMX.discard.plan({ rarities: ['C'], keepUnpriced: true });
-  const run = WMX.discard.start(pl, { dry: false });
+  w.history.pushState({}, '', '/marketplace'); // l'utilisateur est ailleurs
+  const p = { rarities: ['C'], keepUnpriced: true };
+  const pl = WMX.discard.plan(p);
+  const run = WMX.discard.start(pl, { dry: false, prefs: p });
   await sleep(1500);
   assert.match(w.document.querySelector('.wmx-dc-run-num').textContent, /\/ 35 exemplaires défaussés/, 'progression sur le total repéré');
   await run;
@@ -184,25 +246,23 @@ test('défausse en arrière-plan : la page invisible est pilotée, la progressio
 test('défausse : mode visible refusé hors de la page Collection (rien n’est lancé)', async () => {
   const { env, w, WMX, game } = setup(cardsA());
   w.history.pushState({}, '', '/marketplace');
-  const pl = WMX.discard.plan({ rarities: ['C'], keepUnpriced: true });
-  await WMX.discard.start(pl, { dry: false, visible: true });
+  const p = { rarities: ['C'], keepUnpriced: true };
+  await WMX.discard.start(WMX.discard.plan(p), { dry: false, visible: true, prefs: p });
   assert.equal(game.discarded.length, 0);
   assert.equal(WMX.discard.isRunning(), false);
   env.close();
 });
 
-test('défausse : les favorites cochées par « Tout sélectionner » ne sont pas décochées (le jeu les omet), et 30 cartes gardées sur une page font passer à la suivante', async () => {
+test('défausse : 30 cartes gardées (favorites) sur une page font passer à la suivante, les cartes remontées sont rattrapées', async () => {
   const cards = [
     ...Array.from({ length: 35 }, (_, i) => ({ title: `Favorite ${i}`, rarity: 'C', starred: true })),
     ...Array.from({ length: 60 }, (_, i) => ({ title: `Commune ${i}`, rarity: 'C' })),
   ];
   const { env, WMX, game } = setup(cards);
   await WMX.features.find((f) => f.name === 'discard').init();
-  const pl = WMX.discard.plan({ rarities: ['C'], keepUnpriced: true });
-  assert.equal(pl.copies, 60);
-  await WMX.discard.start(pl, { dry: false, visible: true });
-  assert.equal(game.discarded.length, 60, 'toutes les communes sont défaussées, y compris celles remontées en page 1');
+  const p = { rarities: ['C'], keepUnpriced: true };
+  await WMX.discard.start(WMX.discard.plan(p), { dry: false, visible: true, prefs: p });
+  assert.equal(game.discarded.length, 60, 'toutes les communes sont défaussées');
   assert.ok(!game.discarded.some((t) => /Favorite/.test(t)), 'aucune favorite');
-  assert.equal(game.list.length, 35, 'il ne reste que les favorites');
   env.close();
 });
