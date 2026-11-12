@@ -319,6 +319,7 @@ test('paquets : type de compte lu sur la page (Pack PRO du jour = Pro, propositi
   assert.equal(L.packAccount('Pack PRO du jour Ouvrir'), 'pro');
   assert.equal(L.packAccount('3 / 10 paquets disponibles Passe à WikiMasters Pro pour plus de paquets'), 'classic');
   assert.equal(L.packAccount('3 / 10 paquets disponibles'), null, 'rien de concluant tant que la page n’est pas finie');
+  assert.equal(L.packAccount('0 / 10 paquets disponibles Prochain dans 9:23 Rechargez 10 paquets — 1,99 $ CAD WikiMasters PRO Débloque paquets accélérés, pack premium quotidien, vue du marché, plus de défis et d’enchères actives. Paquets plus vite — un nouveau paquet toutes les 3 minutes au lieu de 10. Pack PRO chaque jour — 15 cartes de rareté ++, gratuit une fois par jour. 9,99 $ CAD / mois — facturé par Stripe S’abonner au PRO'), 'classic', 'page d’un vrai compte classique');
   assert.equal(L.packAccount('Passe Pro ! Avantages du compte Pro : un paquet toutes les 3 min, un Pack PRO du jour… 4,99 € / mois'), 'classic', 'l’offre Pro peut citer le Pack PRO du jour : c’est un compte classique');
   assert.equal(L.packRegen('pro'), 180);
   assert.equal(L.packRegen('classic'), 600);
