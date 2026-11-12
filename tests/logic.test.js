@@ -301,6 +301,7 @@ test('défausse par critères : raretés, étiquette, cartes étiquetées, doubl
   assert.equal(ids({ unpriced: 'discard', includeTagged: true }), 'c1,c2,c3,c5,c6,c7', 'étiquetées comprises');
   assert.equal(ids({ unpriced: 'discard', includeTagged: true, protectTags: ['vente'] }), 'c1,c2,c3,c5,c6', 'étiquette protégée (casse sans importance)');
   assert.equal(ids({ unpriced: 'discard', tag: 'animaux' }), 'c3', 'une étiquette précise');
+  assert.equal(ids({ unpriced: 'discard', tags: ['animaux', 'vente'] }), 'c3,c7', 'plusieurs étiquettes');
   assert.equal(ids({ unpriced: 'discard', maxAvg: 20 }), 'c1,c2,c5', 'seuil : la carte à 35 W est gardée');
   assert.equal(ids({ unpriced: 'discard', onlyNoImage: true }), 'c5', 'seulement sans image');
   const one = L.discardPlan(items, { ...base, unpriced: 'discard', keepOne: true });
@@ -318,6 +319,7 @@ test('paquets : type de compte lu sur la page (Pack PRO du jour = Pro, propositi
   assert.equal(L.packAccount('Pack PRO du jour Ouvrir'), 'pro');
   assert.equal(L.packAccount('3 / 10 paquets disponibles Passe à WikiMasters Pro pour plus de paquets'), 'classic');
   assert.equal(L.packAccount('3 / 10 paquets disponibles'), null, 'rien de concluant tant que la page n’est pas finie');
+  assert.equal(L.packAccount('Passe Pro ! Avantages du compte Pro : un paquet toutes les 3 min, un Pack PRO du jour… 4,99 € / mois'), 'classic', 'l’offre Pro peut citer le Pack PRO du jour : c’est un compte classique');
   assert.equal(L.packRegen('pro'), 180);
   assert.equal(L.packRegen('classic'), 600);
 });

@@ -255,7 +255,7 @@
     discardPlan(items, o = {}) {
       const key = (s) => String(s || '').trim().toLowerCase();
       const rar = new Set((o.rarities || []).map((r) => String(r).trim().toUpperCase()));
-      const tag = key(o.tag);
+      const want = new Set([...(o.tags || []), ...(o.tag ? [o.tag] : [])].map(key).filter(Boolean)); // une ou plusieurs étiquettes (vide : cartes sans étiquette)
       const protect = new Set((o.protectTags || []).map(key).filter(Boolean));
       const avg = (it) => (o.avg && o.avg(it)) || 0;
       const plan = { cards: [], copies: 0, value: 0, byRar: {}, kept: {} };
@@ -263,7 +263,7 @@
       for (const it of items || []) {
         if (!(it.count > 0) || !rar.has(it.rarity)) continue;
         const names = (it.tags || []).map((t) => key(t.name));
-        if (tag ? !names.includes(tag) : (names.length && !o.includeTagged)) continue; // hors du choix (pas compté comme « gardée »)
+        if (want.size ? !names.some((n) => want.has(n)) : (names.length && !o.includeTagged)) continue; // hors du choix (pas compté comme « gardée »)
         const a = avg(it);
         let why = null;
         if (it.starred) why = 'favorite';
@@ -295,8 +295,12 @@
      */
     packAccount(text) {
       const s = String(text || '');
+      // Pro, paquet du jour déjà ouvert : « Déjà réclamé aujourd'hui… Reviens demain ! ».
+      if (/déjà\s+réclamé|reviens\s+demain/i.test(s)) return 'pro';
+      // Classique : présentation de l'offre Pro (comment passer Pro, ses avantages, son prix). Testée AVANT l'encadré : elle peut citer le « Pack PRO du jour ».
+      if (/(passe[rz]?|deviens|devenir|abonne[rz]?|essaie[rz]?|découvre[rz]?)\b[^.\n]{0,40}\bpro\b|avantages?\b[^.\n]{0,60}\bpro\b|\bpro\b[^.\n]{0,40}(€|\/\s*mois|par\s+mois|abonnement)/i.test(s)) return 'classic';
+      // Pro, paquet du jour pas encore ouvert (après minuit) : encadré « Pack PRO du jour » avec son bouton.
       if (/pack\s+pro\s+du\s+jour/i.test(s)) return 'pro';
-      if (/(passe[rz]?|deviens|devenir|abonne[rz]?|essaie[rz]?|découvre[rz]?)\b[^.\n]{0,40}\bpro\b/i.test(s)) return 'classic';
       return null;
     },
     /**

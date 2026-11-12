@@ -12,10 +12,11 @@
   const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim();
   const key = (s) => norm(s).toLowerCase();
   const plural = (n, w, p = `${w}s`) => `${fmt(n)} ${n > 1 ? p : w}`;
-  const DEFAULTS = { rarities: ['C'], tag: '', includeTagged: false, keepOne: false, useMax: true, maxAvg: 20, keepUnpriced: true, protectSale: true, onlyNoImage: false, keepRecent: false, protectTags: [] };
+  const DEFAULTS = { rarities: ['C'], tags: [], includeTagged: false, keepOne: false, useMax: true, maxAvg: 20, keepUnpriced: true, protectSale: true, onlyNoImage: false, keepRecent: false, protectTags: [] };
   let prefs = { ...DEFAULTS };
   const savePrefs = () => WMX.store.set('discardPrefs', prefs);
   const run = { on: false, stop: false };
+  const S = { tagOpen: false }; // menu des étiquettes ouvert dans la fenêtre de sélection
 
   // ---- quelles cartes ----
   const saleTags = () => String(WMX.settings?.autoSellTags || '').split(',').map((t) => t.trim()).filter(Boolean);
@@ -26,7 +27,7 @@
     const recent = p.keepRecent ? items.filter((it) => it.at && new Date(it.at).getTime() > day) : [];
     const recentIds = new Set(recent.map((it) => it.card_id));
     const res = WMX.logic.discardPlan(items.filter((it) => !recentIds.has(it.card_id)), {
-      rarities: p.rarities, tag: p.tag, includeTagged: p.includeTagged, keepOne: p.keepOne, maxAvg: p.useMax ? Number(p.maxAvg) || 0 : 0,
+      rarities: p.rarities, tags: p.tags || [], includeTagged: p.includeTagged, keepOne: p.keepOne, maxAvg: p.useMax ? Number(p.maxAvg) || 0 : 0,
       unpriced: p.keepUnpriced ? 'keep' : 'discard', onlyNoImage: p.onlyNoImage, busy,
       protectTags: [...(p.protectTags || []), ...(p.protectSale ? saleTags() : [])],
       avg: (it) => WMX.prices.get(it.card_id, it.rarity)?.avg || 0, priced: (it) => WMX.prices.has(it.card_id),
@@ -76,10 +77,20 @@
     function render() {
       const items = WMX.inventory.items();
       const tags = tagList();
-      const tagSel = el('select', { class: 'wmx-input wmx-select wmx-dc-tag' },
-        el('option', { value: '' }, 'Toutes les cartes de ces raretés'), ...tags.map((t) => el('option', { value: t.name }, `${t.name} · ${fmt(t.n)}`)));
-      tagSel.value = prefs.tag && tags.some((t) => key(t.name) === key(prefs.tag)) ? tags.find((t) => key(t.name) === key(prefs.tag)).name : '';
-      tagSel.addEventListener('change', () => set({ tag: tagSel.value }));
+      // Menu déroulant à cases : une ou plusieurs étiquettes. Aucune cochée : les cartes SANS étiquette de ces raretés.
+      const chosen = (prefs.tags || []).filter((x) => tags.some((t) => key(t.name) === key(x)));
+      const tagBtn = el('button', { type: 'button', class: 'wmx-input wmx-select wmx-dc-tag', 'aria-haspopup': 'listbox', 'aria-expanded': String(!!S.tagOpen) },
+        chosen.length ? `Étiquettes : ${chosen.join(', ')}` : 'Cartes sans étiquette (aucune étiquette choisie)');
+      tagBtn.addEventListener('click', () => { S.tagOpen = !S.tagOpen; render(); });
+      const tagPanel = el('div', { class: 'wmx-dc-tagpanel', role: 'listbox', 'aria-multiselectable': 'true' },
+        ...(tags.length ? tags.map((t) => {
+          const on = chosen.some((x) => key(x) === key(t.name));
+          const box = el('input', { type: 'checkbox' }); box.checked = on;
+          const row = el('label', { class: 'wmx-dc-tagrow', role: 'option', 'aria-selected': String(on) }, box, el('span', {}, t.name), el('small', {}, fmt(t.n)));
+          box.addEventListener('change', () => set({ tags: box.checked ? [...chosen, t.name] : chosen.filter((x) => key(x) !== key(t.name)) }));
+          return row;
+        }) : [el('span', { class: 'wmx-cp-empty' }, 'Aucune étiquette dans la collection')]));
+      if (!S.tagOpen) tagPanel.hidden = true;
       const maxIn = el('input', { class: 'wmx-input', type: 'number', min: '1', max: '100000', step: '1', value: String(prefs.maxAvg) });
       maxIn.addEventListener('change', () => { const v = Math.max(1, Math.round(Number(maxIn.value) || 20)); set({ maxAvg: v }); });
       const pl = plan();
@@ -88,11 +99,11 @@
         el('div', { class: 'wmx-dc-h' }, 'Raretés'),
         el('div', { class: 'wmx-pm-chips' }, ...R.map((r) => chip(`${r} · ${fmt(items.filter((i) => i.rarity === r).reduce((n, i) => n + (i.count || 1), 0))}`, WMX.RARITY_RGB?.[r], prefs.rarities.includes(r),
           (on) => set({ rarities: on ? [...new Set([...prefs.rarities, r])] : prefs.rarities.filter((x) => x !== r) })))),
-        el('div', { class: 'wmx-dc-h' }, 'Étiquette'),
-        tagSel,
+        el('div', { class: 'wmx-dc-h' }, 'Étiquettes'),
+        tagBtn, tagPanel,
       ];
-      if (!prefs.tag) parts.push(sw(prefs.includeTagged, (v) => set({ includeTagged: v }), 'Défausser aussi les cartes étiquetées', 'Désactivé : seules les cartes sans aucune étiquette sont concernées.'));
-      if (!prefs.tag && prefs.includeTagged) {
+      if (!chosen.length) parts.push(sw(prefs.includeTagged, (v) => set({ includeTagged: v }), 'Défausser aussi les cartes étiquetées', 'Désactivé : seules les cartes sans aucune étiquette sont concernées.'));
+      if (!chosen.length && prefs.includeTagged) {
         parts.push(el('div', { class: 'wmx-dc-h' }, 'Étiquettes à protéger (jamais défaussées)'),
           el('div', { class: 'wmx-pm-chips wmx-pm-tags' }, ...(tags.length ? tags.map((t) => chip(t.name, '', (prefs.protectTags || []).some((x) => key(x) === key(t.name)),
             (on) => set({ protectTags: on ? [...(prefs.protectTags || []), t.name] : (prefs.protectTags || []).filter((x) => key(x) !== key(t.name)) })))
@@ -143,7 +154,7 @@
     ack.hidden = true;
     const close = () => back.remove();
     go.addEventListener('click', () => { if (!dry && !ok) return; close(); start(pl, { dry }); });
-    const filters = [p.rarities.map((r) => NAMES[r]).join(', '), p.tag ? `étiquette ${p.tag}` : p.includeTagged ? 'étiquetées comprises' : 'sans étiquette',
+    const filters = [p.rarities.map((r) => NAMES[r]).join(', '), (p.tags || []).length ? `étiquette${p.tags.length > 1 ? 's' : ''} ${p.tags.join(', ')}` : p.includeTagged ? 'étiquetées comprises' : 'sans étiquette',
       p.keepOne && '1 exemplaire gardé', p.useMax && `gardées dès ${p.maxAvg} W`, p.keepUnpriced && 'prix inconnu gardé', p.protectSale && 'étiquettes de vente protégées', p.onlyNoImage && 'sans image seulement', p.keepRecent && 'récentes gardées'].filter(Boolean);
     const back = el('div', { class: 'wmx-dlg-back wmx-dc', onmousedown: (e) => { if (e.target === back) close(); } },
       el('div', { class: 'wmx-dlg wmx-dlg--wide', role: 'alertdialog', 'aria-label': 'Confirmer la défausse' },
@@ -289,9 +300,10 @@
           for (const s of seen) {
             const k = `${s.title}|${s.rarity}`;
             if (tkeys.has(k)) continue;
-            if (s.item?.starred) continue; // « Tout sélectionner » du jeu ne coche jamais une favorite : rien à décocher
             if (run.stop) break;
-            if (!(await toggleByKey(k, -1))) return abort(`page ${page} : impossible de décocher « ${s.title} ». Rien n’a été défaussé sur cette page.`);
+            // « Tout sélectionner » du jeu peut cocher les favorites : on les décoche comme les autres. Une favorite que le jeu n'avait pas cochée
+            // ne bouge pas le compteur : ce n'est pas une erreur (le compteur final, vérifié plus bas, garantit qu'aucune n'est restée cochée).
+            if (!(await toggleByKey(k, -1)) && !s.item?.starred) return abort(`page ${page} : impossible de décocher « ${s.title} ». Rien n’a été défaussé sur cette page.`);
           }
         } else {
           for (const t of targets) {
@@ -380,7 +392,11 @@
   WMX.register({
     name: 'discard',
     match: /^\/collection\/?$/,
-    async init() { prefs = { ...DEFAULTS, ...(await WMX.store.get('discardPrefs', {})) }; },
+    async init() {
+      prefs = { ...DEFAULTS, ...(await WMX.store.get('discardPrefs', {})) };
+      if (prefs.tag && !(prefs.tags || []).length) prefs.tags = [prefs.tag]; // ancien réglage (une seule étiquette)
+      delete prefs.tag;
+    },
   });
   WMX.discard = { button, openPicker, plan, start, native: NATIVE, isRunning: () => run.on, stop: () => { run.stop = true; } };
 })();

@@ -19,7 +19,7 @@ function fakeGame(w, cards, { perPage = 50, discardAllCopies = true } = {}) {
     if (!st.selecting) bar.append(button('Sélectionner', () => { st.selecting = true; st.sel.clear(); render(); }));
     else {
       bar.append(button('Quitter la sélection', () => { st.selecting = false; st.sel.clear(); render(); }),
-        button('Tout sélectionner (page)', () => { for (const c of pageCards()) if (!c.starred) st.sel.add(c.uid); render(); }));
+        button('Tout sélectionner (page)', () => { for (const c of pageCards()) st.sel.add(c.uid); render(); })); // comme le jeu : favorites comprises
       const n = d.createElement('span'); n.textContent = `${st.sel.size} carte${st.sel.size > 1 ? 's' : ''} sélectionnée${st.sel.size > 1 ? 's' : ''}`; bar.append(n);
       bar.append(button(`Défausser (+${st.sel.size * 2})`, openDialog));
     }
@@ -29,7 +29,7 @@ function fakeGame(w, cards, { perPage = 50, discardAllCopies = true } = {}) {
       const badge = d.createElement('div'); badge.className = 'absolute top-2 left-2'; badge.textContent = c.rarity;
       const h3 = d.createElement('h3'); h3.textContent = c.title;
       card.append(badge, h3);
-      card.addEventListener('click', () => { if (!st.selecting || c.starred) return; st.sel.has(c.uid) ? st.sel.delete(c.uid) : st.sel.add(c.uid); render(); });
+      card.addEventListener('click', () => { if (!st.selecting) return; st.sel.has(c.uid) ? st.sel.delete(c.uid) : st.sel.add(c.uid); render(); });
       grid.append(card);
     }
     main.append(bar, grid);
@@ -87,8 +87,16 @@ test('défausse : fenêtre de sélection (raretés, étiquettes, options), puis 
   const dlg = () => w.document.querySelector('.wmx-dc .wmx-dlg');
   assert.ok(dlg(), 'la fenêtre de sélection s’ouvre');
   assert.match(dlg().querySelector('.wmx-dc-sum').textContent, /35 exemplaires à défausser/, 'C sans étiquette par défaut, sans la favorite ni l’étiquetée');
-  const tagSel = dlg().querySelector('select.wmx-dc-tag');
-  assert.ok([...tagSel.options].some((o) => /animaux · 2/.test(o.textContent)), 'menu des étiquettes du compte, avec leur nombre');
+  const tagBtn = dlg().querySelector('button.wmx-dc-tag');
+  assert.match(tagBtn.textContent, /Cartes sans étiquette/, 'aucune étiquette choisie : cartes sans étiquette');
+  tagBtn.click();
+  const row = () => [...dlg().querySelectorAll('.wmx-dc-tagrow')].find((r) => /animaux/.test(r.textContent));
+  assert.match(row().textContent, /animaux2/, 'menu déroulant des étiquettes du compte, avec leur nombre');
+  row().querySelector('input').click();
+  assert.match(dlg().querySelector('button.wmx-dc-tag').textContent, /Étiquettes : animaux/);
+  assert.match(dlg().querySelector('.wmx-dc-sum').textContent, /1 exemplaire à défausser/, 'seulement la C étiquetée « animaux »');
+  row().querySelector('input').click();
+  assert.match(dlg().querySelector('.wmx-dc-sum').textContent, /35 exemplaires/, 'retour aux cartes sans étiquette');
   const opt = (label) => [...dlg().querySelectorAll('.wmx-dc-opt')].find((o) => o.querySelector('b').textContent === label).querySelector('.wmx-switch');
   opt('Défausser aussi les cartes étiquetées').click();
   assert.match(dlg().querySelector('.wmx-dc-sum').textContent, /36 exemplaires/, 'l’étiquetée C est comprise');

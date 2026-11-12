@@ -882,3 +882,10 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-dc-run b { color: #fff; }
 .wmx-dc-run .wmx-dc-run-txt { flex: 1; min-width: 0; }
 .wmx-dc-run .wmx-btn { padding: 5px 10px; }
+.wmx-dc-tag { text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wmx-dc-tagpanel { max-height: 220px; overflow: auto; display: flex; flex-direction: column; gap: 2px; padding: 6px; border-radius: 12px; background: #0d1211; border: 1px solid #2a332f; }
+.wmx-dc-tagpanel[hidden] { display: none; }
+.wmx-dc-tagrow { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 8px; font-size: 13px; cursor: pointer; }
+.wmx-dc-tagrow:hover { background: #18211d; }
+.wmx-dc-tagrow input { accent-color: #e5384f; }
+.wmx-dc-tagrow small { color: #8fa89c; }
