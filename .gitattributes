@@ -1,0 +1,9 @@
+# Fins de ligne : LF partout dans le dépôt (un éditeur Windows peut écrire en CRLF ; Git les remet en LF à l’enregistrement).
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ico binary
+*.zip binary
+*.woff2 binary
