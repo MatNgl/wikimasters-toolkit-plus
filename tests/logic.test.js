@@ -311,7 +311,11 @@ test('défausse par critères : raretés, étiquette, cartes étiquetées, doubl
   assert.equal(all.copies, 5, 'c1 + 3×c2 + c5 (c6 en vente)');
   assert.deepEqual(all.byRar, { C: 5 });
   assert.equal(all.kept.busy, 1); assert.equal(all.kept.favorite, 1);
-  assert.equal(L.discardPlan(items, { ...base, rarities: [] }).copies, 0, 'aucune rareté choisie : rien');
+  assert.equal(L.discardPlan(items, { ...base, rarities: [] }).copies, 0, 'ni rareté ni étiquette choisie : rien');
+  const tagged = [...items, card('u2', 'UR', { tags: [{ name: 'animaux' }] }), card('r1', 'R', { tags: [{ name: 'Animaux' }] })];
+  assert.equal(L.discardPlan(tagged, { ...base, rarities: [], tags: ['animaux'], unpriced: 'discard' }).cards.map((c) => c.card_id).sort().join(','), 'c3,r1,u2',
+    'aucune rareté mais une étiquette : toutes les raretés de cette étiquette');
+  assert.equal(L.discardPlan(tagged, { ...base, rarities: ['UR'], tags: ['animaux'], unpriced: 'discard' }).cards.map((c) => c.card_id).join(','), 'u2', 'rareté + étiquette : les deux filtres');
 });
 
 test('paquets : type de compte lu sur la page (Pack PRO du jour = Pro, proposition de passer Pro = classique)', () => {

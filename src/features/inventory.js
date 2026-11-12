@@ -348,6 +348,8 @@
     ensure, renderStatus, items: () => S.items, find: findAny, learn, totals, price, priceText, fmt, makePriceBar, openPriceModal,
     onChange(cb) { listeners.add(cb); return () => listeners.delete(cb); },
     isLoading: () => S.loading,
+    /** Cartes lues pendant le chargement en cours (première lecture : les nombres montent jusqu'à la fin). */
+    loaded: () => S.loadedCount,
     /** Âge (ms) de la dernière lecture complète de la collection ; `reload` la relit en arrière-plan (sans vider l'affichage). */
     age: () => (S.loadedAt ? Date.now() - S.loadedAt : Infinity),
     reload: () => loadInventory(),

@@ -905,3 +905,19 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-age.loading { background: rgb(124 198 255 / .18); color: #8fd0ff; animation: wmx-age-spin 1.1s linear infinite; }
 @keyframes wmx-age-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .wmx-age.loading { animation: none; } }
+
+/* ---- Défausse : croix, message de rareté, lecture en cours, prix inconnus (0.31.2) ---- */
+.wmx-dlg { position: relative; }
+.wmx-dlg-x { position: absolute; top: 14px; right: 14px; width: 30px; height: 30px; padding: 0; border-radius: 9px; border: 1px solid #ffffff1f; background: transparent; color: #cbd5d0; font-size: 18px; line-height: 1; cursor: pointer; }
+.wmx-dlg-x:hover { background: #ef4444; border-color: #ef4444; color: #fff; }
+.wmx-dlg-x:focus-visible { outline: 2px solid #2dd4a0; outline-offset: 2px; }
+.wmx-dc .wmx-dlg > h3 { padding-right: 40px; }
+.wmx-dc-hrow { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; margin-top: 4px; }
+.wmx-dc-hrow .wmx-dc-h { margin-top: 0; }
+.wmx-dc-err { color: #f87171; font-size: 12.5px; font-weight: 600; }
+.wmx-dc-hint { color: #8fa89c; font-size: 12px; }
+.wmx-dc-loading { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border-radius: 12px; border: 1px solid #60a5fa66; background: #60a5fa14; }
+.wmx-dc-loading b { color: #bfdbfe; font-size: 13.5px; }
+.wmx-dc-loading small { color: #b9cbc2; font-size: 12px; line-height: 1.4; }
+.wmx-dc-prices { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 8px 10px; border-radius: 12px; background: #151d1a; }
+.wmx-dc-prices small { flex: 1 1 260px; color: #b9cbc2; font-size: 12.5px; line-height: 1.4; }

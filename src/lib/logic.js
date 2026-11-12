@@ -266,7 +266,7 @@
      * Défausse par critères : quelles cartes (et combien d'exemplaires) défausser.
      * items : cartes de l'inventaire { card_id, title, rarity, count, starred, image, tags: [{ name }] }.
      * o : {
-     *   rarities: ['C', 'PC'] (vide : aucune carte — il faut choisir), tag: '' (toutes) | nom d'étiquette (seulement les cartes qui la portent),
+     *   rarities: ['C', 'PC'] (vide : toutes les raretés des étiquettes choisies ; sans étiquette ni rareté, aucune carte), tag: '' (toutes) | nom d'étiquette (seulement les cartes qui la portent),
      *   includeTagged: false (sans étiquette précise : les cartes étiquetées sont gardées), keepOne: garder 1 exemplaire (seulement les doublons),
      *   maxAvg: ne jamais défausser une carte dont la moyenne atteint ce montant (0 : pas de seuil), unpriced: 'keep' | 'discard' (prix jamais chargé),
      *   keepImage: garder les cartes avec image, onlyNoImage: seulement les cartes sans image, protectTags: [noms] jamais défaussées,
@@ -283,7 +283,7 @@
       const plan = { cards: [], copies: 0, value: 0, byRar: {}, kept: {}, unpricedCards: [] }; // unpricedCards : gardées faute de prix (à charger)
       const keep = (why) => { plan.kept[why] = (plan.kept[why] || 0) + 1; };
       for (const it of items || []) {
-        if (!(it.count > 0) || !rar.has(it.rarity)) continue;
+        if (!(it.count > 0) || (rar.size ? !rar.has(it.rarity) : !want.size)) continue; // aucune rareté cochée : toutes celles des étiquettes choisies
         const names = (it.tags || []).map((t) => key(t.name));
         if (want.size ? !names.some((n) => want.has(n)) : (names.length && !o.includeTagged)) continue; // hors du choix (pas compté comme « gardée »)
         const a = avg(it);

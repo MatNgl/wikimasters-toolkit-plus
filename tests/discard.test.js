@@ -157,6 +157,53 @@ test('défausse : fenêtre de sélection (raretés, étiquettes, options), puis 
   env.close();
 });
 
+test('défausse : fenêtre qui ne se ferme pas au clic à côté (croix), rareté facultative avec une étiquette, menu des étiquettes refermé au clic ailleurs, prix inconnus à vérifier', async () => {
+  const { env, w, WMX } = setup(cardsA());
+  await WMX.features.find((f) => f.name === 'discard').init();
+  WMX.discard.openPicker();
+  const back = () => w.document.querySelector('.wmx-dc');
+  const dlg = () => w.document.querySelector('.wmx-dc .wmx-dlg');
+  const go = () => [...dlg().querySelectorAll('.wmx-dlg-row .wmx-btn')].find((b) => /^Continuer/.test(b.textContent));
+  // Clic à côté de la fenêtre : elle reste ouverte.
+  back().dispatchEvent(new w.MouseEvent('mousedown', { bubbles: true }));
+  assert.ok(dlg(), 'un clic à côté ne ferme pas la fenêtre');
+  // Aucune rareté et aucune étiquette : message rouge à côté des raretés, Continuer grisé.
+  [...dlg().querySelectorAll('.wmx-chip2')].find((b) => /^C ·/.test(b.textContent)).click();
+  assert.match(dlg().querySelector('.wmx-dc-err')?.textContent || '', /Choisissez au moins une rareté ou une étiquette/);
+  assert.ok(go().disabled);
+  // Une étiquette sans rareté : toutes les raretés de l'étiquette (la R et la C « animaux »).
+  dlg().querySelector('button.wmx-dc-tag').click();
+  const row = (name) => [...dlg().querySelectorAll('.wmx-dc-tagrow')].find((r) => r.textContent.startsWith(name));
+  row('animaux').querySelector('input').click();
+  assert.equal(dlg().querySelector('.wmx-dc-err'), null, 'plus de message d’erreur');
+  assert.match(dlg().querySelector('.wmx-dc-hint').textContent, /toutes les raretés des étiquettes choisies/);
+  assert.match(dlg().querySelector('.wmx-dc-sum').textContent, /2 exemplaires à défausser/);
+  assert.match(dlg().querySelector('.wmx-dc-sum').textContent, /1 × R · 1 × C/);
+  assert.ok(!go().disabled);
+  // Menu des étiquettes ouvert : un clic ailleurs dans la fenêtre le referme.
+  assert.ok(!dlg().querySelector('.wmx-dc-tagpanel').hidden, 'menu ouvert');
+  dlg().querySelector('h3').dispatchEvent(new w.MouseEvent('mousedown', { bubbles: true }));
+  assert.ok(dlg().querySelector('.wmx-dc-tagpanel').hidden, 'clic ailleurs : menu refermé');
+  // Prix inconnus « en dernier » : rien à défausser tout de suite, mais on peut continuer (cartes à vérifier).
+  row('animaux').querySelector('input').click();
+  [...dlg().querySelectorAll('.wmx-chip2')].find((b) => /^C ·/.test(b.textContent)).click();
+  WMX.prices.has = () => false;
+  const sel = dlg().querySelector('select.wmx-dc-unpriced');
+  sel.value = 'last';
+  sel.dispatchEvent(new w.Event('change', { bubbles: true }));
+  assert.match(dlg().querySelector('.wmx-dc-sum').textContent, /Rien à défausser tout de suite/);
+  assert.match(dlg().querySelector('.wmx-dc-sum').textContent, /35 cartes au prix inconnu, vérifiées pendant la défausse/);
+  assert.match(dlg().querySelector('.wmx-dc-prices').textContent, /Charger ces prix maintenant/);
+  assert.ok(!go().disabled, 'on peut continuer : les prix seront chargés pendant la défausse');
+  go().click();
+  const conf = w.document.querySelector('.wmx-dc [role=alertdialog]');
+  assert.match(conf.querySelector('h3').textContent, /Vérifier 35 cartes au prix inconnu \?/);
+  // La croix ferme.
+  conf.querySelector('.wmx-dlg-x').click();
+  assert.equal(w.document.querySelector('.wmx-dc'), null, 'la croix ferme la fenêtre');
+  env.close();
+});
+
 test('défausse : filtres du jeu appliqués (rareté + étiquette), essai à blanc puis défausse réelle', async () => {
   const { env, w, WMX, game } = setup(cardsA());
   await WMX.features.find((f) => f.name === 'discard').init();
