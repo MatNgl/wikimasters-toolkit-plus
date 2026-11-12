@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WikiMasters Toolkit+",
-  "version": "0.31.0",
+  "version": "0.31.1",
   "description": "Prix du marché, ouverture de paquets en un clic, enchères automatiques et style de cartes pour WikiMasters.",
   "permissions": [
     "storage",
@@ -79,7 +79,7 @@
       "world": "MAIN"
     }
   ],
-  "version_name": "0.31.0 · marché : moyennes relues au-delà de 24 h, icône de fraîcheur ; défausse : prix inconnus (garder, défausser, attendre, en dernier) ; alerte deux copies de l’extension ; défausse calée sur le vrai jeu (filtres, compteur, fenêtre, relecture) ; défausse en arrière-plan (page invisible, progression N / total) ou visible ; paquets : compte Pro (3 min) ou classique (10 min), heure exacte du prochain paquet ; défausse par critères (sélection native du jeu, essai à blanc) ; assistant de vente : raretés exclusives et dans l’ordre",
+  "version_name": "0.31.1 · avertissement « deux copies » qui reste affiché ; défausse par critères, moyennes relues après 24 h",
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",

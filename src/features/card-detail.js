@@ -147,7 +147,7 @@
     ensureNoteBox();
     key = key || `n${++noteSeq}`;
     if (notes.has(key)) { clearTimeout(notes.get(key).timer); notes.get(key).node.remove(); notes.delete(key); }
-    const persistent = sticky || kind === 'alert';
+    const persistent = sticky || kind === 'alert' || !(ms > 0); // durée 0 : reste jusqu’à la croix, au lieu de disparaître aussitôt
     if (!title) title = kind === 'warn' ? 'Ça n’a pas marché' : kind === 'alert' ? 'Attention' : ''; // titre commun aux problèmes : on les reconnaît d’un coup d’œil
     const close = el('button', { class: 'wmx-note-x', title: 'Fermer', 'aria-label': 'Fermer', onclick: () => dismissNote(key) }, '×');
     const act = action ? el('button', { class: 'wmx-note-act', onclick: () => { try { action.onClick(); } finally { dismissNote(key); } } }, action.label) : '';

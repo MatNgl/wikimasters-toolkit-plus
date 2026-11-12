@@ -1535,6 +1535,11 @@ test('notifications : temporaires avec anneau et disparition, alertes rouges per
   q('.wmx-note.alert .wmx-note-x')[0].click();
   await sleep(300);
   assert.equal(q('.wmx-note').length, 0, 'la croix ferme l’alerte');
+  // Durée 0 (ex. avertissement « deux copies de l’extension ») : reste affichée au lieu de disparaître aussitôt.
+  WMX.notify({ kind: 'warn', key: 'zero', ms: 0, title: 'Deux copies', text: 'Désactivez-en une.' });
+  await sleep(400);
+  assert.equal(q('.wmx-note.warn').length, 1, 'une durée 0 ne fait pas disparaître la notification');
+  assert.ok(q('.wmx-note.warn')[0].querySelector('.wmx-note-x') && !q('.wmx-note.warn')[0].querySelector('.wmx-note-ring'), 'avec sa croix, sans anneau');
   env.close();
 });
 

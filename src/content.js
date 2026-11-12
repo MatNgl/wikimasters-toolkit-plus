@@ -24,7 +24,7 @@
     if (WMX.twin && !warnedTwin) {
       warnedTwin = true;
       WMX.journal?.add('Extension', 'Deux copies de WikiMasters Toolkit+ sont actives dans Chrome', 'warn');
-      WMX.notify?.({ kind: 'warn', key: 'twin', ms: 0, title: 'Deux copies de l’extension sont actives',
+      WMX.notify?.({ kind: 'warn', key: 'twin', sticky: true, title: 'Deux copies de l’extension sont actives',
         text: 'WikiMasters Toolkit+ est installée deux fois dans Chrome (par exemple la version du Chrome Web Store et une version de développement). Chacune a ses propres prix et réglages : la valeur estimée s’affiche en double, et l’assistant de vente ou les mises automatiques peuvent agir deux fois. Ouvrez chrome://extensions et désactivez l’une des deux.' });
     }
   };
