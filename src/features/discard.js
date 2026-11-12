@@ -236,7 +236,6 @@
   //  - fenêtre (sans role=dialog) : titre h3 « Défausser N cartes ? », ligne « N × C », titres, « Annuler » / « Défausser » ; une carte cochée = UN exemplaire ;
   //  - après : message « N cartes défaussées (+N wikibidous). », la sélection reste ouverte ; la liste se recharge… ou affiche « Le chargement de la
   //    collection a échoué » : il faut alors la relire (filtre choisi de nouveau, ou page rechargée en arrière-plan).
-  const KEEP_MAX = 30; // cartes gardées sur une page au-delà desquelles on passe à la page suivante (défausse plus efficace)
   // Page pilotée : la page Collection affichée (mode visible) ou une page Collection invisible (arrière-plan, par défaut).
   let D = document;
   let W = window;
@@ -692,8 +691,8 @@
           if (!(await waitFor(listReady, 6000, 200))) { const e = await recover(view); if (e) { if (await orRetry(view, `${e}. ${done(stats.copies)}.`)) continue; return; } }
           await settled(); // la liste du jeu peut encore se relire (cartes remontées) : on la laisse se poser avant de lire ou de changer de page
           if (NATIVE.count() == null) { const e = await applyFilters(rarities, view); if (e) { if (await orRetry(view, `${e}. ${done(stats.copies)}.`)) continue; return; } }
-          // Cartes gardées (favorites, options) restées sur cette page : à partir de 30, on passe à la suivante.
-          if (seen.length - targets.length >= KEEP_MAX) { showRun(`page ${page} : ${seen.length - targets.length} cartes gardées sur la page, passage à la suivante…`); if (!(await advance())) break; }
+          // On RESTE sur cette page : les cartes de la page suivante y remontent après chaque défausse. On la relit et on recommence jusqu'à ce
+          // qu'elle n'ait plus aucune carte à défausser ; alors seulement on passe à la suivante (plus d'allers-retours ni de cartes « non trouvées »).
         }
       }
       // « En dernier » : on attend la fin du chargement des prix, puis on ajoute les cartes désormais sous le seuil et on refait un passage.
