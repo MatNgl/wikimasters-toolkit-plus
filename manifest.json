@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WikiMasters Toolkit+",
-  "version": "0.31.8",
+  "version": "0.31.9",
   "description": "Prix du marché, ouverture de paquets en un clic, enchères automatiques et style de cartes pour WikiMasters.",
   "permissions": [
     "storage",
@@ -80,7 +80,7 @@
       "world": "MAIN"
     }
   ],
-  "version_name": "0.31.8 · défausse : favorites lues sur la carte, fin propre (sélection quittée, panneau fermé), panneau déplaçable et bulle, étiquettes relues à l’ouverture",
+  "version_name": "0.31.9 · collection : étiquettes relues même pendant une relecture complète, relecture complète toutes les 3 h et pause de 30 s si le jeu bloque",
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",

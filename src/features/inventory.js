@@ -5,7 +5,7 @@
   const { el, sleep } = WMX.dom;
   const R = WMX.RARITIES;
   const RANK = { L: 5, UR: 4, SR: 3, R: 2, PC: 1, C: 0 };
-  const INV_TTL = 10 * 60 * 1000; // inventaire en cache : actualisé en arrière-plan au-delà de 10 min
+  const INV_TTL = 3 * 60 * 60 * 1000; // relecture complète (~335 requêtes) au plus toutes les 3 h : les étiquettes sont relues à la demande (syncTagged), la défausse et les mises en vente tiennent la copie à jour
 
   const S = {
     items: [], loading: false, loadedCount: 0, loadedAt: 0, started: false, gone: new Map(),
@@ -54,8 +54,10 @@
     const byId = new Map();
     let blocks = 0;
     let fails = 0;
+    let autoBlocks = 0;
     let complete = false; // vrai seulement si on atteint la dernière page (une réponse vide)
-    for (let p = 0; p < 400 && WMX.alive(); p++) {
+    for (let p = 0; p < 2000 && WMX.alive(); p++) { // ~335 pages pour 16 700 cartes : large marge
+
       const u = new URL('/api/my-collection', location.origin);
       u.searchParams.set('sort', 'name'); // tri alphabétique : ordre stable d'une page à l'autre
       u.searchParams.set('page', String(p));
@@ -63,6 +65,18 @@
       let res;
       try { res = await fetch(u); } catch (_) { res = null; }
       if (res?.status === 429) { blocks += 1; await sleep((3 + blocks) * 1000); p -= 1; continue; }
+      // Le jeu refuse un temps les lectures répétées (403 « automation_limit ») : pause de 30 s, puis la même page (jusqu'à 20 fois, ~10 min).
+      if (res?.status === 403) {
+        let code = '';
+        try { code = (await res.clone().json())?.code || ''; } catch (_) { /* réponse illisible */ }
+        if (code === 'automation_limit' && autoBlocks < 20) {
+          autoBlocks += 1;
+          if (autoBlocks === 1) WMX.journal?.add('Collection', `le jeu ralentit la lecture de la collection (« automatisation ») à la page ${p} : pause de 30 s puis reprise`, 'warn');
+          await sleep(30000);
+          p -= 1;
+          continue;
+        }
+      }
       if (!res || !res.ok) { // erreur passagère du jeu (503…) : on réessaie la même page quelques fois avant d'abandonner
         fails += 1;
         if (fails > 6) { WMX.reportError?.('inventaire', res?.status ?? 0, `page ${p}`); break; }
@@ -78,7 +92,7 @@
       S.loadedCount = byId.size;
       if (!hadCache && p % 4 === 0) setItems(withoutDiscarded([...byId.values()], startedAt));
       else renderStatus();
-      await sleep(300);
+      await sleep(500); // un peu plus lent : ~335 requêtes d'affilée font réagir la protection du jeu
     }
     S.loading = false;
     if (complete) S.loadedAt = Date.now();
@@ -93,7 +107,7 @@
    * Renvoie false si c'est impossible (collection pas chargée, étiquette inconnue, jeu qui refuse) : le chargement complet prend alors le relais.
    */
   async function refreshTagged(names, knownIds = null) {
-    if (!S.items.length || S.loading) return false;
+    if (!S.items.length) return false; // aussi pendant une relecture complète (qui dure plusieurs minutes) : les étiquettes demandées sont à jour tout de suite
     const wanted = [...new Set((names || []).map(tagKey).filter(Boolean))];
     if (!wanted.length) return false;
     const startedAt = Date.now();
@@ -132,7 +146,7 @@
    */
   async function syncTagged(names, { force = false } = {}) {
     const wanted = [...new Set((names || []).map(tagKey).filter(Boolean))];
-    if (!wanted.length || !S.items.length || S.loading) return false;
+    if (!wanted.length || !S.items.length) return false;
     let options;
     try {
       const u = new URL('/api/my-collection', location.origin);

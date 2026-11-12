@@ -197,6 +197,14 @@
     const typing = () => dlg.contains(document.activeElement) && /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName) && document.activeElement.type !== 'checkbox';
     dlg.addEventListener('focusout', () => setTimeout(() => { if (later && back.isConnected && !typing()) { later = false; render(); } }, 0));
     unsub = WMX.inventory.onChange?.(() => { if (!back.isConnected) return; if (typing()) later = true; else render(); });
+    // Pendant une relecture de la collection, le compteur « N cartes lues » avance : la fenêtre se redessine toutes les 2 s (sauf pendant une saisie).
+    let wasReading = false;
+    const tick = setInterval(() => {
+      if (!back.isConnected) { clearInterval(tick); return; }
+      const reading = !!WMX.inventory.isLoading?.();
+      if ((reading || wasReading) && !typing()) render();
+      wasReading = reading;
+    }, 2000);
   }
 
   function preview(cards, max) {
