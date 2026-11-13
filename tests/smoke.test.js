@@ -1750,3 +1750,35 @@ test('prix du Marché : les cartes à l’écran passent devant les autres deman
   await sleep(1700); // écriture du cache
   env.close();
 });
+
+test('tableau de bord : courbe de la collection estimée jour par jour (date d’obtention des cartes, prix actuel), survol avec le détail du jour', async () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  const { w, WMX } = env;
+  const day = (n) => new Date(Date.now() - n * 86400000).toISOString();
+  const items = [
+    { card_id: 'a', title: 'A', rarity: 'L', count: 1, at: day(20), tags: [] },
+    { card_id: 'b', title: 'B', rarity: 'L', count: 2, at: day(5), tags: [] },
+    { card_id: 'c', title: 'C', rarity: 'L', count: 1, at: day(0), tags: [] },
+  ];
+  WMX.inventory.items = () => items;
+  WMX.inventory.ensure = async () => {};
+  WMX.inventory.price = (it) => ({ a: { avg: 1000 }, b: { avg: 100 }, c: { avg: 50 } }[it.card_id]);
+  WMX.inventory.totals = () => ({ value: 1250, total: 3, loaded: 3, priced: 3, byR: { L: 1250 } });
+  await WMX.dashboard.open();
+  await sleep(100);
+  const box = w.document.querySelector('.wmx-vbox');
+  assert.ok(box, 'bloc de la valeur');
+  [...box.querySelectorAll('.wmx-seg-btn')].find((b) => b.textContent === '30 jours').click();
+  await sleep(100);
+  const box2 = w.document.querySelector('.wmx-vbox');
+  assert.ok(box2.querySelector('.wmx-vchart .line.est'), 'estimation en pointillés');
+  assert.match(box2.textContent, /Cartes obtenues sur la période\s*4 · ≈ 1\s?250 W/);
+  const hits = [...box2.querySelectorAll('.wmx-vchart .hit')];
+  assert.equal(hits.length, 30, 'un repère par jour');
+  hits[hits.length - 6].dispatchEvent(new w.MouseEvent('mousemove', { bubbles: true, clientX: 30, clientY: 30 })); // il y a 5 jours
+  const tip = box2.querySelector('.wmx-lg-tip');
+  assert.ok(!tip.hidden);
+  assert.match(tip.textContent, /≈ 1\s?200 W/, 'A (1 000) + 2 × B (100) ce jour-là');
+  assert.match(tip.textContent, /2 cartes obtenues ce jour-là · ≈ 200 W/);
+  env.close();
+});

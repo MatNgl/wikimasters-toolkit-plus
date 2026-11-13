@@ -38,87 +38,157 @@
   const dmy = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
   const dmyFull = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 
-  /** Courbe SVG : axe vertical gradué en W, dates en bas, lignes de repère, un point par jour (survol : date et valeur). */
-  function chartSvg(days, hist) {
-    const W = 680, H = 280, L = 64, RT = 18, T = 16, B = 36;
-    const vals = days.map((d) => hist[d].value);
-    let lo = Math.min(...vals);
-    let hi = Math.max(...vals);
-    if (hi === lo) { const pad = Math.max(10, hi * 0.05); lo -= pad; hi += pad; }
-    const step = niceStep((hi - lo) / 4);
-    lo = Math.floor(lo / step) * step;
-    hi = Math.ceil(hi / step) * step;
-    const x = (i) => L + (days.length === 1 ? (W - L - RT) / 2 : (i / (days.length - 1)) * (W - L - RT));
-    const y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
-    let grid = '';
-    for (let v = lo; v <= hi + step / 2; v += step) {
-      grid += `<line class="g" x1="${L}" x2="${W - RT}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"/><text class="ty" x="${L - 8}" y="${(y(v) + 4).toFixed(1)}">${fmtAxis(v)}</text>`;
+  const dayKey = (t) => new Date(t).toLocaleDateString('sv-SE'); // AAAA-MM-JJ, heure locale
+  const addDays = (iso, n) => { const d = new Date(`${iso}T12:00:00`); d.setDate(d.getDate() + n); return dayKey(d); };
+  const dayLong = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }).replace(/^./, (c) => c.toUpperCase());
+
+  /**
+   * Estimation jour par jour : la valeur, au prix du marché actuel, des cartes possédées aujourd'hui, selon leur date d'obtention
+   * (champ obtained_at du jeu). Rend { byDay: { jour: { value, n } } (cartes obtenues ce jour-là), first, before } — before : cartes sans date.
+   */
+  function rebuild() {
+    const avg = (it) => WMX.inventory.price(it)?.avg ?? null;
+    const byDay = {};
+    let before = 0;
+    for (const it of WMX.inventory.items()) {
+      const a = avg(it);
+      if (a == null) continue;
+      const v = a * (it.count || 1);
+      const t = Date.parse(it.at || '');
+      if (!Number.isFinite(t)) { before += v; continue; }
+      const k = dayKey(t);
+      const d = (byDay[k] ||= { value: 0, n: 0 });
+      d.value += v; d.n += it.count || 1;
     }
-    const nLabels = Math.min(days.length, 6);
-    let xl = '';
-    for (let k = 0; k < nLabels; k++) {
-      const i = nLabels === 1 ? 0 : Math.round((k / (nLabels - 1)) * (days.length - 1));
-      xl += `<text class="tx" x="${x(i).toFixed(1)}" y="${H - 12}">${dmy(days[i])}</text><line class="tick" x1="${x(i).toFixed(1)}" x2="${x(i).toFixed(1)}" y1="${H - B}" y2="${H - B + 4}"/>`;
-    }
-    const pts = vals.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`);
-    const area = days.length > 1 ? `<polygon class="area" points="${x(0).toFixed(1)},${H - B} ${pts.join(' ')} ${x(days.length - 1).toFixed(1)},${H - B}"/>` : '';
-    const line = days.length > 1 ? `<polyline class="line" points="${pts.join(' ')}"/>` : '';
-    const dots = vals.map((v, i) => `<circle class="dot" cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="${days.length > 40 ? 2 : 3.5}"><title>${dmyFull(days[i])} : ${fmt(v)} W</title></circle>`).join('');
-    return `<svg class="wmx-vchart" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Valeur estimée de la collection dans le temps, en W">`
-      + `<text class="unit" x="${L}" y="10">W</text>${grid}<line class="axis" x1="${L}" x2="${L}" y1="${T}" y2="${H - B}"/><line class="axis" x1="${L}" x2="${W - RT}" y1="${H - B}" y2="${H - B}"/>${area}${line}${dots}${xl}</svg>`;
+    const keys = Object.keys(byDay).sort();
+    return { byDay, first: keys[0] || dayKey(Date.now()), before };
   }
 
-  /** Bloc « Valeur dans le temps » : repères chiffrés, choix de la période, courbe et tableau jour par jour. */
+  /**
+   * Graphique de la valeur : estimation pour chaque jour de la période (pointillés) et valeurs notées chaque jour (trait plein, points).
+   * Survol : la date, les deux valeurs et les cartes obtenues ce jour-là.
+   */
+  function valueChart(days, hist, est, gained) {
+    const W = 1100, H = 280, Lm = 64, Rm = 16, T = 16, B = 34;
+    const recVals = days.map((d) => hist[d]?.value ?? null);
+    const all = [...est, ...recVals.filter((v) => v != null)];
+    let lo = Math.min(...all), hi = Math.max(...all);
+    if (hi === lo) { const pad = Math.max(10, hi * 0.05); lo -= pad; hi += pad; }
+    const step = niceStep((hi - lo) / 4);
+    lo = Math.floor(lo / step) * step; hi = Math.ceil(hi / step) * step;
+    const n = days.length;
+    const x = (i) => Lm + (n === 1 ? (W - Lm - Rm) / 2 : (i / (n - 1)) * (W - Lm - Rm));
+    const y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+    let g = '';
+    for (let v = lo; v <= hi + step / 2; v += step) g += `<line class="g" x1="${Lm}" x2="${W - Rm}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"/><text class="ty" x="${Lm - 8}" y="${(y(v) + 4).toFixed(1)}">${fmtAxis(v)}</text>`;
+    const nLabels = Math.min(n, 8);
+    for (let k = 0; k < nLabels; k++) {
+      const i = nLabels === 1 ? 0 : Math.round((k / (nLabels - 1)) * (n - 1));
+      g += `<text class="tx" x="${x(i).toFixed(1)}" y="${H - 12}">${dmy(days[i])}</text>`;
+    }
+    const estPts = est.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+    const area = n > 1 ? `<polygon class="area" points="${x(0).toFixed(1)},${H - B} ${estPts} ${x(n - 1).toFixed(1)},${H - B}"/>` : '';
+    const estLine = n > 1 ? `<polyline class="line est" points="${estPts}"/>` : '';
+    const rec = recVals.map((v, i) => (v == null ? null : [x(i), y(v)])).filter(Boolean);
+    const recLine = rec.length > 1 ? `<polyline class="line" points="${rec.map(([a, b2]) => `${a.toFixed(1)},${b2.toFixed(1)}`).join(' ')}"/>` : '';
+    const dots = rec.map(([a, b2]) => `<circle class="dot" cx="${a.toFixed(1)}" cy="${b2.toFixed(1)}" r="${n > 60 ? 2.2 : 3.5}"/>`).join('');
+    const slot = (W - Lm - Rm) / Math.max(1, n - 1);
+    const hits = days.map((d, i) => `<rect class="hit" data-i="${i}" x="${(x(i) - slot / 2).toFixed(1)}" y="${T}" width="${slot.toFixed(1)}" height="${H - T - B}"/>`).join('');
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(svgNS, 'svg');
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.setAttribute('class', 'wmx-vchart'); svg.setAttribute('role', 'img');
+    svg.setAttribute('aria-label', 'Valeur de la collection dans le temps, en W');
+    svg.innerHTML = `<text class="unit" x="${Lm}" y="10">W</text>${g}<line class="axis" x1="${Lm}" x2="${Lm}" y1="${T}" y2="${H - B}"/><line class="axis" x1="${Lm}" x2="${W - Rm}" y1="${H - B}" y2="${H - B}"/>${area}${estLine}${recLine}${dots}<line class="cursor" x1="0" x2="0" y1="${T}" y2="${H - B}" visibility="hidden"/>${hits}`;
+    const tip = el('div', { class: 'wmx-lg-tip', hidden: '' });
+    const wrap = el('div', { class: 'wmx-vwrap wmx-lg-chartwrap' }, svg, tip);
+    const cursor = svg.querySelector('.cursor');
+    svg.addEventListener('mousemove', (e) => {
+      const i = e.target?.getAttribute?.('data-i');
+      if (i == null) { tip.hidden = true; cursor.setAttribute('visibility', 'hidden'); return; }
+      const k = Number(i);
+      const d = days[k];
+      const got = gained[d];
+      tip.replaceChildren(
+        el('span', { class: 'wmx-lg-tip-head' }, dayLong(d)),
+        recVals[k] != null ? el('b', {}, `${fmt(recVals[k])} W`) : el('b', { class: 'muted' }, `≈ ${fmt(est[k])} W`),
+        el('small', {}, recVals[k] != null ? `Valeur notée ce jour-là · estimation ${fmt(est[k])} W` : 'Estimation (pas de valeur notée ce jour-là)'),
+        el('small', {}, got ? `${fmt(got.n)} carte${got.n > 1 ? 's' : ''} obtenue${got.n > 1 ? 's' : ''} ce jour-là · ≈ ${fmt(got.value)} W` : 'Aucune carte gardée obtenue ce jour-là'));
+      tip.hidden = false;
+      cursor.setAttribute('x1', x(k).toFixed(1)); cursor.setAttribute('x2', x(k).toFixed(1)); cursor.setAttribute('visibility', 'visible');
+      const r = wrap.getBoundingClientRect();
+      const px = e.clientX - r.left, py = e.clientY - r.top;
+      tip.style.left = `${Math.max(4, px + 14 + 230 > r.width ? px - 14 - 230 : px + 14)}px`;
+      tip.style.top = `${Math.max(4, py - 30)}px`;
+    });
+    svg.addEventListener('mouseleave', () => { tip.hidden = true; cursor.setAttribute('visibility', 'hidden'); });
+    return wrap;
+  }
+
+  /** Bloc « Valeur dans le temps » : repères chiffrés, choix de la période, graphique (estimation + valeurs notées) et tableau des jours notés. */
   function valueBlock(hist) {
-    const all = Object.keys(hist).sort();
-    const box = el('div', { class: 'wmx-panelbox wmx-vbox' }, el('h4', {}, 'Valeur estimée dans le temps (en W)'));
-    if (all.length < 2) {
-      box.append(el('p', { class: 'wmx-cp-empty' }, all.length
-        ? `Un seul jour enregistré pour l’instant (${dmyFull(all[0])} : ${fmt(hist[all[0]].value)} W). La courbe, les écarts et le tableau apparaîtront dès le deuxième jour.`
-        : 'Aucune valeur enregistrée pour l’instant. Chargez les prix de la collection : la valeur est notée une fois par jour.'));
+    const box = el('div', { class: 'wmx-panelbox wmx-vbox' }, el('h4', {}, 'Valeur de la collection dans le temps (en W)'));
+    const rb = rebuild();
+    const recorded = Object.keys(hist).sort();
+    const today = dayKey(Date.now());
+    const start = range ? addDays(today, -(range - 1)) : [rb.first, recorded[0] || today].sort()[0];
+    const days = [];
+    for (let d = start; d <= today && days.length < 400; d = addDays(d, 1)) days.push(d);
+    // Estimation cumulée : cartes obtenues avant la période, puis jour après jour.
+    let acc = rb.before;
+    for (const [k, v] of Object.entries(rb.byDay)) if (k < start) acc += v.value;
+    const est = days.map((d) => (acc += rb.byDay[d]?.value || 0));
+    if (!est.some((v) => v > 0) && !recorded.length) {
+      box.append(el('p', { class: 'wmx-cp-empty' }, 'Aucune valeur pour l’instant. Chargez les prix de la collection : la valeur est notée une fois par jour et estimée pour les jours passés.'));
       return box;
     }
-    const days = range ? all.slice(-range) : all;
-    const first = hist[days[0]].value;
-    const last = hist[days.at(-1)].value;
-    const vals = days.map((d) => hist[d].value);
-    const diff = last - first;
+    const recIn = days.filter((d) => hist[d]);
+    // Variation et plus haut : sur l'estimation seule (même calcul d'un bout à l'autre ; mélanger valeurs notées et estimées fausserait l'écart).
+    const series = est;
+    const first = est[0];
+    const last = hist[today]?.value ?? est.at(-1);
+    const diff = est.at(-1) - first;
     const pct = first ? (diff / first) * 100 : 0;
-    const seg = el('div', { class: 'wmx-seg wmx-vrange' }, ...[[7, '7 jours'], [30, '30 jours'], [0, 'Tout']].map(([n, label]) => {
-      const b = el('button', { type: 'button', class: 'wmx-seg-btn', 'aria-pressed': String(range === n) }, label);
-      b.addEventListener('click', () => { range = n; render(); });
+    const gainedIn = days.reduce((n, d) => n + (rb.byDay[d]?.value || 0), 0);
+    const cardsIn = days.reduce((n, d) => n + (rb.byDay[d]?.n || 0), 0);
+    const seg = el('div', { class: 'wmx-seg wmx-vrange' }, ...[[7, '7 jours'], [30, '30 jours'], [0, 'Tout']].map(([nn, label]) => {
+      const b = el('button', { type: 'button', class: 'wmx-seg-btn', 'aria-pressed': String(range === nn) }, label);
+      b.addEventListener('click', () => { range = nn; render(); });
       return b;
     }));
     const stat = (label, value, cls = '') => el('div', { class: 'wmx-vstat' }, el('small', {}, label), el('b', { class: cls }, value));
     box.append(
       el('div', { class: 'wmx-vtop' },
         el('div', { class: 'wmx-vstats' },
-          stat('Dernière valeur', `${fmt(last)} W`),
-          stat(`Variation (${dmy(days[0])} → ${dmy(days.at(-1))})`, `${sign(diff)}${fmt(Math.abs(diff))} W (${sign(diff)}${Math.abs(pct).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %)`, diff > 0 ? 'up' : diff < 0 ? 'down' : ''),
-          stat('Plus haut', `${fmt(Math.max(...vals))} W`),
-          stat('Plus bas', `${fmt(Math.min(...vals))} W`)),
-        seg));
-    const chart = el('div', { class: 'wmx-vwrap' });
-    chart.innerHTML = chartSvg(days, hist);
-    box.append(chart);
-    // Tableau : du plus récent au plus ancien, avec l'écart au jour précédent et le nombre de cartes dont le prix était chargé ce jour-là.
-    const rows = days.map((d, i) => {
-      const h = hist[d];
-      const prev = i ? hist[days[i - 1]].value : null;
-      const dv = prev == null ? null : h.value - prev;
-      const loaded = h.loaded ?? h.priced;
-      return el('tr', {},
-        el('td', {}, dmyFull(d)),
-        el('td', { class: 'n' }, `${fmt(h.value)} W`),
-        el('td', { class: `n ${dv > 0 ? 'up' : dv < 0 ? 'down' : ''}` }, dv == null ? '—' : `${sign(dv)}${fmt(Math.abs(dv))} W${prev ? ` (${sign(dv)}${Math.abs((dv / prev) * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %)` : ''}`),
-        el('td', { class: 'n' }, `${fmt(loaded)} / ${fmt(h.total)}`));
-    }).reverse();
-    box.append(
-      el('div', { class: 'wmx-vtable-wrap' },
-        el('table', { class: 'wmx-vtable' },
-          el('thead', {}, el('tr', {}, el('th', {}, 'Jour'), el('th', { class: 'n' }, 'Valeur estimée'), el('th', { class: 'n' }, 'Écart au jour précédent'), el('th', { class: 'n', title: 'Cartes dont le prix était chargé ce jour-là, sur le nombre de cartes de la collection' }, 'Prix chargés'))),
-          el('tbody', {}, ...rows))),
-      el('small', { class: 'wmx-cp-note' }, 'La valeur est la somme des moyennes du marché × exemplaires, notée une fois par jour. Elle bouge aussi quand davantage de prix sont chargés (dernière colonne) : une hausse peut venir de prix ajoutés, pas seulement du marché.'));
+          stat('Valeur actuelle', `${fmt(last)} W`),
+          stat(`Variation estimée (${dmy(days[0])} → ${dmy(days.at(-1))})`, `${sign(diff)}${fmt(Math.abs(diff))} W (${sign(diff)}${Math.abs(pct).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %)`, diff > 0 ? 'up' : diff < 0 ? 'down' : ''),
+          stat('Cartes obtenues sur la période', `${fmt(cardsIn)} · ≈ ${fmt(gainedIn)} W`),
+          stat('Plus haut (estimation)', `${fmt(Math.max(...series))} W`)),
+        seg),
+      valueChart(days, hist, est, rb.byDay),
+      el('div', { class: 'wmx-vlegend' },
+        el('span', {}, el('i', { class: 'solid' }), 'Valeur notée chaque jour'),
+        el('span', {}, el('i', { class: 'dash' }), 'Estimation : cartes possédées aujourd’hui, à leur date d’obtention, au prix actuel du marché'),
+        el('span', { class: 'muted' }, 'Survolez le graphique pour le détail d’un jour')));
+    // Tableau : les jours où la valeur a été notée, du plus récent au plus ancien.
+    if (recIn.length) {
+      const rows = recIn.map((d, i) => {
+        const h = hist[d];
+        const prev = i ? hist[recIn[i - 1]].value : null;
+        const dv = prev == null ? null : h.value - prev;
+        const loaded = h.loaded ?? h.priced;
+        return el('tr', {},
+          el('td', {}, dmyFull(d)),
+          el('td', { class: 'n' }, `${fmt(h.value)} W`),
+          el('td', { class: `n ${dv > 0 ? 'up' : dv < 0 ? 'down' : ''}` }, dv == null ? '—' : `${sign(dv)}${fmt(Math.abs(dv))} W${prev ? ` (${sign(dv)}${Math.abs((dv / prev) * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %)` : ''}`),
+          el('td', { class: 'n' }, `${fmt(loaded)} / ${fmt(h.total)}`));
+      }).reverse();
+      box.append(
+        el('div', { class: 'wmx-vtable-wrap' },
+          el('table', { class: 'wmx-vtable' },
+            el('thead', {}, el('tr', {}, el('th', {}, 'Jour noté'), el('th', { class: 'n' }, 'Valeur notée'), el('th', { class: 'n' }, 'Écart au jour noté précédent'), el('th', { class: 'n', title: 'Cartes dont le prix était chargé ce jour-là, sur le nombre de cartes de la collection' }, 'Prix chargés'))),
+            el('tbody', {}, ...rows))));
+    }
+    box.append(el('small', { class: 'wmx-cp-note' }, 'La valeur notée est la somme des moyennes du marché × exemplaires, une fois par jour (elle monte aussi quand des prix sont ajoutés). L’estimation ne compte que les cartes encore possédées : les cartes vendues ou défaussées depuis n’y figurent pas.'));
     return box;
   }
 

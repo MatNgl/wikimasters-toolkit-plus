@@ -22,6 +22,12 @@ WMX.dom = {
   keepAttached(node) { kept.add(node); return node; },
   /** Retire pour de bon un élément gardé par keepAttached (sinon il est remis dans la page aussitôt : bouton « Fermer » sans effet). */
   release(node) { if (node) { kept.delete(node); node.remove(); } },
+  /** Case à cocher de l'extension (style .wmx-check, coche animée) ; variant 'danger' : rouge, pour une confirmation irréversible. */
+  checkbox({ checked = false, variant = '', ...attrs } = {}) {
+    const c = WMX.dom.el('input', { type: 'checkbox', class: `wmx-check${variant ? ` wmx-check--${variant}` : ''}`, ...attrs });
+    c.checked = !!checked;
+    return c;
+  },
   el(tag, attrs = {}, ...children) {
     const n = document.createElement(tag);
     for (const [k, v] of Object.entries(attrs)) {

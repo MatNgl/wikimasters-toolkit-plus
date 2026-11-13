@@ -214,8 +214,7 @@
         const drawPanel = () => {
           const list = known();
           panel.replaceChildren(...(list.length ? list.map((t) => {
-            const cb = el('input', { type: 'checkbox' });
-            cb.checked = chosen().some((s) => s.toLowerCase() === t.name.toLowerCase());
+            const cb = WMX.dom.checkbox({ checked: chosen().some((s) => s.toLowerCase() === t.name.toLowerCase()) });
             cb.addEventListener('change', () => {
               const rest = chosen().filter((s) => s.toLowerCase() !== t.name.toLowerCase());
               draft[it.key] = (cb.checked ? [...rest, t.name] : rest).join(', ');

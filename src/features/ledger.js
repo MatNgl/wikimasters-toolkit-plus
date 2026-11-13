@@ -193,7 +193,20 @@
     return Math.abs(v) >= 1000 ? `${sg}${(Math.abs(v) / 1000).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} k` : `${sg}${fmt(Math.abs(v))}`;
   };
 
-  /** Barres par période (plus-value ou flux net), la période choisie en surbrillance ; un clic sur une barre l'affiche. */
+  /** Texte de l'infobulle d'une barre : période, montant, nombre de ventes / achats / reventes. */
+  function tipFor(sr) {
+    const p = sr.p;
+    const head = V.unit === 'day' ? dayLong(sr.start) : periodTitle(sr.start).title;
+    const lines = [];
+    if (V.mode === 'resale') lines.push(p.resales ? `${p.resales} revente${p.resales > 1 ? 's' : ''} · ${p.wins} gagnante${p.wins > 1 ? 's' : ''}${p.losses ? ` · ${p.losses} à perte` : ''}` : 'Aucune revente');
+    else {
+      lines.push(p.nSold + p.nBought ? `${p.nSold} vente${p.nSold > 1 ? 's' : ''} · ${p.nBought} achat${p.nBought > 1 ? 's' : ''} · ${p.resales} revente${p.resales > 1 ? 's' : ''}` : 'Aucune opération');
+      if (p.nSold + p.nBought) lines.push(V.chart === 'net' ? `Plus-value réalisée : ${signed(p.gain)} W` : `Ventes ${fmt(p.sold)} W · achats ${fmt(p.bought)} W`);
+    }
+    return { head, value: sr.v, lines };
+  }
+
+  /** Barres par période (plus-value ou flux net), la période choisie en surbrillance ; survol : le détail ; clic : la période s'affiche. */
   function chart(series, onPick) {
     const W = 1200, H = 240, Lm = 54, Rm = 12, T = 14, B = 30;
     const vals = series.map((s) => s.v);
@@ -222,11 +235,31 @@
         html += `<rect class="bar ${s.v > 0 ? 'up' : 'down'}" x="${(cx - bw / 2).toFixed(1)}" y="${top.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(1.5, bot - top).toFixed(1)}" rx="2"/>`;
       } else if (s.any) html += `<circle class="dot" cx="${cx.toFixed(1)}" cy="${y(0).toFixed(1)}" r="3"/>`;
       if (s.sel || (i % every === 0 && (selI < 0 || Math.abs(i - selI) >= Math.max(2, Math.ceil(every / 2))))) html += `<text class="tx${s.sel ? ' on' : ''}" x="${cx.toFixed(1)}" y="${H - 10}">${axisLabel(s.start)}</text>`;
-      html += `<rect class="hit" data-i="${i}" x="${x.toFixed(1)}" y="${T}" width="${slot.toFixed(1)}" height="${H - T - B + 20}"><title>${axisLabel(s.start)} : ${signed(s.v)} W</title></rect>`;
+      html += `<rect class="hit" data-i="${i}" x="${x.toFixed(1)}" y="${T}" width="${slot.toFixed(1)}" height="${H - T - B + 20}"/>`;
     });
     svg.innerHTML = html;
     svg.addEventListener('click', (e) => { const i = e.target?.getAttribute?.('data-i'); if (i != null) onPick(series[Number(i)].start); });
-    return svg;
+    // Infobulle : suit la souris au-dessus des barres.
+    const tip = el('div', { class: 'wmx-lg-tip', hidden: '' });
+    const wrap = el('div', { class: 'wmx-lg-chartwrap' }, svg, tip);
+    let shown = -1;
+    svg.addEventListener('mousemove', (e) => {
+      const i = e.target?.getAttribute?.('data-i');
+      if (i == null) { tip.hidden = true; shown = -1; return; }
+      if (Number(i) !== shown) {
+        shown = Number(i);
+        const t = tipFor(series[shown]);
+        tip.replaceChildren(el('b', { class: tone(t.value) }, `${signed(t.value)} W`), el('span', { class: 'wmx-lg-tip-head' }, t.head), ...t.lines.map((l) => el('small', {}, l)));
+      }
+      tip.hidden = false;
+      const r = wrap.getBoundingClientRect();
+      const x = e.clientX - r.left + wrap.scrollLeft, yy = e.clientY - r.top;
+      const left = x + 14 + 230 > wrap.scrollLeft + r.width ? x - 14 - 230 : x + 14;
+      tip.style.left = `${Math.max(4, left)}px`;
+      tip.style.top = `${Math.max(4, yy - 20)}px`;
+    });
+    svg.addEventListener('mouseleave', () => { tip.hidden = true; shown = -1; });
+    return wrap;
   }
 
   const rarityBadge = (r) => el('span', { class: 'wmx-lg-rar', style: `--rgb:${WMX.RARITY_RGB?.[r] || '160 175 168'}` }, r || '?');
@@ -241,7 +274,17 @@
     b.addEventListener('click', () => onPick(v));
     return b;
   }));
-  const kpi = (label, value, sub, cls = '') => el('div', { class: 'wmx-metric wmx-lg-kpi' }, el('small', {}, label), el('b', { class: cls }, value), sub ? el('small', {}, sub) : '');
+  const KPI_HELP = {
+    'Plus-value réalisée': 'Prix de vente moins prix d’achat des cartes achetées au marché puis revendues sur la période.',
+    'Ventes': 'Tout ce que vous avez encaissé en ventes sur la période, cartes tirées comprises.',
+    'Achats': 'Tout ce que vous avez dépensé en achats sur la période.',
+    'Flux net': 'Ventes moins achats : ce que la période a fait entrer (ou sortir) de wikibidous.',
+    'Reventes gagnantes': 'Part des reventes vendues plus cher qu’achetées.',
+    'Détention moyenne': 'Temps moyen entre l’achat et la revente.',
+    'Prix de vente': 'Total encaissé pour les cartes revendues.',
+    'Prix d’achat': 'Ce que ces mêmes cartes vous avaient coûté.',
+  };
+  const kpi = (label, value, sub, cls = '') => el('div', { class: 'wmx-metric wmx-lg-kpi', title: KPI_HELP[label] || '' }, el('small', {}, label), el('b', { class: cls }, value), sub ? el('small', {}, sub) : '');
 
   /** Onglet « Plus-values » dans `box` (redessiné à chaque choix). */
   async function render(box) {
@@ -269,20 +312,20 @@
       const en = L.periodShift(st, V.unit, 1);
       const p = L.ledgerSummary(all.filter((o) => o.t >= st && o.t < en));
       const any = p.nSold + p.nBought > 0;
-      series.push({ start: st, v: V.mode === 'all' && V.chart === 'net' ? p.net : p.gain, any, sel: st === V.cursor });
+      series.push({ start: st, v: V.mode === 'all' && V.chart === 'net' ? p.net : p.gain, any, sel: st === V.cursor, p });
     }
     const pt = periodTitle(V.cursor);
     const unitWord = { day: 'jour', week: 'semaine', month: 'mois' }[V.unit];
+    const explain = V.mode === 'resale'
+      ? 'Achat-revente : seulement les cartes achetées au marché puis revendues, chacune avec son prix d’achat. Une revente compte à la date de la vente ; les cartes tirées vendues et celles encore en stock sont écartées.'
+      : 'Tout : vos enchères conclues, achats et ventes. Chaque vente est rapprochée du plus ancien achat de la même carte (même rareté, même version) : la différence est la plus-value réalisée. Une carte tirée puis vendue compte comme « non achetée ».';
     const head = el('div', { class: 'wmx-lg-head' },
-      el('p', { class: 'wmx-lg-lead' }, V.mode === 'resale'
-        ? 'Seulement les cartes achetées au marché puis revendues, chacune avec son prix d’achat : une revente compte à la date de la vente. Les ventes de cartes tirées et les cartes encore en stock sont écartées.'
-        : 'Vos enchères conclues, achats et ventes. Une vente est rapprochée du plus ancien achat encore en stock de la même carte (même rareté, même version) : la différence est la plus-value réalisée.'),
       el('div', { class: 'wmx-lg-tools' },
         seg([['all', 'Tout'], ['resale', 'Achat-revente']], V.mode, (v) => { V.mode = v; redraw(); }),
         seg([['day', 'Jour'], ['week', 'Semaine'], ['month', 'Mois']], V.unit, (v) => { V.unit = v; V.cursor = null; redraw(); }),
         el('button', { type: 'button', class: 'wmx-btn wmx-btn--ghost wmx-lg-refresh', onclick: async (e) => { e.currentTarget.disabled = true; await refresh(); SB.last = await importAll(true); redraw(); } }, '↻ Actualiser')));
     const since = el('p', { class: 'wmx-lg-since' },
-      `Depuis le ${dateFull(first)} : plus-value réalisée `, el('b', { class: tone(total.gain) }, `${signed(total.gain)} W`), ` sur ${fmt(total.resales)} revente${total.resales > 1 ? 's' : ''} (${pctText(total.pct)})`,
+      el('span', { class: 'wmx-lg-info', tabindex: '0', title: explain, 'aria-label': explain }, 'ⓘ'), ` Depuis le ${dateFull(first)} : plus-value réalisée `, el('b', { class: tone(total.gain) }, `${signed(total.gain)} W`), ` sur ${fmt(total.resales)} revente${total.resales > 1 ? 's' : ''} (${pctText(total.pct)})`,
       V.mode === 'resale'
         ? ` · achetées ${fmt(total.resaleBought)} W · revendues ${fmt(total.resaleSold)} W · ${fmt(total.wins)} gagnante${total.wins > 1 ? 's' : ''} sur ${fmt(total.resales)}`
         : ` · ${fmt(total.nSold)} vente${total.nSold > 1 ? 's' : ''} pour ${fmt(total.sold)} W · ${fmt(total.nBought)} achat${total.nBought > 1 ? 's' : ''} pour ${fmt(total.bought)} W`);
@@ -295,6 +338,7 @@
     const nav = el('div', { class: 'wmx-lg-nav' },
       el('button', { type: 'button', class: 'wmx-lg-arrow', title: `${unitWord} précédent${V.unit === 'week' ? 'e' : ''}`, 'aria-label': 'Période précédente', onclick: () => { V.cursor = L.periodShift(V.cursor, V.unit, -1); redraw(); } }, '←'),
       el('div', {}, el('small', {}, pt.eyebrow), el('h3', {}, pt.title)),
+      V.cursor < nowStart ? el('button', { type: 'button', class: 'wmx-btn wmx-btn--ghost wmx-lg-today', onclick: () => { V.cursor = nowStart; redraw(); } }, { day: 'Aujourd’hui', week: 'Cette semaine', month: 'Ce mois' }[V.unit]) : '',
       el('button', { type: 'button', class: 'wmx-lg-arrow', 'aria-label': 'Période suivante', disabled: V.cursor >= nowStart ? '' : null, onclick: () => { if (V.cursor < nowStart) { V.cursor = L.periodShift(V.cursor, V.unit, 1); redraw(); } } }, '→'));
     if (V.cursor >= nowStart) nav.lastChild.setAttribute('disabled', '');
     else nav.lastChild.removeAttribute('disabled');
@@ -314,9 +358,9 @@
       kpi('Reventes gagnantes', s.resales ? `${winRate} %` : '—', s.resales ? `${s.wins} sur ${s.resales} · détention moyenne ${L.holdText(s.hold)}` : ''),
     ]));
     const chartHead = el('div', { class: 'wmx-lg-charthead' },
-      el('div', {}, el('h4', {}, `${V.mode === 'all' && V.chart === 'net' ? 'Flux net' : 'Plus-value réalisée'} par ${unitWord}`), el('small', {}, 'Cliquez sur une barre pour afficher la période')),
+      el('div', {}, el('h4', {}, `${V.mode === 'all' && V.chart === 'net' ? 'Flux net' : 'Plus-value réalisée'} par ${unitWord}`), el('small', {}, 'Survolez une barre pour le détail · cliquez pour afficher ses opérations')),
       V.mode === 'all' ? seg([['gain', 'Plus-value'], ['net', 'Flux net']], V.chart, (v) => { V.chart = v; redraw(); }) : '');
-    const chartBox = el('div', { class: 'wmx-lg-chartwrap' }, chart(series, (st) => { V.cursor = st; redraw(); }));
+    const chartBox = chart(series, (st) => { V.cursor = st; redraw(); });
     const periodBox = el('div', { class: 'wmx-panelbox wmx-lg-period' }, nav, kpis, chartHead, chartBox);
 
     // Opérations de la période

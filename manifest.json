@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WikiMasters Toolkit+",
-  "version": "0.32.2",
+  "version": "0.32.3",
   "description": "Prix du marché, ouverture de paquets en un clic, enchères automatiques et style de cartes pour WikiMasters.",
   "permissions": [
     "storage",
@@ -81,7 +81,7 @@
       "world": "MAIN"
     }
   ],
-  "version_name": "0.32.2 · plus-values : historique complet de vos achats et ventes lu dans la base du jeu",
+  "version_name": "0.32.3 · plus-values : survol du graphique ; collection : courbe estimée jour par jour ; cases à cocher redessinées",
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",

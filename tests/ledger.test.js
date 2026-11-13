@@ -35,6 +35,17 @@ test('plus-values : achats et ventes notés une seule fois (jamais ceux d’un a
   assert.match(txt, /Louis IX/, 'Louis IX reste en stock');
   assert.ok(box.querySelector('.wmx-lg-chart'), 'graphique des plus-values');
   assert.ok(box.querySelector('.wmx-lg-thumb img'), 'images des cartes');
+  // Survol d'une barre : infobulle avec le montant, la date, et le nombre de ventes / achats / reventes.
+  assert.doesNotMatch(txt, /Une vente est rapprochée du plus ancien achat/, 'plus de paragraphe explicatif');
+  assert.match(box.querySelector('.wmx-lg-info').getAttribute('title'), /rapproché/, 'l’explication est au survol du ⓘ');
+  const hits = [...box.querySelectorAll('.wmx-lg-chart .hit')];
+  hits.at(-1).dispatchEvent(new w.MouseEvent('mousemove', { bubbles: true, clientX: 50, clientY: 50 }));
+  const tip = box.querySelector('.wmx-lg-tip');
+  assert.ok(!tip.hidden, 'infobulle affichée');
+  assert.match(tip.textContent, /\d+ ventes? · \d+ achats? · \d+ reventes?/);
+  hits.at(-1).dispatchEvent(new w.MouseEvent('mouseleave', { bubbles: true }));
+  box.querySelector('.wmx-lg-chart').dispatchEvent(new w.MouseEvent('mouseleave'));
+  assert.ok(tip.hidden, 'cachée en quittant le graphique');
   // Mode « Achat-revente » : seulement les reventes.
   [...box.querySelectorAll('.wmx-seg-btn')].find((b) => b.textContent === 'Achat-revente').click();
   await sleep(50);

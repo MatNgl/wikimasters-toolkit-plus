@@ -139,7 +139,7 @@
       const tagPanel = el('div', { class: 'wmx-dc-tagpanel', role: 'listbox', 'aria-multiselectable': 'true' },
         ...(tags.length ? tags.map((t) => {
           const on = chosen.some((x) => key(x) === key(t.name));
-          const box = el('input', { type: 'checkbox' }); box.checked = on;
+          const box = WMX.dom.checkbox({ checked: on });
           const row = el('label', { class: 'wmx-dc-tagrow', role: 'option', 'aria-selected': String(on) }, box, el('span', {}, t.name), el('small', {}, fmt(t.n)));
           box.addEventListener('change', () => {
             if (box.checked) WMX.inventory.syncTagged?.([t.name], { force: true }); // étiquette choisie : ses cartes sont relues (cartes ajoutées depuis)
@@ -252,7 +252,7 @@
       go.textContent = dry ? `Essai à blanc (${what})` : (pl.copies ? `Défausser ${plural(pl.copies, 'exemplaire')}${check ? ` + ${fmt(check)} à vérifier` : ''}` : `Lancer (${fmt(check)} à vérifier)`);
       if (ok || dry) go.removeAttribute('disabled'); else go.setAttribute('disabled', '');
     };
-    const ack = el('label', { class: 'wmx-dc-ack' }, el('input', { type: 'checkbox' }), el('span', {}, 'J’ai compris : une défausse est définitive, les cartes ne reviennent pas.'));
+    const ack = el('label', { class: 'wmx-dc-ack' }, WMX.dom.checkbox({ variant: 'danger' }), el('span', {}, 'J’ai compris : une défausse est définitive, les cartes ne reviennent pas.'));
     ack.querySelector('input').addEventListener('change', (e) => { ok = e.target.checked; paint(); });
     const dryOpt = sw(dry, (v) => { dry = v; ack.hidden = v; paint(); }, 'Essai à blanc', 'Coche les cartes dans la sélection du jeu et vérifie la fenêtre de défausse, sans la confirmer. Désactivez pour défausser vraiment.');
     ack.hidden = true;
