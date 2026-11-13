@@ -8,7 +8,7 @@
     speed: 'normal', order: 'rarity', images: true,
     stopOn: 'off', reserve: 0, fullStockOpen: true, anticipate: true,
     quickCoef: 0.9, quickDuration: '1h', quickPrudent: false, auctionBubble: true, auctionNotify: true, autoReload: true,
-    autoDefaultMode: 'time', autoDefaultSecs: 35, autoCapMode: 'avg', autoCapW: 100, autoCapPct: 20, autoDefaultOn: false, watchMax: 12, autoSell: false, autoSellTags: 'VENTE', autoSellMax: 3, autoSellCap: 500, autoSellOrder: 'avg', autoSellPriorityRar: '', autoSellStrict: true, quickNoSalePrice: 10, cardStyle: true, cardShowDesc: true, cardShowStats: true,
+    autoDefaultMode: 'time', autoDefaultSecs: 35, autoCapMode: 'avg', autoCapW: 100, autoCapPct: 20, autoDefaultOn: false, watchMax: 12, autoSell: false, autoSellTags: 'VENTE', autoSellMax: 3, autoSellCap: 500, autoSellOrder: 'avg', autoSellPriorityRar: '', autoSellStrict: true, autoSellRelistLimit: true, autoSellRelistMax: 4, quickNoSalePrice: 10, cardStyle: true, cardShowDesc: true, cardShowStats: true,
   };
 
   // La mise à jour automatique n'existe que dans la version de développement (permission « alarms ») : absente de la version publiée.
@@ -61,6 +61,8 @@
         { key: 'autoSellMax', type: 'number', min: 1, max: 10, step: 1, label: 'Enchères actives visées', desc: 'L’assistant complète jusqu’à ce nombre d’enchères en cours (vos ventes manuelles comptent). 10 = limite du jeu.' },
         { key: 'autoSellPriorityRar', type: 'rarityOrder', label: 'Raretés à vendre', desc: '« Toutes les raretés » : aucune restriction. « Seulement celles-ci » : l’assistant ne vend QUE les raretés de la liste, dans leur ordre (n°1 d’abord). Les cartes étiquetées d’une autre rareté ne sont jamais mises en vente. Quand il n’en reste plus, la bulle des enchères le dit.' },
         { key: 'autoSellStrict', type: 'toggle', label: 'Une rareté à la fois', desc: 'Activé (recommandé) : la rareté n°2 n’est mise en vente que lorsqu’il ne reste plus aucune carte n°1 à vendre, y compris celles déjà en vente qui pourraient revenir invendues. Les places restent libres en attendant. Désactivé : les places libres sont complétées avec la rareté suivante. Une favorite ou une carte au-dessus du prix maximum ne retient jamais la liste.' },
+        { key: 'autoSellRelistLimit', type: 'toggle', label: 'Limiter les remises en vente', desc: 'Activé : une carte qui revient invendue n’est remise en vente qu’un nombre limité de fois par 24 h, puis l’assistant passe aux autres cartes (elle est reprise quand la plus ancienne mise en vente a plus de 24 h). Désactivé : remise en vente sans limite tant qu’elle ne trouve pas preneur.' },
+        { key: 'autoSellRelistMax', type: 'number', min: 1, max: 50, step: 1, showIf: 'autoSellRelistLimit', label: 'Mises en vente par carte (sur 24 h)', desc: 'Nombre de fois qu’une même carte peut être mise en vente par l’assistant sur 24 h, échecs compris (4 par défaut).' },
         { key: 'autoSellOrder', type: 'select', label: 'Ordre dans une même rareté', desc: 'Quelles cartes l’assistant met en vente en premier (sans liste de raretés : parmi toutes les cartes étiquetées).',
           options: [['avg', 'Meilleure moyenne d’abord'], ['avgLow', 'Moyenne la plus basse d’abord'], ['rarityHigh', 'Raretés les plus hautes d’abord'], ['rarityLow', 'Raretés les plus basses d’abord']] },
       ],
@@ -260,7 +262,11 @@
       }
       if (it.type === 'toggle') {
         const b = el('button', { class: 'wmx-switch', role: 'switch', 'aria-checked': String(!!draft[it.key]) });
-        b.addEventListener('click', () => { draft[it.key] = !draft[it.key]; b.setAttribute('aria-checked', String(draft[it.key])); });
+        b.addEventListener('click', () => {
+          draft[it.key] = !draft[it.key]; b.setAttribute('aria-checked', String(draft[it.key]));
+          // Réglages qui dépendent de cet interrupteur (showIf) : affichés seulement quand il est activé.
+          b.closest('.wmx-rows')?.querySelectorAll(`[data-show-if="${it.key}"]`).forEach((row) => { row.hidden = !draft[it.key]; });
+        });
         return b;
       }
       const b = el('button', { class: 'wmx-btn wmx-btn--ghost' }, it.button);
@@ -288,8 +294,12 @@
       const g = GROUPS.find((x) => x.id === group) || GROUPS[0];
       content.replaceChildren(...visible.filter((sec) => g.sections.includes(sec.title)).map((sec) => el('section', { class: 'wmx-sec' },
         el('h3', {}, sec.title), el('p', {}, sec.desc),
-        el('div', { class: 'wmx-rows' }, ...sec.items.map((it) =>
-          el('div', { class: 'wmx-setrow' }, el('div', {}, el('strong', {}, it.label), el('small', {}, it.desc)), control(it)))))));
+        el('div', { class: 'wmx-rows' }, ...sec.items.map((it) => {
+          const row = el('div', { class: `wmx-setrow${it.showIf ? ' wmx-setrow--sub' : ''}`, ...(it.showIf ? { 'data-show-if': it.showIf } : {}) },
+            el('div', {}, el('strong', {}, it.label), el('small', {}, it.desc)), control(it));
+          if (it.showIf) row.hidden = !draft[it.showIf]; // réglage dépendant : caché tant que son interrupteur est désactivé
+          return row;
+        })))));
     };
     render();
 

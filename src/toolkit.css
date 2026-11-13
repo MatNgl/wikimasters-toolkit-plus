@@ -1090,3 +1090,7 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-rdonut-wrap.focus .seg:not(.on), .wmx-rdonut-wrap.focus .wmx-rdonut-row:not(.on) { opacity: .3; }
 .wmx-rdonut-row.on { background: rgb(var(--rgb) / .1); }
 @media (prefers-reduced-motion: reduce) { .wmx-rdonut .seg, .wmx-rdonut-row { transition: none; } }
+
+/* Réglage dépendant d'un interrupteur (showIf) : en retrait sous celui-ci (0.32.6) */
+.wmx-setrow--sub { padding-left: 32px; border-top-style: dashed; }
+.wmx-setrow--sub[hidden] { display: none; }

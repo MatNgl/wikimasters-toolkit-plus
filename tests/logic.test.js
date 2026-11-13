@@ -399,3 +399,14 @@ test('plus-values : périodes jour / semaine (lundi) / mois en heure locale, et 
   assert.equal(L.holdText(3 * 3600000), '3 h');
   assert.equal(L.holdText(72 * 3600000), '3 j');
 });
+
+test('assistant de vente : limite de mises en vente par carte sur 24 h réglable, ou sans limite', () => {
+  const now = 10 * 86400000;
+  const items = [{ card_id: 'a', title: 'A', rarity: 'R', count: 1, tags: [{ name: 'VENTE' }] }];
+  const log = { a: [now - 3600000, now - 7200000, now - 30 * 3600000] }; // 2 dans les dernières 24 h, 1 plus ancienne
+  const reason = (perDay) => L.autoSellPlan(items, { tags: ['VENTE'], now, log, perDay }).excluded[0]?.reason || 'eligible';
+  assert.equal(reason(2), 'perDay', '2 mises en vente sur 24 h : limite de 2 atteinte');
+  assert.equal(reason(3), 'eligible', 'limite de 3 : encore une');
+  assert.equal(reason(Infinity), 'eligible', 'sans limite');
+  assert.equal(reason(undefined), 'eligible', 'par défaut : 4');
+});

@@ -5,7 +5,7 @@
 // Tout passe par la file d'attente (mêmes gestes, même prix de départ que le bouton ⚡). Un seul onglet agit à la fois : celui qui prend
 // le verrou, et seulement tant que l'assistant est activé (un onglet où il est désactivé ne bloque jamais les autres).
 // Garde-fous : jamais une carte favorite ; une vente annulée à la main écarte la carte 12 h ; 2 échecs de suite l'écartent 6 h ;
-// jamais une carte dont le prix de départ dépasse le plafond choisi (500 W par défaut) ; au plus 4 mises en vente automatiques par carte
+// jamais une carte dont le prix de départ dépasse le plafond choisi (500 W par défaut) ; au plus N mises en vente automatiques par carte (réglage « Limiter les remises en vente », 4 par défaut, désactivable)
 // et par jour ; jamais plus d'enchères actives que le nombre choisi.
 // Visibilité : chaque passe publie son état : ligne dans la bulle des enchères, fenêtre « Détails » (pourquoi telle carte n'est pas
 // mise en vente, prochaines cartes), bouton « Lancer maintenant ».
@@ -22,8 +22,10 @@
   /** Raretés à vendre, dans l'ordre (vide : toutes). */
   const rarList = () => [...new Set(String(WMX.settings?.autoSellPriorityRar || '').split(/[\s,;]+/).map((r) => r.trim().toUpperCase()).filter(Boolean))];
   const strict = () => WMX.settings?.autoSellStrict !== false;
+  /** Mises en vente automatiques permises par carte sur 24 h glissantes : le réglage (1 à 50, 4 par défaut), ou sans limite s'il est désactivé. */
+  const relistMax = () => (WMX.settings?.autoSellRelistLimit === false ? Infinity : Math.max(1, Math.min(50, Math.round(Number(WMX.settings?.autoSellRelistMax) || 4))));
   const RNAME = { L: 'Légendaire', UR: 'Ultra rare', SR: 'Super rare', R: 'Rare', PC: 'Peu commune', C: 'Commune' };
-  const REASONS = { gone: 'plus dans votre collection (vendue ?)', favorite: 'favorite (verrouillée)', busy: 'déjà en vente ou en file', skipped: 'écartée temporairement', capped: 'trop chère pour l’assistant', perDay: 'limite de 4 mises en vente par jour', later: 'rareté suivante : attend la fin de la précédente' };
+  const REASONS = { gone: 'plus dans votre collection (vendue ?)', favorite: 'favorite (verrouillée)', busy: 'déjà en vente ou en file', skipped: 'écartée temporairement', capped: 'trop chère pour l’assistant', get perDay() { return `limite de ${relistMax()} mise${relistMax() > 1 ? 's' : ''} en vente par 24 h atteinte (réglable dans les paramètres)`; }, later: 'rareté suivante : attend la fin de la précédente' };
   const plural = (n, w) => `${n} ${w}${n > 1 ? 's' : ''}`;
   /** Cartes mises en vente par l'assistant qui peuvent encore revenir (en vente, ou revenues invendues et en attente de leur étiquette). */
   const pendingSales = () => Object.entries(retag.mem).filter(([id]) => WMX.quick.selling(id) || retag.queued.has(id)).map(([card_id, m]) => ({ card_id, rarity: m.rarity }));
@@ -90,7 +92,7 @@
       const active = WMX.quick.count();
       const free = Math.min(st.target - active, WMX.quick.max() - active);
       const busy = new Set(items.filter((it) => WMX.quick.stateOf(it.card_id) !== 'idle').map((it) => it.card_id));
-      const plan = WMX.logic.autoSellPlan(items, { tags: st.tags, busy, gone: (it) => WMX.quick.notOwned(it.card_id), skip: S.skip, log: S.log, now, perDay: 4, cap: st.cap, order: WMX.settings?.autoSellOrder, priorityRar: rarList(), strict: strict(), pending: pendingSales(), avg: (it) => WMX.prices.get(it.card_id, it.rarity)?.avg || 0 });
+      const plan = WMX.logic.autoSellPlan(items, { tags: st.tags, busy, gone: (it) => WMX.quick.notOwned(it.card_id), skip: S.skip, log: S.log, now, perDay: relistMax(), cap: st.cap, order: WMX.settings?.autoSellOrder, priorityRar: rarList(), strict: strict(), pending: pendingSales(), avg: (it) => WMX.prices.get(it.card_id, it.rarity)?.avg || 0 });
       // Les cartes que le jeu dit ne plus être à nous sont retirées de l'inventaire en mémoire (une seule fois).
       for (const e of plan.excluded) {
         if (e.reason !== 'gone' || S.purged.has(e.card_id)) continue;

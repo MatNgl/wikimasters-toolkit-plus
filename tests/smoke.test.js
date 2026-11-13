@@ -1812,3 +1812,36 @@ test('tableau de bord : Plus-values ouvert par défaut et en premier ; Collectio
   assert.ok(segs[0].classList.contains('on') && !segs[1].classList.contains('on'), 'survol : la part ressort');
   env.close();
 });
+
+test('réglages : « Limiter les remises en vente » (4 par défaut) ; le nombre n’est affiché que si la limite est activée, et il est enregistré', async () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  const { w, WMX } = env;
+  WMX.openSettings('Assistant de vente');
+  const row = (label) => [...w.document.querySelectorAll('.wmx-setrow')].find((r) => r.querySelector('strong')?.textContent === label);
+  const sw = row('Limiter les remises en vente').querySelector('.wmx-switch');
+  const nb = row('Mises en vente par carte (sur 24 h)');
+  assert.equal(sw.getAttribute('aria-checked'), 'true', 'activée par défaut (comportement d’avant : 4 par 24 h)');
+  assert.equal(nb.hidden, false);
+  assert.equal(nb.querySelector('input').value, '4');
+  const input = nb.querySelector('input');
+  input.value = '7'; input.dispatchEvent(new w.Event('change'));
+  sw.click();
+  assert.equal(nb.hidden, true, 'limite désactivée : le nombre est masqué');
+  sw.click();
+  assert.equal(nb.hidden, false, 'réactivée : il revient');
+  input.value = '999'; input.dispatchEvent(new w.Event('change'));
+  assert.equal(input.value, '50', 'borné à 50');
+  input.value = '7'; input.dispatchEvent(new w.Event('change'));
+  [...w.document.querySelectorAll('.wmx-modal footer .wmx-btn')].find((b) => b.textContent === 'Appliquer').click();
+  await sleep(300);
+  assert.equal(WMX.settings.autoSellRelistLimit, true);
+  assert.equal(WMX.settings.autoSellRelistMax, 7);
+  WMX.openSettings('Assistant de vente');
+  row('Limiter les remises en vente').querySelector('.wmx-switch').click();
+  [...w.document.querySelectorAll('.wmx-modal footer .wmx-btn')].find((b) => b.textContent === 'Appliquer').click();
+  await sleep(300);
+  assert.equal(WMX.settings.autoSellRelistLimit, false, 'sans limite');
+  WMX.openSettings('Assistant de vente');
+  assert.equal(row('Mises en vente par carte (sur 24 h)').hidden, true, 'rouvert : toujours masqué');
+  env.close();
+});
