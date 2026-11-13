@@ -105,6 +105,7 @@ function fakeGame(w, cards, { perPage = 50, failAfterDiscard = false, lateReload
     d.body.append(back);
   }
   render();
+  st.rerender = render;
   return st;
 }
 
@@ -471,6 +472,46 @@ test('défausse : une étiquette choisie la dernière fois qui n’existe plus (
   assert.match(dlg.querySelector('button.wmx-dc-tag').textContent, /Cartes sans étiquette/);
   assert.match(dlg.querySelector('.wmx-dc-sum').textContent, /35 exemplaires à défausser/, 'les C sans étiquette, pas « Aucune carte ne correspond »');
   assert.deepEqual([...(env.mem.discardPrefs.tags || [])], [], 'l’étiquette disparue est retirée des réglages');
+  env.close();
+});
+
+test('défausse en mode visible : quitter la page Collection en cours de route fait continuer la défausse en arrière-plan', async () => {
+  const cards = Array.from({ length: 40 }, (_, i) => ({ title: `Commune ${i}`, rarity: 'C' }));
+  const { env, w, WMX, game } = setup(cards, { perPage: 10, lateReload: 300 });
+  await WMX.features.find((f) => f.name === 'discard').init();
+  w.history.pushState({}, '', '/collection');
+  let opened = 0;
+  WMX.discard.frameFactory = async () => { opened += 1; return { d: w.document, w, frame: null, remove: () => {} }; }; // la fausse page joue la page invisible
+  const p = { rarities: ['C'], keepUnpriced: true };
+  const run = WMX.discard.start(WMX.discard.plan(p), { dry: false, visible: true, prefs: p });
+  await sleep(2500);
+  w.history.pushState({}, '', '/pulls'); // l'utilisateur va sur la page Paquets
+  await run;
+  assert.equal(opened, 1, 'une page invisible a pris le relais');
+  assert.equal(game.discarded.length, 40, `toutes les cartes sont défaussées : ${game.discarded.length}`);
+  const journal = (await WMX.journal.list()).map((e) => e.text).join(' | ');
+  assert.match(journal, /page Collection quittée : la défausse continue en arrière-plan/);
+  WMX.discard.frameFactory = null;
+  env.close();
+});
+
+test('défausse « tout défausser » : filtres du jeu remis à zéro en cours de route → réappliqués, et jamais une carte hors de la liste', async () => {
+  const cards = [];
+  for (let i = 0; i < 30; i++) cards.push({ title: `Autre ${i}`, rarity: 'C' }); // sans étiquette : hors de la liste, en tête de la vue « toutes »
+  for (let i = 0; i < 30; i++) cards.push({ title: `Test ${i}`, rarity: 'C', tags: TEST });
+  const { env, w, WMX, game } = setup(cards, { perPage: 10, lateReload: 400 });
+  await WMX.features.find((f) => f.name === 'discard').init();
+  WMX.prices.has = () => false;
+  const p = { rarities: [], tags: ['TEST'], useMax: false, keepOne: false, onlyNoImage: false, keepRecent: false, protectSale: false };
+  const pl = WMX.discard.plan(p);
+  assert.equal(pl.copies, 30);
+  const run = WMX.discard.start(pl, { dry: false, visible: true, prefs: p });
+  for (let i = 0; i < 200 && game.discarded.length < 10; i++) await sleep(100); // après la 1re défausse (page 1)
+  game.view = 'all'; game.rar.clear(); game.page = 0; game.sel.clear(); // le jeu remet ses filtres à zéro (retour sur la Collection)
+  game.rerender();
+  await run;
+  assert.equal(game.discarded.length, 30, `les 30 cartes TEST : ${game.discarded.length}`);
+  assert.ok(!game.discarded.some((t) => /Autre/.test(t)), 'aucune carte hors de l’étiquette');
   env.close();
 });
 

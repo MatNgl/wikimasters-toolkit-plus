@@ -364,6 +364,15 @@
     return listReady();
   }
 
+  /** Les filtres du jeu sont-ils toujours ceux de la défausse ? (le jeu les remet à zéro quand on quitte la Collection puis qu'on y revient) */
+  function filtersMatch(rarities, view) {
+    const menu = NATIVE.tagMenu();
+    if (!menu) return false;
+    const t = norm(menu.textContent);
+    const okView = view.kind === 'all' ? /^Toutes les étiquettes$/i.test(t) : view.kind === 'none' ? /^Sans étiquette$/i.test(t) : tagKey(t.replace(/\s*\(\d[\d\s ]*\)\s*$/, '')) === tagKey(view.tag);
+    const all = rarities.length >= 6;
+    return okView && NATIVE.rarityChips().every((b) => NATIVE.chipOn(b) === (all ? false : rarities.includes(norm(b.textContent))));
+  }
   /**
    * Filtres du jeu : raretés choisies (toutes : aucun bouton actif) et UNE vue d'étiquette (« Toutes les étiquettes », « Sans étiquette » ou « #NOM »).
    * Choisir l'option du menu relance aussi la lecture de la liste (utile après « le chargement a échoué »). Rend un message d'erreur, ou ''.
@@ -523,11 +532,14 @@
   /** Page Collection invisible (arrière-plan) ; `reload()` la recharge (état propre) et rend le nouveau document. Remplacée dans les essais. */
   async function openFrame() {
     const f = el('iframe', { class: 'wmx-sheet-frame wmx-dc-frame', src: '/collection#wmx-discard', title: 'Défausse', tabindex: '-1' }); // pas #wmx-auto : aucune confirmation n'est acceptée d'office
-    document.body.append(f);
+    // Gardée dans la page : si le jeu vide <body> en changeant de page, elle est remise (elle se recharge alors : voir relocate()).
+    document.body.append(WMX.dom.keepAttached ? WMX.dom.keepAttached(f) : f);
     const ready = () => waitFor(() => { try { return f.contentDocument?.readyState === 'complete' && f.contentDocument.querySelector('button[aria-label="Filtrer par étiquette"]') ? f : null; } catch (_) { return null; } }, 45000, 300);
-    if (!(await ready())) { f.remove(); return null; }
+    if (!(await ready())) { release(f); return null; }
     return {
-      d: f.contentDocument, w: f.contentWindow, frame: f, remove: () => f.remove(),
+      d: f.contentDocument, w: f.contentWindow, frame: f, remove: () => release(f),
+      /** Page remise après avoir été enlevée (elle s'est rechargée) : on attend qu'elle soit prête et on rend le nouveau document. */
+      async again() { return (await ready()) ? { d: f.contentDocument, w: f.contentWindow } : null; },
       async reload() { try { f.contentWindow.location.reload(); } catch (_) { return null; } await sleep(800); return (await ready()) ? { d: f.contentDocument, w: f.contentWindow } : null; },
     };
   }
@@ -657,8 +669,57 @@
       WMX.journal?.add('Défausse', `blocage levé après ${blockRounds} pause(s) de ${blockWaitS()} s : la défausse reprend`);
       blockRounds = 0;
     }
-    /** Un échec dû au blocage du jeu : on attend et on réessaie (vrai) ; sinon (ou « Arrêter ») la défausse s'arrête avec `msg` (faux). */
+    /**
+     * Avant chaque étape : la page pilotée est-elle toujours la bonne ? Rend 'ok' (rien à faire), 'moved' (on a changé de page ou rétabli les filtres :
+     * reprendre la lecture depuis la page 1) ou 'fail' (impossible de continuer).
+     *  - mode visible et page Collection quittée (navigation dans le jeu) : la défausse continue dans une page Collection invisible ;
+     *  - page invisible enlevée par le jeu puis remise (elle s'est rechargée) : on reprend sur le nouveau document ;
+     *  - filtres du jeu remis à zéro (retour sur la Collection) : on les réapplique.
+     */
+    let moving = false;
+    async function relocate(view) {
+      if (moving) return 'ok';
+      moving = true;
+      try {
+        if (!ctx && visible && !/^\/collection\/?$/.test(location.pathname)) {
+          showRun('vous avez quitté la page Collection : la défausse continue en arrière-plan…', 'warn');
+          WMX.journal?.add('Défausse', 'page Collection quittée : la défausse continue en arrière-plan');
+          WMX.notify?.({ kind: 'info', key: 'discard-bg', ms: 9000, title: 'La défausse continue en arrière-plan',
+            text: 'Vous avez quitté la page Collection : la défausse se poursuit dans une page invisible. Vous pouvez naviguer dans le jeu ; ne rechargez pas l’onglet (F5).' });
+          const c = await (WMX.discard.frameFactory || openFrame)();
+          if (!c) return 'fail';
+          ctx = c; D = c.d; W = c.w; run.frame = c.frame || null;
+          if (await applyFilters(rarities, view)) return 'fail';
+          await goFirst();
+          return 'moved';
+        }
+        if (run.frame && ctx?.again) {
+          if (!run.frame.isConnected) await waitFor(() => run.frame?.isConnected, 3000, 200); // remise dans la page sous 1 s (keepAttached)
+          let doc = null;
+          try { doc = run.frame.contentDocument; } catch (_) { doc = null; }
+          if (doc !== D) {
+            showRun('la page invisible a été rechargée : reprise de la défausse…', 'warn');
+            const r = await ctx.again();
+            if (!r) return 'fail';
+            D = r.d; W = r.w;
+            if (await applyFilters(rarities, view)) return 'fail';
+            await goFirst();
+            return 'moved';
+          }
+        }
+        if (NATIVE.tagMenu() && !NATIVE.dialog() && !filtersMatch(rarities, view)) { // filtres remis à zéro par le jeu
+          showRun('les filtres du jeu ont changé : on les remet…', 'warn');
+          if (await applyFilters(rarities, view)) return 'fail';
+          await goFirst();
+          return 'moved';
+        }
+        return 'ok';
+      } finally { moving = false; }
+    }
+    /** Un échec dû au blocage du jeu (ou à un changement de page) : on reprend (vrai) ; sinon (ou « Arrêter ») la défausse s'arrête avec `msg` (faux). */
     async function orRetry(view, msg) {
+      const where = await relocate(view);
+      if (where === 'moved') return true;
       if (blocked() && (await waitBlock(view))) return true;
       await abort(run.stop ? `arrêtée à votre demande : ${done(stats.copies)}.` : msg);
       return false;
@@ -670,11 +731,15 @@
      * Jamais plus que le total annoncé dans la confirmation. Rend '' si la vue est terminée, sinon le message d'arrêt (déjà affiché).
      */
     const isFav = (s) => !!(s.fav || s.item?.starred);
+    // Seules les cartes de la liste confirmée peuvent être cochées (garde-fou si les filtres du jeu ont changé entre-temps).
+    const planKeys = new Set(pl.cards.map((c) => `${norm(c.title)}|${c.rarity}`));
+    const inPlan = (s) => planKeys.has(`${s.title}|${s.rarity}`);
     async function fastView(view) {
       let page = 1;
       for (let guard = 0; guard < 3000; guard++) {
         if (run.stop) { await abort(`arrêtée à votre demande : ${done(stats.copies)}.`); return 'stop'; }
         if (stats.copies >= pl.copies) return ''; // tout ce qui était annoncé est défaussé
+        { const where = await relocate(view); if (where === 'moved') { page = 1; continue; } if (where === 'fail') { await abort(`la défausse n’a pas pu continuer en arrière-plan : ${done(stats.copies)}.`); return 'stop'; } }
         if (run.frame && !run.frame.isConnected) { finish(`la page en arrière-plan a été fermée : ${done(stats.copies)}.`, 'warn'); return 'stop'; }
         if (!(await humanGate())) { await abort('la vérification du jeu n’a pas été faite : arrêtée.'); return 'stop'; }
         if (blocked()) { if (await waitBlock(view)) { page = 1; continue; } await abort(`arrêtée à votre demande : ${done(stats.copies)}.`); return 'stop'; }
@@ -682,7 +747,8 @@
         run.prog.done = stats.copies;
         showRun(`${view.label} · page ${page} : lecture des cartes…`);
         const seen = await scanPage();
-        const free = seen.filter((s) => !isFav(s));
+        const free = seen.filter((s) => !isFav(s) && inPlan(s));
+        const strangers = seen.some((s) => !isFav(s) && !inPlan(s)); // cartes hors de la liste sur la page : jamais « Tout sélectionner »
         if (!free.length) { // plus que des favorites (ou page vide) : page suivante, ou fin
           const nx = NATIVE.next(); const pg = NATIVE.page();
           if (nx && (!pg || pg.n < pg.of)) { nx.click(); page += 1; await sleep(600); await waitFor(listReady, 15000, 200); await settled(); continue; }
@@ -694,7 +760,7 @@
         if (NATIVE.count() !== 0) await clearSelection();
         const all = NATIVE.selectAll();
         let lost = '';
-        if (all && pick.length === free.length) {
+        if (all && pick.length === free.length && !strangers) {
           all.click();
           if (!(await waitFor(() => (NATIVE.count() || 0) >= pick.length, 6000))) { if (await orRetry(view, `page ${page} : « Tout sélectionner » n’a pas coché les cartes. Rien n’a été défaussé sur cette page.`)) continue; return 'stop'; }
         } else {
@@ -750,6 +816,7 @@
         const ok = await waitFor(() => { if (blocked()) return 'blocked'; if (NATIVE.dialog()) return null; const b = NATIVE.banner(); return b && expect.test(norm(b.textContent)) && (b !== oldBanner || norm(b.textContent) !== oldText) ? b : null; }, 20000, 200)
           || (await waitFor(() => !NATIVE.dialog() && NATIVE.banner() && expect.test(norm(NATIVE.banner().textContent)), 2500, 200));
         if (ok === 'blocked' || !ok) {
+          if ((await relocate(view)) === 'moved') { page = 1; continue; }
           if (blocked()) { if (await waitBlock(view)) { page = 1; continue; } await abort(`arrêtée à votre demande : ${done(stats.copies)}.`); return 'stop'; }
           finish(`page ${page} : le jeu n’a pas confirmé la défausse (vérifiez votre collection). ${done(stats.copies)} avant.`, 'warn');
           return 'stop';
@@ -819,6 +886,7 @@
         for (let guard = 0; guard < 600; guard++) {
           if (run.stop) return abort(`arrêtée à votre demande : ${done(stats.copies)}.`);
           if (!remaining()) break;
+          { const where = await relocate(view); if (where === 'moved') { page = 1; continue; } if (where === 'fail') return abort(`la défausse n’a pas pu continuer en arrière-plan : ${done(stats.copies)}.`); }
           if (run.frame && !run.frame.isConnected) return finish(`la page en arrière-plan a été fermée : ${done(stats.copies)}.`, 'warn');
           if (!(await humanGate())) return abort('la vérification du jeu n’a pas été faite : arrêtée.');
           if (blocked()) { if (await waitBlock(view)) continue; return abort(`arrêtée à votre demande : ${done(stats.copies)}.`); } // le jeu bloque : pause de 30 s puis nouvel essai, autant de fois que nécessaire
@@ -894,6 +962,7 @@
           const ok = await waitFor(() => { if (blocked()) return 'blocked'; if (NATIVE.dialog()) return null; const b = NATIVE.banner(); return b && expect.test(norm(b.textContent)) && (b !== oldBanner || norm(b.textContent) !== oldText) ? b : null; }, 20000, 200)
             || (await waitFor(() => !NATIVE.dialog() && NATIVE.banner() && expect.test(norm(NATIVE.banner().textContent)), 2500, 200)); // même message qu'avant (même nombre) : la fenêtre fermée suffit
           if (ok === 'blocked' || !ok) { // refus « automatisation » : rien n'a été défaussé sur cette page ; pause, puis la page est relue et recochée
+            if ((await relocate(view)) === 'moved') { page = 1; continue; } // page quittée pendant la défausse : on reprend en arrière-plan (les cartes déjà parties n'y sont plus)
             if (blocked()) { if (await waitBlock(view)) continue; return abort(`arrêtée à votre demande : ${done(stats.copies)}.`); }
             return finish(`page ${page} : le jeu n’a pas confirmé la défausse (vérifiez votre collection). ${done(stats.copies)} avant.`, 'warn');
           }
