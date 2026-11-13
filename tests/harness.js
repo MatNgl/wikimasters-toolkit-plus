@@ -9,6 +9,7 @@ function createEnv({ fetchImpl, files, now } = {}) {
   const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://www.wiki-masters.com/collection', runScripts: 'outside-only', pretendToBeVisual: true });
   const w = dom.window;
   const mem = {};
+  const storeListeners = []; // chrome.storage.onChanged : déclenché à la main par les essais (fireStorage), comme un autre onglet qui écrit
   w.chrome = {
     runtime: { id: 'test', getManifest: () => ({ version: 'test', version_name: 'test' }), getURL: (p) => p },
     storage: {
@@ -16,7 +17,7 @@ function createEnv({ fetchImpl, files, now } = {}) {
         get: async (k) => (typeof k === 'string' ? (k in mem ? { [k]: JSON.parse(JSON.stringify(mem[k])) } : {}) : {}),
         set: async (o) => { for (const [k, v] of Object.entries(o)) mem[k] = JSON.parse(JSON.stringify(v)); },
       },
-      onChanged: { addListener() {} },
+      onChanged: { addListener(cb) { storeListeners.push(cb); } },
     },
   };
   if (fetchImpl) w.fetch = fetchImpl;
@@ -27,7 +28,8 @@ function createEnv({ fetchImpl, files, now } = {}) {
   const list = files || manifest.content_scripts[1].js.filter((f) => !/content\.js$/.test(f));
   for (const f of list) w.eval(`${fs.readFileSync(path.join(ROOT, f), 'utf8')}\n//# sourceURL=${f}`);
   w.WMX.settings = w.WMX.settings || {};
-  return { w, mem, WMX: w.WMX, close: () => w.close() };
+  const fireStorage = (changes) => storeListeners.forEach((cb) => { try { cb(changes, 'local'); } catch (_) { /* écouteur */ } });
+  return { w, mem, WMX: w.WMX, fireStorage, close: () => w.close() };
 }
 
 module.exports = { createEnv, ROOT };

@@ -156,7 +156,10 @@
     const info = byAuction.get(idOf(a));
     if (!info) { delete a.dataset.wmxMk; return; } // liste pas encore connue : sera reprise au prochain passage
     paint(a);
-    WMX.prices.keepFresh(info.card_id, info.endAt ?? Infinity); // jamais chargée ou de plus de 24 h : relue (repeinte à l'arrivée du prix)
+    // Carte à l'écran : sa moyenne passe devant toutes les autres demandes, dans l'ordre de la page (du haut vers le bas).
+    let top = Infinity;
+    try { top = a.getBoundingClientRect().top + (window.scrollY || 0); } catch (_) { /* hors page */ }
+    WMX.prices.keepFresh(info.card_id, top, { front: true }); // jamais chargée ou de plus de 24 h : relue (repeinte à l'arrivée du prix)
   }
 
   // --- Page d'UNE enchère (/marketplace/{id}) : moyenne du marché et verdict sous « Mise actuelle » ---------------------------
@@ -180,7 +183,7 @@
     const role = roleOf(id, info) === 'sale' ? 'sale' : 'buy';
     const p = WMX.prices.get(info.card_id, info.rarity);
     const waiting = !p && !WMX.prices.has(info.card_id);
-    WMX.prices.keepFresh(info.card_id, info.endAt ?? Infinity); // jamais chargée ou de plus de 24 h : relue, l'ancienne reste affichée
+    WMX.prices.keepFresh(info.card_id, 0, { front: true }); // la carte qu'on regarde : en tête de file ; jamais chargée ou de plus de 24 h : relue, l'ancienne reste affichée
     const f = WMX.prices.freshness(info.card_id);
     const n = waiting ? null : WMX.logic.priceNote(role, price, p);
     const sig = waiting ? 'wait' : [n.kind, n.avg, n.verdict, freshSig(info.card_id, f)].join('|');
@@ -192,11 +195,14 @@
     else { chip.className = 'wmx-dk ' + n.kind; chip.title = `${f.line}\n${n.title}`; chip.replaceChildren(el('span', { class: 'wmx-mk-avg' }, n.avg, freshIcon(f)), el('b', {}, n.verdict)); }
   }
 
+  let lastPath = '';
   async function scan() {
+    const entered = lastPath !== location.pathname; // on arrive sur cette page (par exemple retour d'une enchère vers la liste)
+    lastPath = location.pathname;
     if (isDetail()) { paintDetail(); paintDetailWatch(); return; }
     if (!/^\/marketplace\/?$/.test(location.pathname)) return;
     const list = anchors();
-    if (!list.length) return;
+    if (!list.length) { lastPath = ''; return; } // liste pas encore affichée : « l'arrivée » sera refaite au prochain passage
     if (!list.some((a) => byAuction.has(idOf(a))) && !fetched) { // le jeu n'a pas (encore) transmis la liste : même requête que lui
       fetched = true;
       try {
@@ -207,7 +213,7 @@
       } catch (err) { WMX.reportError?.('marché', 0, String(err?.message || err)); }
     }
     for (const a of list) {
-      if (a.dataset.wmxMk) continue;
+      if (a.dataset.wmxMk) { if (entered) onVisible(a); continue; } // retour sur la liste : moyennes chargées entre-temps (page d'une enchère, autre onglet) affichées aussitôt
       a.dataset.wmxMk = '1';
       io.observe(a);
     }

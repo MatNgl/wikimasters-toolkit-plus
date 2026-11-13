@@ -1718,3 +1718,35 @@ test('réglages : menu de gauche (une page par thème), brouillon gardé d’une
   assert.ok([...w.document.querySelectorAll('.wmx-modal--nav .wmx-sec h3')].some((h) => h.textContent === 'Mises automatiques'));
   env.close();
 });
+
+test('prix du Marché : les cartes à l’écran passent devant les autres demandes, dans l’ordre de la page ; une moyenne chargée dans un autre onglet vaut aussitôt', async () => {
+  const asked = [];
+  const env = createEnv({ fetchImpl: async (u) => {
+    const m = String(u).match(/\/cards\/([^/]+)\/sales/);
+    if (m) { asked.push(m[1]); await sleep(30); return json({ summary: { UR: { average: 50, count: 4, latest: 48 } } }); }
+    return json({});
+  } });
+  const { WMX } = env;
+  await WMX.prices.load();
+  // La bulle des enchères demande trois moyennes (ordre de fin d'enchère)…
+  WMX.prices.keepFresh('bulle1', 1000); WMX.prices.keepFresh('bulle2', 2000); WMX.prices.keepFresh('bulle3', 3000);
+  await sleep(200);
+  // …puis l'utilisateur regarde le Marché : deux cartes à l'écran (plus haute d'abord), et bulle3, déjà en file, apparaît aussi à l'écran.
+  WMX.prices.keepFresh('marche-bas', 900, { front: true });
+  WMX.prices.keepFresh('marche-haut', 100, { front: true });
+  await sleep(200);
+  WMX.prices.keepFresh('bulle3', 1500, { front: true });
+  for (let i = 0; i < 80 && asked.length < 5; i++) await sleep(100);
+  assert.equal(asked[0], 'bulle1', 'la première demande était déjà partie');
+  assert.deepEqual(asked.slice(1, 4), ['bulle3', 'marche-haut', 'marche-bas'], `cartes à l’écran d’abord (celle regardée en dernier en tête), du haut vers le bas : ${asked}`);
+  assert.equal(asked[4], 'bulle2', 'les autres demandes ensuite');
+  // Un autre onglet a chargé une moyenne : elle est connue ici sans nouvelle requête, et l'affichage est prévenu.
+  let told = 0;
+  WMX.prices.onProgress(() => { told += 1; });
+  env.fireStorage({ priceCache: { newValue: { autreOnglet: { t: Date.now(), s: { SR: { average: 42, count: 3, latest: 40 } } } } } });
+  assert.equal(WMX.prices.get('autreOnglet', 'SR')?.avg, 42);
+  assert.ok(told >= 1, 'les pages se repeignent');
+  assert.ok(!asked.includes('autreOnglet'));
+  await sleep(1700); // écriture du cache
+  env.close();
+});

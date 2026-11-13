@@ -172,23 +172,29 @@
     freshness(cardId) { return L.priceFreshness(WMX.prices.age(cardId), sched.pending.has(cardId)); },
     /**
      * Marché : garde la moyenne de cette carte à jour. Jamais chargée ou de plus de 24 h : relue (l'ancienne reste affichée en attendant).
-     * Les demandes sont regroupées puis servies dans l'ordre de `endAt` (les enchères qui finissent le plus tôt d'abord) ; une carte n'est pas
+     * Les demandes sont regroupées puis servies dans l'ordre de `order` (fin de l'enchère, ou position à l'écran) ; une carte n'est pas
      * redemandée plus d'une fois toutes les 10 minutes (si le jeu ne répond pas, on ne boucle pas).
+     * opts.front : la carte est À L'ÉCRAN (liste du Marché, page d'une enchère) : elle passe devant toutes les autres demandes (bulle des enchères,
+     * collection…), et une carte déjà en file remonte en tête quand on la regarde.
      */
-    keepFresh(cardId, endAt = Infinity) {
+    keepFresh(cardId, order = Infinity, opts = {}) {
       if (!cardId) return;
       const age = WMX.prices.age(cardId);
       if (age != null && age < L.MARKET_TTL) return;
-      if (sched.pending.has(cardId) || Date.now() - (fresh.asked.get(cardId) || 0) < 10 * 60000) return;
-      fresh.want.set(cardId, Math.min(Number.isFinite(endAt) ? endAt : Infinity, fresh.want.get(cardId) ?? Infinity));
-      clearTimeout(fresh.timer);
+      if (sched.pending.has(cardId)) { if (opts.front) schedule(cardId, true, true); return; }
+      if (Date.now() - (fresh.asked.get(cardId) || 0) < 10 * 60000) return;
+      const prev = fresh.want.get(cardId);
+      fresh.want.set(cardId, { k: Math.min(Number.isFinite(order) ? order : Infinity, prev?.k ?? Infinity), front: !!(opts.front || prev?.front) });
+      if (fresh.timer) return; // regroupement : départ peu après la PREMIÈRE demande (une rafale de repeintures ne le repousse plus)
       fresh.timer = setTimeout(async () => {
+        fresh.timer = null;
         await load();
-        const list = [...fresh.want.entries()].sort((a, b) => a[1] - b[1]);
+        const list = [...fresh.want.entries()].sort((a, b) => a[1].k - b[1].k);
         fresh.want.clear();
-        for (const [id] of list) { fresh.asked.set(id, Date.now()); schedule(id, true, false); }
+        for (const [id] of list.filter(([, w]) => !w.front)) { fresh.asked.set(id, Date.now()); schedule(id, true, false); }
+        for (const [id] of list.filter(([, w]) => w.front).reverse()) { fresh.asked.set(id, Date.now()); schedule(id, true, true); } // en tête, dans l'ordre de l'écran
         emit(); // les moyennes concernées passent à « actualisation en cours »
-      }, 300);
+      }, 120);
     },
     /** Âge du prix chargé pour cette carte (ms), ou null s'il n'a jamais été chargé. */
     age(cardId) { const t = cache?.[cardId]?.t; return Number.isFinite(t) ? Date.now() - t : null; },
@@ -231,4 +237,17 @@
     state: snapshot,
     latency: slow,
   };
+
+  // Une moyenne chargée dans un autre onglet du jeu (page d'une enchère ouverte à part, par exemple) vaut aussitôt ici : sans cela, chaque onglet
+  // gardait sa propre copie et la liste du Marché affichait encore « Moy. … » pour une carte déjà chargée ailleurs.
+  WMX.onStorage?.((c) => {
+    const nv = c.priceCache?.newValue;
+    if (!nv || !cache) return;
+    let changed = false;
+    for (const id in nv) {
+      const e = nv[id];
+      if (e && Number.isFinite(e.t) && (!cache[id] || e.t > cache[id].t)) { cache[id] = e; changed = true; }
+    }
+    if (changed) emit();
+  });
 })();
