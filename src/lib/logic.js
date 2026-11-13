@@ -270,7 +270,7 @@
      *   includeTagged: false (sans étiquette précise : les cartes étiquetées sont gardées), keepOne: garder 1 exemplaire (seulement les doublons),
      *   maxAvg: ne jamais défausser une carte dont la moyenne atteint ce montant (0 : pas de seuil), unpriced: 'keep' | 'discard' (prix jamais chargé),
      *   keepImage: garder les cartes avec image, onlyNoImage: seulement les cartes sans image, protectTags: [noms] jamais défaussées,
-     *   busy: Set(card_id) en vente ou en file, avg: (carte) => moyenne ou 0, priced: (carte) => vrai si le prix a été chargé (même « sans vente »)
+     *   busy: Set(card_id) en vente ou en file, trade: Set(id de ligne de la collection) proposées dans un échange en cours, avg: (carte) => moyenne ou 0, priced: (carte) => vrai si le prix a été chargé (même « sans vente »)
      * }.
      * Jamais une favorite, jamais une carte en vente ou en file. Rend { cards: [{ ...carte, copies, avg }], copies, value, byRar: { R: exemplaires }, kept: { raison: n } }.
      */
@@ -289,6 +289,7 @@
         const a = avg(it);
         let why = null;
         if (it.starred) why = 'favorite';
+        else if (o.trade && (o.trade.has(it.id) || o.trade.has(it.card_id))) why = 'trade'; // dans un échange en cours : le jeu ne la défausserait pas
         else if (o.busy && o.busy.has(it.card_id)) why = 'busy';
         else if (names.some((n) => protect.has(n))) why = 'protected';
         else if (o.keepImage && it.image) why = 'image';

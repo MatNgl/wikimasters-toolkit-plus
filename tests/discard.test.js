@@ -110,7 +110,7 @@ function fakeGame(w, cards, { perPage = 50, failAfterDiscard = false, lateReload
 }
 
 function setup(cards, opts) {
-  const env = createEnv({ fetchImpl: async () => json({}) });
+  const env = createEnv({ fetchImpl: opts?.fetchImpl || (async () => json({})) });
   const { w, WMX } = env;
   const items = cards.map((c, i) => ({ id: `row${i}`, card_id: `id${i}`, title: c.title, rarity: c.rarity, count: c.count || 1, starred: !!c.starred && !c.domOnlyFav, image: c.image ?? 'x.jpg', tags: c.tags || [], at: '' }));
   WMX.inventory.items = () => items;
@@ -532,6 +532,30 @@ for (const fast of [false, true]) {
     assert.doesNotMatch(txt, /au lieu de|arrêtée/, 'pas d’arrêt');
     assert.match(txt, /13 exemplaires défaussés/);
     assert.match(txt, /1 carte gardée par le jeu/);
+    env.close();
+  });
+}
+
+for (const fast of [false, true]) {
+  test(`défausse${fast ? ' « tout défausser »' : ''} : une carte proposée dans un échange en cours est mise de côté dès le départ (« en échange »), jamais cochée`, async () => {
+    const cards = Array.from({ length: 8 }, (_, i) => ({ title: `C ${i}`, rarity: 'C', image: '' }));
+    cards[2].locked = true; // le jeu ne la défausserait pas
+    const trades = { trades: [{ id: 't1', status: 'pending', items: [{ id: 'i1', user_card_id: 'row2', card_id: 'id2', offered_by: 'moi' }] }] };
+    const { env, w, WMX, game } = setup(cards, { fetchImpl: async (u) => json(String(u).includes('/api/trades') ? trades : {}) });
+    await WMX.features.find((f) => f.name === 'discard').init();
+    const p = fast ? { rarities: ['C'], useMax: false, keepOne: false, onlyNoImage: false, keepRecent: false, protectSale: false }
+      : { rarities: ['C'], useMax: false, onlyNoImage: true, keepUnpriced: true };
+    WMX.discard.openPicker();
+    for (let i = 0; i < 20 && !/en échange/.test(w.document.querySelector('.wmx-dc-sum')?.textContent || ''); i++) await sleep(100);
+    w.document.querySelector('.wmx-dc .wmx-dlg-x').click();
+    const pl = WMX.discard.plan(p);
+    assert.equal(pl.copies, 7, 'la carte en échange n’est pas prévue');
+    assert.equal(pl.kept.trade, 1);
+    await WMX.discard.start(pl, { dry: false, visible: true, prefs: p });
+    assert.equal(game.discarded.length, 7);
+    assert.ok(!game.discarded.includes('C 2'));
+    const txt = w.document.querySelector('.wmx-dc-run').textContent;
+    assert.doesNotMatch(txt, /gardée par le jeu|arrêtée|au lieu de/, 'aucune surprise : elle n’a jamais été cochée');
     env.close();
   });
 }

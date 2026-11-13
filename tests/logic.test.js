@@ -312,6 +312,10 @@ test('défausse par critères : raretés, étiquette, cartes étiquetées, doubl
   assert.deepEqual(all.byRar, { C: 5 });
   assert.equal(all.kept.busy, 1); assert.equal(all.kept.favorite, 1);
   assert.equal(L.discardPlan(items, { ...base, rarities: [] }).copies, 0, 'ni rareté ni étiquette choisie : rien');
+  const withRows = items.map((it, i) => ({ ...it, id: `row${i}` }));
+  const tr = L.discardPlan(withRows, { ...base, unpriced: 'discard', trade: new Set(['row0']) });
+  assert.ok(!tr.cards.some((c) => c.card_id === 'c1'), 'carte proposée dans un échange en cours : jamais défaussée');
+  assert.equal(tr.kept.trade, 1);
   const tagged = [...items, card('u2', 'UR', { tags: [{ name: 'animaux' }] }), card('r1', 'R', { tags: [{ name: 'Animaux' }] })];
   assert.equal(L.discardPlan(tagged, { ...base, rarities: [], tags: ['animaux'], unpriced: 'discard' }).cards.map((c) => c.card_id).sort().join(','), 'c3,r1,u2',
     'aucune rareté mais une étiquette : toutes les raretés de cette étiquette');

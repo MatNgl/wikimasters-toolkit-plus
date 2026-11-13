@@ -18,6 +18,21 @@
   const run = { on: false, stop: false };
   const S = { tagOpen: false }; // menu des étiquettes ouvert dans la fenêtre de sélection
 
+  // ---- échanges en cours ----
+  // Une carte proposée dans un échange en attente ne peut pas être défaussée : on la met de côté dès le départ (« Gardées : N en échange »).
+  // GET /api/trades?active=1 : items[].user_card_id = ligne de la collection. Relu à l'ouverture de la fenêtre et au lancement ; aussi capté quand le jeu le demande.
+  const trades = { ids: new Set(), at: 0 };
+  function setTrades(list) {
+    const ids = new Set();
+    for (const t of list || []) if (!t.status || /pending|active|open/i.test(String(t.status))) for (const it of t.items || []) { if (it.user_card_id) ids.add(it.user_card_id); }
+    trades.ids = ids; trades.at = Date.now();
+  }
+  async function loadTrades() {
+    try { const r = await fetch('/api/trades?active=1'); if (r.ok) setTrades((await r.json())?.trades); } catch (_) { /* jeu injoignable : le garde-fou de la fenêtre du jeu reste */ }
+    return trades.ids;
+  }
+  WMX.onApi?.(({ path, method, data }) => { if (path === '/api/trades' && method === 'GET' && Array.isArray(data?.trades)) setTrades(data.trades); });
+
   // ---- quelles cartes ----
   const saleTags = () => String(WMX.settings?.autoSellTags || '').split(',').map((t) => t.trim()).filter(Boolean);
   /** Étiquettes choisies qui existent encore dans la collection (une étiquette vidée par une défausse, ou supprimée, est ignorée). */
@@ -39,7 +54,7 @@
       // sinon gardée pour l'instant (« attendre » et « en dernier » chargent son prix pendant la défausse, voir start()).
       unpriced: !p.useMax || unpricedMode(p) === 'discard' ? 'discard' : 'keep', onlyNoImage: p.onlyNoImage, busy,
       protectTags: [...(p.protectTags || []), ...(p.protectSale ? saleTags() : [])],
-      avg: (it) => WMX.prices.get(it.card_id, it.rarity)?.avg || 0, priced: (it) => WMX.prices.has(it.card_id),
+      avg: (it) => WMX.prices.get(it.card_id, it.rarity)?.avg || 0, priced: (it) => WMX.prices.has(it.card_id), trade: trades.ids,
     });
     const inScope = recent.filter((it) => (p.rarities.length ? p.rarities.includes(it.rarity) : (p.tags || []).length > 0)).length;
     if (inScope) res.kept.recent = inScope;
@@ -48,9 +63,9 @@
   /** Cartes au prix jamais chargé : 'keep' (gardées), 'discard' (défaussées), 'wait' (prix chargés avant de commencer), 'last' (traitées à la fin). */
   const unpricedMode = (p) => (['keep', 'discard', 'wait', 'last'].includes(p.unpriced) ? p.unpriced : p.keepUnpriced === false ? 'discard' : 'keep');
   const UNPRICED = [['keep', 'Les garder'], ['wait', 'Attendre leur prix (chargé avant de commencer)'], ['last', 'Les traiter en dernier (prix chargé pendant la défausse)'], ['discard', 'Les défausser aussi']];
-  const KEPT = { favorite: 'favorites', busy: 'en vente ou en file', protected: 'étiquette protégée', image: 'avec image', value: 'au-dessus du seuil', unpriced: 'prix jamais chargé', single: 'un seul exemplaire', recent: 'obtenues depuis moins de 24 h' };
+  const KEPT = { favorite: 'favorites', trade: 'en échange', busy: 'en vente ou en file', protected: 'étiquette protégée', image: 'avec image', value: 'au-dessus du seuil', unpriced: 'prix jamais chargé', single: 'un seul exemplaire', recent: 'obtenues depuis moins de 24 h' };
   /** « Tout défausser » : aucune option active et rien de gardé hormis les favorites (le jeu ne les défausse jamais) : le filtre du jeu donne exactement la liste. */
-  const isFastPlan = (pl, p) => !p.keepOne && !p.useMax && !p.onlyNoImage && !p.keepRecent && pl.copies > 0 && Object.entries(pl.kept || {}).every(([k, n]) => !n || k === 'favorite');
+  const isFastPlan = (pl, p) => !p.keepOne && !p.useMax && !p.onlyNoImage && !p.keepRecent && pl.copies > 0 && Object.entries(pl.kept || {}).every(([k, n]) => !n || k === 'favorite' || k === 'trade');
   /** Cartes au prix inconnu qui seront vérifiées (prix chargé avant ou pendant la défausse) : elles comptent pour pouvoir continuer. */
   const toCheck = (pl, p) => (p.useMax && ['wait', 'last'].includes(unpricedMode(p)) ? (pl.unpricedCards || []).length : 0);
   /** Durée estimée du chargement de n prix (une requête toutes les ~0,8 s en moyenne). */
@@ -202,6 +217,7 @@
     // Cartes étiquetées (ou désétiquetées) depuis la dernière lecture : une requête donne le nombre de cartes de chaque étiquette, et seules celles
     // dont le nombre a changé sont relues ; la fenêtre se met à jour toute seule.
     WMX.inventory.syncTagged?.([...new Set([...tagList().map((t) => t.name), ...(prefs.tags || [])])]);
+    loadTrades().then(() => { if (back.isConnected && !typing()) render(); });
     // Cartes lues ou prix arrivés : la fenêtre se met à jour, mais jamais pendant une saisie (seuil, liste « prix inconnu ») : après.
     let later = false;
     const typing = () => dlg.contains(document.activeElement) && /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName) && document.activeElement.type !== 'checkbox';
@@ -568,6 +584,7 @@
   async function start(pl, { dry, visible = false, prefs: p = prefs }) {
     if (run.on) return;
     if (visible && !/^\/collection\/?$/.test(location.pathname)) return WMX.toast?.('Mode visible : ouvrez la page Collection pour lancer la défausse.', 5000);
+    await loadTrades();
     run.on = true; run.stop = false; run.dry = dry; run.prog = { done: 0, total: pl.copies }; run.frame = null;
     let ctx = null;
     if (visible) { D = document; W = window; } else {
@@ -732,6 +749,7 @@
      * Jamais plus que le total annoncé dans la confirmation. Rend '' si la vue est terminée, sinon le message d'arrêt (déjà affiché).
      */
     const isFav = (s) => !!(s.fav || s.item?.starred);
+    const inTrade = (s) => !!(s.item && trades.ids.has(s.item.id)); // proposée dans un échange en cours (relu au lancement)
     // Seules les cartes de la liste confirmée peuvent être cochées (garde-fou si les filtres du jeu ont changé entre-temps).
     const planKeys = new Set(pl.cards.map((c) => `${norm(c.title)}|${c.rarity}`));
     const inPlan = (s) => planKeys.has(`${s.title}|${s.rarity}`);
@@ -752,8 +770,8 @@
         showRun(`${view.label} · page ${page} : lecture des cartes…`);
         const seen = await scanPage();
         if (suspects) { for (const x of seen) { const k = `${x.title}|${x.rarity}`; if (suspects.has(k)) refusedKeys.add(k); } suspects = null; }
-        const free = seen.filter((s) => !isFav(s) && inPlan(s) && !refusedKeys.has(`${s.title}|${s.rarity}`));
-        const strangers = seen.some((s) => !isFav(s) && (!inPlan(s) || refusedKeys.has(`${s.title}|${s.rarity}`))); // cartes hors de la liste sur la page : jamais « Tout sélectionner »
+        const free = seen.filter((s) => !isFav(s) && !inTrade(s) && inPlan(s) && !refusedKeys.has(`${s.title}|${s.rarity}`));
+        const strangers = seen.some((s) => !isFav(s) && (inTrade(s) || !inPlan(s) || refusedKeys.has(`${s.title}|${s.rarity}`))); // cartes hors de la liste sur la page : jamais « Tout sélectionner »
         if (!free.length) { // plus que des favorites (ou page vide) : page suivante, ou fin
           const nx = NATIVE.next(); const pg = NATIVE.page();
           if (nx && (!pg || pg.n < pg.of)) { nx.click(); page += 1; await sleep(600); await waitFor(listReady, 15000, 200); await settled(); continue; }
@@ -910,7 +928,7 @@
           run.prog.done = stats.copies;
           showRun(`${view.label} · page ${page} : lecture des cartes…`);
           const seen = await scanPage();
-          const targets = seen.filter((s) => left.get(`${s.title}|${s.rarity}`)?.copies > 0);
+          const targets = seen.filter((s) => left.get(`${s.title}|${s.rarity}`)?.copies > 0 && !inTrade(s)); // jamais une carte en échange en cours
           if (!targets.length) { if (!(await advance())) break; continue; }
           // Cocher : « Tout sélectionner (page) » puis décocher les cartes gardées si la page est surtout à défausser, sinon carte par carte.
           showRun(`${view.label} · page ${page} : sélection de ${plural(targets.length, 'carte')}…`);
