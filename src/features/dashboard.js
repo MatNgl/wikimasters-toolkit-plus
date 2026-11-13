@@ -8,7 +8,7 @@
   let page = null;
   let body = null;
   let range = 30; // période du graphique en jours (0 = tout)
-  let tab = 'collection'; // onglet : 'collection' (valeur, raretés, top 10) ou 'profits' (plus-values, ledger.js)
+  let tab = 'profits'; // onglet : 'profits' (plus-values, ledger.js ; ouvert par défaut) ou 'collection' (valeur, raretés, top 10)
   let priceBar = null;
   let tabsEl = null;
 
@@ -192,6 +192,40 @@
     return box;
   }
 
+  const RNAME = { L: 'Légendaire', UR: 'Ultra rare', SR: 'Super rare', R: 'Rare', PC: 'Peu commune', C: 'Commune' };
+  /** Valeur par rareté en anneau : une part par rareté (proportionnelle à sa valeur), le total au centre, la légende à côté. */
+  function rarityDonut(byR) {
+    const parts = R.map((r) => ({ r, v: Math.max(0, byR?.[r] || 0) }));
+    const total = parts.reduce((n, x) => n + x.v, 0);
+    const size = 220, rad = 82, sw = 30, c = size / 2;
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(svgNS, 'svg');
+    svg.setAttribute('viewBox', `0 0 ${size} ${size}`); svg.setAttribute('class', 'wmx-rdonut'); svg.setAttribute('role', 'img');
+    svg.setAttribute('aria-label', `Valeur par rareté, total ${fmt(total)} W`);
+    let html = `<circle class="track" cx="${c}" cy="${c}" r="${rad}" stroke-width="${sw}"/>`;
+    let acc = 0;
+    const gap = total ? 0.35 : 0; // petit espace entre les parts (en % du tour)
+    for (const x of parts) {
+      if (!x.v) continue;
+      const pct = (x.v / total) * 100;
+      const len = Math.max(0.01, pct - (pct > gap * 2 ? gap : 0));
+      html += `<circle class="seg" data-r="${x.r}" cx="${c}" cy="${c}" r="${rad}" stroke-width="${sw}" pathLength="100" stroke="rgb(${WMX.RARITY_RGB[x.r]})" stroke-dasharray="${len.toFixed(3)} ${(100 - len).toFixed(3)}" stroke-dashoffset="${(-acc).toFixed(3)}" transform="rotate(-90 ${c} ${c})"><title>${RNAME[x.r]} : ${fmt(x.v)} W (${pct.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %)</title></circle>`;
+      acc += pct;
+    }
+    html += `<text class="tot" x="${c}" y="${c - 2}">${fmtAxis(total)} W</text><text class="sub" x="${c}" y="${c + 18}">valeur estimée</text>`;
+    svg.innerHTML = html;
+    const legend = el('div', { class: 'wmx-rdonut-legend' }, ...parts.map((x) => el('div', { class: `wmx-rdonut-row${x.v ? '' : ' zero'}`, 'data-r': x.r, style: `--rgb:${WMX.RARITY_RGB[x.r]}` },
+      el('i', {}), el('b', {}, x.r), el('span', {}, RNAME[x.r]),
+      el('small', {}, total ? `${(x.v / total * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %` : '—'),
+      el('strong', {}, `${fmt(x.v)} W`))));
+    const box = el('div', { class: 'wmx-rdonut-wrap' }, svg, legend);
+    // Survol : la part et sa ligne de légende ressortent ensemble.
+    const focus = (r) => { box.classList.toggle('focus', !!r); box.querySelectorAll('[data-r]').forEach((n) => n.classList.toggle('on', n.dataset.r === r)); };
+    box.addEventListener('mouseover', (e) => { const r = e.target.closest?.('[data-r]')?.dataset.r; focus(r || null); });
+    box.addEventListener('mouseleave', () => focus(null));
+    return box;
+  }
+
   async function render() {
     if (!body) return;
     paintTabs();
@@ -210,9 +244,7 @@
         metric('Cartes uniques', fmt(t.total)),
         metric('Prix chargés', `${t.total ? Math.round((t.loaded / t.total) * 100) : 0} %`, t.loaded >= t.total && t.total ? 'Tous les prix sont chargés' : 'Chargez les raretés manquantes')),
       el('div', { class: 'wmx-dash-grid' },
-        el('div', { class: 'wmx-panelbox' }, el('h4', {}, 'Valeur par rareté'),
-          el('div', { class: 'wmx-stackbar' }, ...R.map((r) => el('i', { style: `flex:${t.byR[r] || 0.0001};background:rgb(${WMX.RARITY_RGB[r]})` }))),
-          ...R.map((r) => el('div', { class: 'wmx-row2', style: `--rgb:${WMX.RARITY_RGB[r]}` }, el('b', {}, r), el('span', {}, `${fmt(t.byR[r])} W`)))),
+        el('div', { class: 'wmx-panelbox wmx-rdonutbox' }, el('h4', {}, 'Valeur par rareté'), rarityDonut(t.byR)),
         el('div', { class: 'wmx-panelbox' }, el('h4', {}, 'Top 10 des plus chères'),
           ...(top.length ? top.map((it, i) => el('div', { class: 'wmx-top-row', style: `--rgb:${WMX.RARITY_RGB[it.rarity]}` },
             el('span', { class: 'wmx-top-n' }, String(i + 1)),
@@ -239,7 +271,7 @@
   /** Onglets « Collection » / « Plus-values » de l'en-tête. */
   function paintTabs() {
     if (!tabsEl) return;
-    tabsEl.replaceChildren(...[['collection', 'Collection'], ['profits', 'Plus-values']].map(([v, label]) => {
+    tabsEl.replaceChildren(...[['profits', 'Plus-values'], ['collection', 'Collection']].map(([v, label]) => {
       const b = el('button', { type: 'button', class: 'wmx-seg-btn', 'aria-pressed': String(tab === v) }, label);
       b.addEventListener('click', () => { if (tab === v) return; tab = v; if (v === 'profits') WMX.ledger?.refresh(); render(); });
       return b;

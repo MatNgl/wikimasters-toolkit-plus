@@ -245,7 +245,7 @@ test('tableau de bord : courbe avec axes et valeurs, tableau jour par jour, prix
     '2026-11-03': { value: 11800, priced: 95, loaded: 100, total: 100 },
   };
   WMX.features.find((f) => f.name === 'dashboard').init();
-  await WMX.dashboard.open();
+  await WMX.dashboard.show('collection');
   await sleep(300);
   const svg = w.document.querySelector('.wmx-vchart');
   assert.ok(svg, 'courbe affichée');
@@ -1764,7 +1764,7 @@ test('tableau de bord : courbe de la collection estimée jour par jour (date d�
   WMX.inventory.ensure = async () => {};
   WMX.inventory.price = (it) => ({ a: { avg: 1000 }, b: { avg: 100 }, c: { avg: 50 } }[it.card_id]);
   WMX.inventory.totals = () => ({ value: 1250, total: 3, loaded: 3, priced: 3, byR: { L: 1250 } });
-  await WMX.dashboard.open();
+  await WMX.dashboard.show('collection');
   await sleep(100);
   const box = w.document.querySelector('.wmx-vbox');
   assert.ok(box, 'bloc de la valeur');
@@ -1780,5 +1780,35 @@ test('tableau de bord : courbe de la collection estimée jour par jour (date d�
   assert.ok(!tip.hidden);
   assert.match(tip.textContent, /≈ 1\s?200 W/, 'A (1 000) + 2 × B (100) ce jour-là');
   assert.match(tip.textContent, /2 cartes obtenues ce jour-là · ≈ 200 W/);
+  env.close();
+});
+
+test('tableau de bord : Plus-values ouvert par défaut et en premier ; Collection : valeur par rareté en anneau avec légende (valeur et part)', async () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  const { w, WMX } = env;
+  WMX.inventory.ensure = async () => {};
+  WMX.inventory.totals = () => ({ value: 1000, total: 4, loaded: 4, priced: 4, byR: { L: 600, SR: 300, C: 100 } });
+  await WMX.dashboard.open();
+  await sleep(150);
+  const tabs = [...w.document.querySelectorAll('.wmx-dash-tabs button')].map((b) => b.textContent.trim()).filter(Boolean);
+  assert.equal(tabs[0], 'Plus-values', 'Plus-values en premier');
+  assert.ok(!w.document.querySelector('.wmx-rdonut'), 'onglet Plus-values ouvert, pas la collection');
+  await WMX.dashboard.show('collection');
+  await sleep(150);
+  const donut = w.document.querySelector('.wmx-rdonut');
+  assert.ok(donut, 'anneau affiché');
+  assert.ok(!w.document.querySelector('.wmx-stackbar'), 'plus de barre empilée');
+  const segs = [...donut.querySelectorAll('.seg')];
+  assert.deepEqual(segs.map((s) => s.dataset.r), ['L', 'SR', 'C'], 'une part par rareté qui a de la valeur');
+  assert.match(donut.textContent, /1\s?000 W/, 'total au centre');
+  const rows = [...w.document.querySelectorAll('.wmx-rdonut-row')];
+  assert.equal(rows.length, WMX.RARITIES.length, 'toutes les raretés dans la légende');
+  const L = rows.find((r) => r.dataset.r === 'L');
+  assert.match(L.textContent, /Légendaire/);
+  assert.match(L.textContent, /60 %/);
+  assert.match(L.textContent, /600 W/);
+  assert.ok(rows.find((r) => r.dataset.r === 'UR').classList.contains('zero'), 'rareté sans valeur grisée');
+  L.dispatchEvent(new w.MouseEvent('mouseover', { bubbles: true }));
+  assert.ok(segs[0].classList.contains('on') && !segs[1].classList.contains('on'), 'survol : la part ressort');
   env.close();
 });

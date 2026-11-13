@@ -1070,3 +1070,23 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-lg-tip-main { display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap; margin: 2px 0 3px; }
 .wmx-lg-tip-main small { color: #cfe0d7 !important; }
 .wmx-lg-tip { width: 270px; }
+
+/* ===== Tableau de bord : valeur par rareté en anneau (0.32.5) ===== */
+.wmx-rdonutbox { display: flex; flex-direction: column; }
+.wmx-rdonut-wrap { flex: 1; display: flex; align-items: center; justify-content: center; gap: 24px 32px; flex-wrap: wrap; padding: 6px 4px; }
+.wmx-rdonut { width: min(240px, 100%); height: auto; flex: none; }
+.wmx-rdonut .track { fill: none; stroke: #ffffff0a; }
+.wmx-rdonut .seg { fill: none; transition: opacity .15s ease, stroke-width .15s ease; cursor: default; }
+.wmx-rdonut .tot { fill: #fff; font: 800 24px Outfit, system-ui, sans-serif; text-anchor: middle; }
+.wmx-rdonut .sub { fill: #7f9a8d; font: 600 11.5px Outfit, system-ui, sans-serif; text-anchor: middle; }
+.wmx-rdonut-legend { flex: 1 1 240px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.wmx-rdonut-row { display: grid; grid-template-columns: 12px 30px minmax(0, 1fr) 54px auto; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 9px; font-size: 13px; font-variant-numeric: tabular-nums; transition: background .15s ease, opacity .15s ease; }
+.wmx-rdonut-row i { width: 10px; height: 10px; border-radius: 3px; background: rgb(var(--rgb)); }
+.wmx-rdonut-row b { color: rgb(var(--rgb)); font-weight: 800; }
+.wmx-rdonut-row span { color: #b9cbc2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wmx-rdonut-row small { color: #8fa89c; text-align: right; }
+.wmx-rdonut-row strong { color: #fff; text-align: right; }
+.wmx-rdonut-row.zero { opacity: .45; }
+.wmx-rdonut-wrap.focus .seg:not(.on), .wmx-rdonut-wrap.focus .wmx-rdonut-row:not(.on) { opacity: .3; }
+.wmx-rdonut-row.on { background: rgb(var(--rgb) / .1); }
+@media (prefers-reduced-motion: reduce) { .wmx-rdonut .seg, .wmx-rdonut-row { transition: none; } }
