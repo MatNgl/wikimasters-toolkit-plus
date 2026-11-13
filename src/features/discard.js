@@ -599,7 +599,8 @@
     // Exemplaires restants par carte (clé titre|rareté, comme la page du jeu les affiche).
     const left = new Map(pl.cards.map((c) => [`${norm(c.title)}|${c.rarity}`, { ...c }]));
     const remaining = () => [...left.values()].some((c) => c.copies > 0);
-    const stats = { copies: 0, rounds: 0, reward: 0 };
+    const stats = { copies: 0, rounds: 0, reward: 0, refused: 0 }; // refused : cartes cochées que le jeu a gardées d'office (échange en cours…)
+    const refusedTail = () => (stats.refused ? ` · ${plural(stats.refused, 'carte gardée', 'cartes gardées')} par le jeu (échange en cours, carte protégée…)` : '');
     const label = dry ? 'Essai à blanc' : 'Défausse';
     const rarities = (p.rarities || []).length ? [...p.rarities] : [...new Set([...pl.cards, ...(pl.unpricedCards || [])].map((c) => c.rarity))]; // aucune rareté cochée : celles des cartes concernées
     // Mode « tout défausser » : aucune option, et le plan ne garde rien d'autre que les favorites → le filtre du jeu suffit (voir fastView).
@@ -734,6 +735,9 @@
     // Seules les cartes de la liste confirmée peuvent être cochées (garde-fou si les filtres du jeu ont changé entre-temps).
     const planKeys = new Set(pl.cards.map((c) => `${norm(c.title)}|${c.rarity}`));
     const inPlan = (s) => planKeys.has(`${s.title}|${s.rarity}`);
+    const refusedKeys = new Set(); // cartes que le jeu refuse de défausser (vu dans sa fenêtre) : laissées de côté
+    const planCopies = new Map(pl.cards.map((c) => [`${norm(c.title)}|${c.rarity}`, c.copies]));
+    let suspects = null; // après une défausse où le jeu a gardé des cartes : celles (à un seul exemplaire) qui restent sur la page sont les gardées
     async function fastView(view) {
       let page = 1;
       for (let guard = 0; guard < 3000; guard++) {
@@ -747,8 +751,9 @@
         run.prog.done = stats.copies;
         showRun(`${view.label} · page ${page} : lecture des cartes…`);
         const seen = await scanPage();
-        const free = seen.filter((s) => !isFav(s) && inPlan(s));
-        const strangers = seen.some((s) => !isFav(s) && !inPlan(s)); // cartes hors de la liste sur la page : jamais « Tout sélectionner »
+        if (suspects) { for (const x of seen) { const k = `${x.title}|${x.rarity}`; if (suspects.has(k)) refusedKeys.add(k); } suspects = null; }
+        const free = seen.filter((s) => !isFav(s) && inPlan(s) && !refusedKeys.has(`${s.title}|${s.rarity}`));
+        const strangers = seen.some((s) => !isFav(s) && (!inPlan(s) || refusedKeys.has(`${s.title}|${s.rarity}`))); // cartes hors de la liste sur la page : jamais « Tout sélectionner »
         if (!free.length) { // plus que des favorites (ou page vide) : page suivante, ou fin
           const nx = NATIVE.next(); const pg = NATIVE.page();
           if (nx && (!pg || pg.n < pg.of)) { nx.click(); page += 1; await sleep(600); await waitFor(listReady, 15000, 200); await settled(); continue; }
@@ -792,15 +797,24 @@
         const outside = (p.rarities || []).length ? Object.keys(got).filter((r) => got[r] && !p.rarities.includes(r)) : [];
         const wantRar = {};
         for (const s of pick) wantRar[s.rarity] = (wantRar[s.rarity] || 0) + 1;
-        if (total !== pick.length || outside.length) {
+        // Jamais plus que les cartes cochées, jamais une rareté non choisie ; moins, c'est le jeu qui garde d'office certaines cartes (sans danger).
+        if (total > pick.length || outside.length || Object.keys(got).some((r) => (got[r] || 0) > (wantRar[r] || 0))) {
           cancelDialog(dlg);
           await abort(`page ${page} : le jeu s’apprête à défausser ${byRarText(got) || '?'} au lieu de ${byRarText(wantRar) || plural(pick.length, 'carte')}${outside.length ? ` (rareté non choisie : ${outside.join(', ')})` : ''}. Rien n’a été défaussé.`);
           return 'stop';
         }
+        if (!total) { // le jeu ne veut défausser aucune des cartes cochées : laissées de côté, on continue
+          cancelDialog(dlg);
+          await waitFor(() => !NATIVE.dialog(), 3000);
+          for (const x of pick) refusedKeys.add(`${x.title}|${x.rarity}`);
+          WMX.journal?.add('Défausse', `page ${page} : le jeu garde ${plural(pick.length, 'carte cochée', 'cartes cochées')} (échange en cours, carte protégée…) : laissée${pick.length > 1 ? 's' : ''} de côté`, 'warn');
+          await clearSelection();
+          continue;
+        }
         if (dry) {
           cancelDialog(dlg);
           await waitFor(() => !NATIVE.dialog(), 3000);
-          stats.copies += pick.length;
+          stats.copies += total;
           await clearSelection();
           const nx = NATIVE.next(); const pg = NATIVE.page();
           if (nx && (!pg || pg.n < pg.of)) { nx.click(); page += 1; await sleep(600); await waitFor(listReady, 15000, 200); await settled(); continue; }
@@ -812,7 +826,7 @@
         const oldText = oldBanner ? norm(oldBanner.textContent) : '';
         showRun(`${view.label} · page ${page} : défausse de ${byRarText(got)}…`);
         confirm.click();
-        const expect = new RegExp(`^${pick.length} cartes? défaussées?`, 'i');
+        const expect = new RegExp(`^${total} cartes? défaussées?`, 'i');
         const ok = await waitFor(() => { if (blocked()) return 'blocked'; if (NATIVE.dialog()) return null; const b = NATIVE.banner(); return b && expect.test(norm(b.textContent)) && (b !== oldBanner || norm(b.textContent) !== oldText) ? b : null; }, 20000, 200)
           || (await waitFor(() => !NATIVE.dialog() && NATIVE.banner() && expect.test(norm(NATIVE.banner().textContent)), 2500, 200));
         if (ok === 'blocked' || !ok) {
@@ -821,7 +835,8 @@
           finish(`page ${page} : le jeu n’a pas confirmé la défausse (vérifiez votre collection). ${done(stats.copies)} avant.`, 'warn');
           return 'stop';
         }
-        stats.copies += pick.length; stats.reward += reward; stats.rounds += 1;
+        stats.copies += total; stats.reward += reward; stats.rounds += 1;
+        if (total < pick.length) { suspects = new Set(pick.filter((x) => (planCopies.get(`${x.title}|${x.rarity}`) || 1) <= 1).map((x) => `${x.title}|${x.rarity}`)); WMX.journal?.add('Défausse', `page ${page} : le jeu a gardé ${plural(pick.length - total, 'carte cochée', 'cartes cochées')} (échange en cours, carte protégée…) : ${byRarText(got)} défaussées au lieu de ${byRarText(wantRar)}`, 'warn'); }
         blockLifted();
         run.prog.done = stats.copies;
         for (const s of pick) if (s.item?.card_id) window.dispatchEvent(new CustomEvent('wmx:discard', { detail: { card_id: s.item.card_id } }));
@@ -846,8 +861,9 @@
           if (await fastView(view)) return undefined; // arrêt (message déjà affiché)
         }
         await clearSelection();
+        stats.refused = refusedKeys.size; // chaque carte gardée par le jeu comptée une fois
         return finish(dry ? `essai réussi : ${done(stats.copies)}, rien n’a été défaussé. Relancez sans « Essai à blanc » pour défausser.`
-          : `${done(stats.copies)}${stats.reward ? ` (+${fmt(stats.reward)} wikibidou${stats.reward > 1 ? 's' : ''})` : ''}.`);
+          : `${done(stats.copies)}${stats.reward ? ` (+${fmt(stats.reward)} wikibidou${stats.reward > 1 ? 's' : ''})` : ''}${refusedTail()}.`);
       }
       for (let phase = 0; phase < 2; phase++) {
       for (const view of viewsOf(p)) {
@@ -939,9 +955,21 @@
           const dlg = await waitFor(NATIVE.dialog, 6000);
           if (!dlg) { if (await orRetry(view, `page ${page} : la fenêtre de défausse du jeu ne s’est pas ouverte. Rien n’a été défaussé.`)) continue; return; }
           const got = NATIVE.dialogCounts(dlg);
-          if (!R.every((r) => (got[r] || 0) === (want[r] || 0))) {
+          // Garde-fou : le jeu ne doit JAMAIS annoncer plus que les cartes cochées (sinon arrêt). Il peut en annoncer moins : il garde d'office certaines
+          // cartes (échange en cours, carte protégée…) ; c'est sans danger, on continue avec les autres et on le note.
+          const gotTotal = R.reduce((n, r) => n + (got[r] || 0), 0);
+          if (R.some((r) => (got[r] || 0) > (want[r] || 0))) {
             cancelDialog(dlg);
             return abort(`page ${page} : le jeu s’apprête à défausser ${byRarText(got) || '?'} au lieu de ${byRarText(want)}. Rien n’a été défaussé.`);
+          }
+          const keptByGame = targets.length - gotTotal;
+          if (!gotTotal) { // le jeu ne veut défausser aucune des cartes cochées : on les laisse de côté et on continue
+            cancelDialog(dlg);
+            await waitFor(() => !NATIVE.dialog(), 3000);
+            for (const t of targets) { const c = left.get(`${t.title}|${t.rarity}`); stats.refused += c.copies; c.copies = 0; }
+            WMX.journal?.add('Défausse', `page ${page} : le jeu garde ${plural(targets.length, 'carte cochée', 'cartes cochées')} (échange en cours, carte protégée…) : laissée${targets.length > 1 ? 's' : ''} de côté`, 'warn');
+            await clearSelection();
+            continue;
           }
           if (dry) {
             cancelDialog(dlg);
@@ -956,9 +984,9 @@
           // L'ancien message « N cartes défaussées » reste affiché : on le note pour ne pas le prendre pour la réponse à cette défausse.
           const oldBanner = NATIVE.banner();
           const oldText = oldBanner ? norm(oldBanner.textContent) : '';
-          showRun(`${view.label} · page ${page} : défausse de ${byRarText(want)}…`);
+          showRun(`${view.label} · page ${page} : défausse de ${byRarText(got)}…`);
           confirm.click();
-          const expect = new RegExp(`^${targets.length} cartes? défaussées?`, 'i');
+          const expect = new RegExp(`^${gotTotal} cartes? défaussées?`, 'i');
           const ok = await waitFor(() => { if (blocked()) return 'blocked'; if (NATIVE.dialog()) return null; const b = NATIVE.banner(); return b && expect.test(norm(b.textContent)) && (b !== oldBanner || norm(b.textContent) !== oldText) ? b : null; }, 20000, 200)
             || (await waitFor(() => !NATIVE.dialog() && NATIVE.banner() && expect.test(norm(NATIVE.banner().textContent)), 2500, 200)); // même message qu'avant (même nombre) : la fenêtre fermée suffit
           if (ok === 'blocked' || !ok) { // refus « automatisation » : rien n'a été défaussé sur cette page ; pause, puis la page est relue et recochée
@@ -966,7 +994,9 @@
             if (blocked()) { if (await waitBlock(view)) continue; return abort(`arrêtée à votre demande : ${done(stats.copies)}.`); }
             return finish(`page ${page} : le jeu n’a pas confirmé la défausse (vérifiez votre collection). ${done(stats.copies)} avant.`, 'warn');
           }
-          stats.copies += targets.length;
+          stats.copies += gotTotal;
+          stats.refused += keptByGame;
+          if (keptByGame) WMX.journal?.add('Défausse', `page ${page} : le jeu a gardé ${plural(keptByGame, 'carte cochée', 'cartes cochées')} (échange en cours, carte protégée…) : ${byRarText(got)} défaussées au lieu de ${byRarText(want)}`, 'warn');
           stats.reward += reward; stats.rounds += 1;
           blockLifted();
           run.prog.done = stats.copies;
@@ -1003,7 +1033,7 @@
       await clearSelection();
       const tail = missing.length ? ` · ${plural(missing.length, 'carte')} non trouvée${missing.length > 1 ? 's' : ''} avec les filtres du jeu` : '';
       return finish(dry ? `essai réussi : ${done(stats.copies)}, rien n’a été défaussé${tail}. Relancez sans « Essai à blanc » pour défausser.`
-        : `${done(stats.copies)}${stats.reward ? ` (+${fmt(stats.reward)} wikibidou${stats.reward > 1 ? 's' : ''})` : ''}${tail}.`);
+        : `${done(stats.copies)}${stats.reward ? ` (+${fmt(stats.reward)} wikibidou${stats.reward > 1 ? 's' : ''})` : ''}${tail}${refusedTail()}.`);
     } catch (e) {
       console.warn('[WMX] défausse', e);
       return finish(`erreur inattendue (${e?.message || e}) : arrêtée.`, 'warn');

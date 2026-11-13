@@ -66,14 +66,14 @@ function fakeGame(w, cards, { perPage = 50, failAfterDiscard = false, lateReload
     if (st.selecting) {
       const bar = d.createElement('div'); bar.className = 'fixed bottom-4 card-frame fake-bar'; // comme le jeu : barre fixée en bas, hors de <main>
       const n = d.createElement('div'); n.innerHTML = `<span>${st.sel.size}</span><span>carte${st.sel.size > 1 ? 's' : ''} sélectionnée${st.sel.size > 1 ? 's' : ''}</span>`;
-      const real = st.list.filter((c) => st.sel.has(c.uid) && !c.starred).length;
+      const real = st.list.filter((c) => st.sel.has(c.uid) && !c.starred && !c.locked).length;
       bar.append(n, button('Tout sélectionner (page)', () => { for (const c of pageCards()) st.sel.add(c.uid); render(); }), button(`Défausser (+${real})`, openDialog, real ? {} : { disabled: '' }));
       d.body.append(bar);
     }
   }
   function openDialog() {
     st.dialogs += 1;
-    const chosen = st.list.filter((c) => st.sel.has(c.uid) && !c.starred); // une favorite sélectionnée n'est jamais défaussée
+    const chosen = st.list.filter((c) => st.sel.has(c.uid) && !c.starred && !c.locked); // une favorite (ou une carte en échange) sélectionnée n'est jamais défaussée
     const by = {};
     for (const c of chosen) by[c.rarity] = (by[c.rarity] || 0) + 1; // un exemplaire par carte cochée
     if (st.lie) by.C = (by.C || 0) + 1;
@@ -514,6 +514,27 @@ test('défausse « tout défausser » : filtres du jeu remis à zéro en cours d
   assert.ok(!game.discarded.some((t) => /Autre/.test(t)), 'aucune carte hors de l’étiquette');
   env.close();
 });
+
+for (const fast of [false, true]) {
+  test(`défausse${fast ? ' « tout défausser »' : ''} : le jeu garde d’office une carte cochée (« 5 × PC au lieu de 6 × PC ») → on continue avec les autres, sans arrêt`, async () => {
+    const cards = Array.from({ length: 14 }, (_, i) => ({ title: `PC ${i}`, rarity: 'PC', image: '' }));
+    cards[3].locked = true; // carte en échange en cours : le jeu ne la défausse pas
+    const { env, w, WMX, game } = setup(cards, { perPage: 10 });
+    await WMX.features.find((f) => f.name === 'discard').init();
+    const p = fast ? { rarities: ['PC'], useMax: false, keepOne: false, onlyNoImage: false, keepRecent: false, protectSale: false }
+      : { rarities: ['PC'], useMax: false, onlyNoImage: true, keepUnpriced: true };
+    const pl = WMX.discard.plan(p);
+    assert.equal(pl.copies, 14);
+    await WMX.discard.start(pl, { dry: false, visible: true, prefs: p });
+    assert.equal(game.discarded.length, 13, `les 13 autres sont défaussées : ${game.discarded.length}`);
+    assert.ok(!game.discarded.includes('PC 3'), 'la carte en échange reste');
+    const txt = w.document.querySelector('.wmx-dc-run').textContent;
+    assert.doesNotMatch(txt, /au lieu de|arrêtée/, 'pas d’arrêt');
+    assert.match(txt, /13 exemplaires défaussés/);
+    assert.match(txt, /1 carte gardée par le jeu/);
+    env.close();
+  });
+}
 
 for (const mode of ['wait', 'last']) {
   test(`défausse : cartes au prix inconnu « ${mode === 'wait' ? 'attendre leur prix' : 'traiter en dernier'} » (seuil 20 W : la pas chère défaussée, la chère et l’introuvable gardées)`, async () => {
