@@ -81,6 +81,82 @@
   // La page Marché du jeu demande aussi mes enchères : on en profite.
   WMX.onApi?.(({ path, data }) => { if (path === '/api/marketplace' && (data?.history || data?.won)) ingest(data); });
 
+  // --- Historique complet : lecture directe de la base du jeu --------------------------------------------------------------
+  // Le site parle à sa base (Supabase) avec sa clé publique et la session du joueur. Avec les mêmes, l'extension lit EN LECTURE SEULE ses propres
+  // enchères conclues (acheteur ou vendeur), depuis le début : quelques requêtes au lieu des 50 dernières. Le jeton de session reste dans la page
+  // (jamais enregistré ni journalisé) ; si la lecture échoue (session expirée, base modifiée), on garde la méthode des 50 dernières.
+  const SB = { cfg: null, busy: null };
+  async function sbConfig() {
+    if (SB.cfg) return SB.cfg;
+    const saved = await WMX.store.get('sbConfig', null);
+    if (saved?.url && saved?.key) return (SB.cfg = saved);
+    let url = null, key = null;
+    for (const src of [...document.querySelectorAll('script[src]')].map((s) => s.src).filter((u) => u.includes('/_next/'))) {
+      try {
+        const t = await (await fetch(src)).text();
+        url ||= t.match(/https:\/\/[a-z0-9]+\.supabase\.co/)?.[0] || null;
+        key ||= t.match(/eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}/)?.[0] || t.match(/sb_publishable_[A-Za-z0-9_-]{10,}/)?.[0] || null;
+      } catch (_) { /* morceau illisible */ }
+      if (url && key) break;
+    }
+    if (!url || !key) return null;
+    SB.cfg = { url, key };
+    WMX.store.set('sbConfig', SB.cfg); // adresse et clé PUBLIQUES du site (pas la session)
+    return SB.cfg;
+  }
+  /** Session du joueur (cookie « sb-…-auth-token », éventuellement découpé en .0, .1…) : { access_token, user }, ou null. */
+  function sbSession() {
+    try {
+      const parts = document.cookie.split(';').map((c) => c.trim()).filter((c) => /^sb-[^=]+-auth-token(\.\d+)?=/.test(c))
+        .sort((a, b) => Number(a.match(/\.(\d+)=/)?.[1] || 0) - Number(b.match(/\.(\d+)=/)?.[1] || 0));
+      let raw = parts.map((c) => decodeURIComponent(c.slice(c.indexOf('=') + 1))).join('');
+      if (raw.startsWith('base64-')) raw = atob(raw.slice(7).replace(/-/g, '+').replace(/_/g, '/'));
+      const s = JSON.parse(raw);
+      return s?.access_token && s?.user?.id ? s : null;
+    } catch (_) { return null; }
+  }
+  /**
+   * Lit tout l'historique (achats et ventes conclus) et l'ajoute au registre. Rend { ok, total, added } ou { ok: false, why }.
+   * Une seule lecture à la fois ; pas plus d'une par heure sauf `force` (« Actualiser »).
+   */
+  async function importAll(force = false) {
+    await load();
+    if (SB.busy) return SB.busy;
+    if (!force && reg.full?.t && Date.now() - reg.full.t < 3600000) return { ok: true, total: reg.full.n, added: 0, cached: true };
+    SB.busy = (async () => {
+      const cfg = await sbConfig();
+      const s = sbSession();
+      if (!cfg) return { ok: false, why: 'adresse de la base du jeu introuvable' };
+      if (!s) return { ok: false, why: 'session de connexion introuvable : reconnectez-vous au jeu' };
+      const me = s.user.id;
+      const headers = { apikey: cfg.key, Authorization: `Bearer ${s.access_token}` };
+      const sel = encodeURIComponent('id,card_id,seller_id,winner_id,final_price,settled_at,snapshot_rarity,is_shiny,status,card:cards(wikipedia_title,rarity,image_url,hide_image)');
+      let total = 0, added = 0;
+      for (const [kind, col] of [['buy', 'winner_id'], ['sell', 'seller_id']]) {
+        for (let from = 0; from < 50000; from += 1000) {
+          let r;
+          try { r = await fetch(`${cfg.url}/rest/v1/auctions?select=${sel}&status=eq.settled_sold&${col}=eq.${me}&order=settled_at.asc`, { headers: { ...headers, Range: `${from}-${from + 999}`, 'Range-Unit': 'items' } }); } catch (_) { return { ok: false, why: 'réseau' }; }
+          if (!r.ok) { if (r.status === 401 || r.status === 403) { SB.cfg = null; WMX.store.set('sbConfig', null); } return { ok: false, why: r.status === 401 ? 'session expirée : actualisez la page du jeu' : `la base du jeu a répondu ${r.status}` }; }
+          const rows = await r.json();
+          total += rows.length;
+          for (const a of rows) {
+            const store = kind === 'buy' ? reg.buys : reg.sells;
+            if (!a?.id || store[a.id] || (kind === 'buy' ? a.winner_id !== me : a.seller_id !== me)) continue;
+            const e = entry(a);
+            if (e.price > 0 && e.t) { store[a.id] = e; added += 1; }
+          }
+          if (rows.length < 1000) break;
+          await new Promise((res) => setTimeout(res, 300));
+        }
+      }
+      reg.full = { t: Date.now(), n: total };
+      save(); emit();
+      if (added) WMX.journal?.add('Plus-values', `historique complet lu : ${total} enchères conclues, ${added} nouvelles lignes`);
+      return { ok: true, total, added };
+    })();
+    try { return await SB.busy; } finally { SB.busy = null; }
+  }
+
   // --- Affichage -------------------------------------------------------------------------------
   const V = { mode: 'all', unit: 'day', cursor: null, chart: 'gain', ops: 'all', sort: 'recent', stockSort: 'recent' };
   const PERIODS = { day: 30, week: 12, month: 12 };
@@ -171,6 +247,10 @@
   async function render(box) {
     await load();
     const redraw = () => render(box);
+    // Historique complet : lu à la première ouverture, puis au plus une fois par heure (en arrière-plan ; la page se redessine à l'arrivée).
+    if (!SB.busy && (!reg.full || Date.now() - reg.full.t > 3600000) && !(SB.last && !SB.last.ok && Date.now() - (SB.lastAt || 0) < 60000)) {
+      importAll().then((r) => { SB.last = r; SB.lastAt = Date.now(); if (!r.ok && box.isConnected) redraw(); });
+    }
     const { ops, stock } = L.ledgerPair(Object.values(reg.buys), Object.values(reg.sells));
     const all = V.mode === 'resale' ? ops.filter((o) => o.kind === 'resale') : ops;
     const first = Math.min(...[...Object.values(reg.buys), ...Object.values(reg.sells)].map((e) => e.t), reg.since || Date.now());
@@ -200,13 +280,17 @@
       el('div', { class: 'wmx-lg-tools' },
         seg([['all', 'Tout'], ['resale', 'Achat-revente']], V.mode, (v) => { V.mode = v; redraw(); }),
         seg([['day', 'Jour'], ['week', 'Semaine'], ['month', 'Mois']], V.unit, (v) => { V.unit = v; V.cursor = null; redraw(); }),
-        el('button', { type: 'button', class: 'wmx-btn wmx-btn--ghost wmx-lg-refresh', onclick: async (e) => { e.currentTarget.disabled = true; await refresh(); redraw(); } }, '↻ Actualiser')));
+        el('button', { type: 'button', class: 'wmx-btn wmx-btn--ghost wmx-lg-refresh', onclick: async (e) => { e.currentTarget.disabled = true; await refresh(); SB.last = await importAll(true); redraw(); } }, '↻ Actualiser')));
     const since = el('p', { class: 'wmx-lg-since' },
       `Depuis le ${dateFull(first)} : plus-value réalisée `, el('b', { class: tone(total.gain) }, `${signed(total.gain)} W`), ` sur ${fmt(total.resales)} revente${total.resales > 1 ? 's' : ''} (${pctText(total.pct)})`,
       V.mode === 'resale'
         ? ` · achetées ${fmt(total.resaleBought)} W · revendues ${fmt(total.resaleSold)} W · ${fmt(total.wins)} gagnante${total.wins > 1 ? 's' : ''} sur ${fmt(total.resales)}`
         : ` · ${fmt(total.nSold)} vente${total.nSold > 1 ? 's' : ''} pour ${fmt(total.sold)} W · ${fmt(total.nBought)} achat${total.nBought > 1 ? 's' : ''} pour ${fmt(total.bought)} W`);
-    const note = el('small', { class: 'wmx-cp-note' }, `Historique noté par l’extension depuis le ${dateFull(reg.since || Date.now())} (le jeu ne garde que vos 50 dernières ventes et vos 50 derniers achats : il s’enrichit à chaque visite du jeu, la bulle des enchères ouverte ou non).`);
+    const note = el('small', { class: 'wmx-cp-note' }, reg.full
+      ? `Historique complet lu dans la base du jeu (${fmt(reg.full.n)} enchères conclues, mis à jour ${new Date(reg.full.t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}), puis complété au fil de l’eau.`
+      : SB.last && !SB.last.ok
+        ? `Historique complet indisponible pour l’instant (${SB.last.why}) : seules vos 50 dernières ventes et vos 50 derniers achats sont connus, notés depuis le ${dateFull(reg.since || Date.now())}. « Actualiser » réessaie.`
+        : 'Lecture de l’historique complet en cours…');
 
     const nav = el('div', { class: 'wmx-lg-nav' },
       el('button', { type: 'button', class: 'wmx-lg-arrow', title: `${unitWord} précédent${V.unit === 'week' ? 'e' : ''}`, 'aria-label': 'Période précédente', onclick: () => { V.cursor = L.periodShift(V.cursor, V.unit, -1); redraw(); } }, '←'),
@@ -286,5 +370,5 @@
     box.replaceChildren(el('div', { class: 'wmx-lg' }, head, since, note, periodBox, opsBox, V.mode === 'all' ? stockBox : ''));
   }
 
-  WMX.ledger = { ingest, refresh, render, onChange: (cb) => { listeners.add(cb); return () => listeners.delete(cb); }, data: async () => (await load(), reg) };
+  WMX.ledger = { ingest, refresh, render, importAll, onChange: (cb) => { listeners.add(cb); return () => listeners.delete(cb); }, data: async () => (await load(), reg) };
 })();

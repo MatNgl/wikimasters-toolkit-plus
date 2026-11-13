@@ -47,3 +47,45 @@ test('plus-values : achats et ventes notés une seule fois (jamais ceux d’un a
   await sleep(700); // écriture du registre
   env.close();
 });
+
+test('plus-values : historique complet lu dans la base du jeu (clé publique du site + session du joueur), en lecture seule, sans doublon', async () => {
+  const ANON = 'eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiIsInJlZiI6ImFiYyJ9.signatureABC';
+  const asked = [];
+  const old = (title, rarity, price, days, role) => ({ id: `${role}-${title}`, card_id: `c-${title}`, seller_id: role === 'sell' ? ME : 'autre', winner_id: role === 'buy' ? ME : 'autre', status: 'settled_sold',
+    final_price: price, settled_at: iso(days * 24), snapshot_rarity: rarity, is_shiny: false, card: { wikipedia_title: title, rarity, image_url: '', hide_image: false } });
+  const buys = [old('Ancienne', 'L', 1000, 20, 'buy'), old('Tours', 'L', 1500, 0.2, 'buy')];
+  const sells = [old('Ancienne', 'L', 1400, 18, 'sell')];
+  const env = createEnv({ fetchImpl: async (u, opts = {}) => {
+    const url = String(u);
+    if (url.includes('/_next/')) return { ok: true, status: 200, text: async () => `var a="https://abcproj.supabase.co",b="${ANON}";` };
+    if (url.includes('/rest/v1/auctions')) {
+      asked.push({ url, auth: opts.headers?.Authorization, apikey: opts.headers?.apikey, method: opts.method || 'GET' });
+      const rows = url.includes(`winner_id=eq.${ME}`) ? buys : url.includes(`seller_id=eq.${ME}`) ? sells : [];
+      return json(rows);
+    }
+    return json({});
+  } });
+  const { w, WMX } = env;
+  w.document.head.insertAdjacentHTML('beforeend', '<script src="https://www.wiki-masters.com/_next/static/chunks/app.js"></script>');
+  w.document.cookie = 'sb-abcproj-auth-token=base64-' + Buffer.from(JSON.stringify({ access_token: 'jeton-de-session', user: { id: ME } })).toString('base64');
+  // Une ligne déjà notée par la méthode des 50 dernières : pas de doublon.
+  await WMX.ledger.ingest({ won: [{ ...won('buy-Tours', 'Tours', 'L', 1500, 0.2) }], history: [] });
+  const r = await WMX.ledger.importAll(true);
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.total, 3);
+  assert.equal(r.added, 2, 'Tours était déjà là');
+  assert.ok(asked.every((x) => x.method === 'GET'), 'lecture seule');
+  assert.ok(asked.every((x) => x.auth === 'Bearer jeton-de-session' && x.apikey === ANON), 'clé publique du site et session du joueur');
+  assert.ok(asked.every((x) => /status=eq\.settled_sold/.test(x.url)), 'seulement les enchères conclues');
+  const reg = await WMX.ledger.data();
+  assert.equal(Object.keys(reg.buys).length, 2);
+  assert.equal(Object.keys(reg.sells).length, 1);
+  const box = w.document.createElement('div');
+  w.document.body.append(box);
+  await WMX.ledger.render(box);
+  assert.match(box.textContent, /Historique complet lu dans la base du jeu \(3 enchères conclues/);
+  assert.match(box.textContent, /plus-value réalisée\s*\+400 W sur 1 revente/, 'Ancienne : achetée 1 000 il y a 20 jours, revendue 1 400');
+  assert.ok(!JSON.stringify(env.mem).includes('jeton-de-session'), 'la session n’est jamais enregistrée');
+  await sleep(700);
+  env.close();
+});
