@@ -117,7 +117,7 @@
       cursor.setAttribute('x1', x(k).toFixed(1)); cursor.setAttribute('x2', x(k).toFixed(1)); cursor.setAttribute('visibility', 'visible');
       const r = wrap.getBoundingClientRect();
       const px = e.clientX - r.left, py = e.clientY - r.top;
-      tip.style.left = `${Math.max(4, px + 14 + 230 > r.width ? px - 14 - 230 : px + 14)}px`;
+      tip.style.left = `${Math.max(4, px + 14 + 270 > r.width ? px - 14 - 270 : px + 14)}px`;
       tip.style.top = `${Math.max(4, py - 30)}px`;
     });
     svg.addEventListener('mouseleave', () => { tip.hidden = true; cursor.setAttribute('visibility', 'hidden'); });

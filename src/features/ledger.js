@@ -197,13 +197,29 @@
   function tipFor(sr) {
     const p = sr.p;
     const head = V.unit === 'day' ? dayLong(sr.start) : periodTitle(sr.start).title;
+    const nRes = `${p.resales} revente${p.resales > 1 ? 's' : ''}`;
     const lines = [];
-    if (V.mode === 'resale') lines.push(p.resales ? `${p.resales} revente${p.resales > 1 ? 's' : ''} · ${p.wins} gagnante${p.wins > 1 ? 's' : ''}${p.losses ? ` · ${p.losses} à perte` : ''}` : 'Aucune revente');
-    else {
-      lines.push(p.nSold + p.nBought ? `${p.nSold} vente${p.nSold > 1 ? 's' : ''} · ${p.nBought} achat${p.nBought > 1 ? 's' : ''} · ${p.resales} revente${p.resales > 1 ? 's' : ''}` : 'Aucune opération');
-      if (p.nSold + p.nBought) lines.push(V.chart === 'net' ? `Plus-value réalisée : ${signed(p.gain)} W` : `Ventes ${fmt(p.sold)} W · achats ${fmt(p.bought)} W`);
+    let label;
+    if (V.mode === 'resale') {
+      label = p.resales ? `plus-value réalisée sur ${nRes}` : 'aucune revente';
+      if (p.resales) {
+        lines.push(`${p.wins} gagnante${p.wins > 1 ? 's' : ''}${p.losses ? ` · ${p.losses} à perte` : ''} · détention moyenne ${L.holdText(p.hold)}`);
+        lines.push(`Achetées ${fmt(p.resaleBought)} W · revendues ${fmt(p.resaleSold)} W`);
+      }
+    } else if (!(p.nSold + p.nBought)) {
+      label = 'aucune opération';
+    } else {
+      const counts = `${p.nSold} vente${p.nSold > 1 ? 's' : ''} · ${p.nBought} achat${p.nBought > 1 ? 's' : ''} · ${nRes}`;
+      if (V.chart === 'net') {
+        label = 'flux net : ventes − achats';
+        lines.push(counts, `Ventes ${fmt(p.sold)} W − achats ${fmt(p.bought)} W`, `Plus-value réalisée : ${signed(p.gain)} W (${nRes})`);
+      } else {
+        label = p.resales ? `plus-value réalisée (${nRes})` : 'plus-value réalisée : aucune revente';
+        lines.push(counts, `Flux net : ${signed(p.net)} W (ventes ${fmt(p.sold)} − achats ${fmt(p.bought)})`);
+        if (p.nBought) lines.push('Les cartes achetées non revendues ne comptent qu’à leur revente');
+      }
     }
-    return { head, value: sr.v, lines };
+    return { head, value: sr.v, label, lines };
   }
 
   /** Barres par période (plus-value ou flux net), la période choisie en surbrillance ; survol : le détail ; clic : la période s'affiche. */
@@ -249,12 +265,12 @@
       if (Number(i) !== shown) {
         shown = Number(i);
         const t = tipFor(series[shown]);
-        tip.replaceChildren(el('b', { class: tone(t.value) }, `${signed(t.value)} W`), el('span', { class: 'wmx-lg-tip-head' }, t.head), ...t.lines.map((l) => el('small', {}, l)));
+        tip.replaceChildren(el('span', { class: 'wmx-lg-tip-head' }, t.head), el('div', { class: 'wmx-lg-tip-main' }, el('b', { class: tone(t.value) }, `${signed(t.value)} W`), el('small', {}, t.label)), ...t.lines.map((l) => el('small', {}, l)));
       }
       tip.hidden = false;
       const r = wrap.getBoundingClientRect();
       const x = e.clientX - r.left + wrap.scrollLeft, yy = e.clientY - r.top;
-      const left = x + 14 + 230 > wrap.scrollLeft + r.width ? x - 14 - 230 : x + 14;
+      const left = x + 14 + 270 > wrap.scrollLeft + r.width ? x - 14 - 270 : x + 14;
       tip.style.left = `${Math.max(4, left)}px`;
       tip.style.top = `${Math.max(4, yy - 20)}px`;
     });

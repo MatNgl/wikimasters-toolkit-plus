@@ -43,6 +43,8 @@ test('plus-values : achats et ventes notés une seule fois (jamais ceux d’un a
   const tip = box.querySelector('.wmx-lg-tip');
   assert.ok(!tip.hidden, 'infobulle affichée');
   assert.match(tip.textContent, /\d+ ventes? · \d+ achats? · \d+ reventes?/);
+  assert.match(tip.textContent, /plus-value réalisée/, 'le montant est nommé');
+  assert.match(tip.textContent, /Flux net : /, 'le flux net (ventes − achats) est donné à côté');
   hits.at(-1).dispatchEvent(new w.MouseEvent('mouseleave', { bubbles: true }));
   box.querySelector('.wmx-lg-chart').dispatchEvent(new w.MouseEvent('mouseleave'));
   assert.ok(tip.hidden, 'cachée en quittant le graphique');

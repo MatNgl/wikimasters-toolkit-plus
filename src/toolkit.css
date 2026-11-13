@@ -1067,3 +1067,6 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-check--danger:focus-visible { box-shadow: 0 0 0 3px rgb(229 56 79 / .35); }
 .wmx-dc-ack .wmx-check { margin-top: 1px; }
 @media (prefers-reduced-motion: reduce) { .wmx-check, .wmx-check::after { transition: none; } }
+.wmx-lg-tip-main { display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap; margin: 2px 0 3px; }
+.wmx-lg-tip-main small { color: #cfe0d7 !important; }
+.wmx-lg-tip { width: 270px; }
