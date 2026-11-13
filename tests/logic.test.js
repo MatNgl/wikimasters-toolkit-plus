@@ -410,3 +410,16 @@ test('assistant de vente : limite de mises en vente par carte sur 24 h réglable
   assert.equal(reason(Infinity), 'eligible', 'sans limite');
   assert.equal(reason(undefined), 'eligible', 'par défaut : 4');
 });
+
+test('paquets : le stock maximum est celui affiché par le jeu (« 3 / 20 paquets »), 10 par défaut', () => {
+  const t = 1_000_000;
+  assert.equal(L.packMax('20'), 20);
+  assert.equal(L.packMax(undefined), 10, 'page pas encore lue');
+  assert.equal(L.packMax('0', 20), 20, 'valeur illisible : on garde le maximum connu');
+  const snap = { packs: 3, max: 20, t, nextAt: t + 60_000 };
+  assert.equal(L.packEstimate(snap, t, 180).max, 20);
+  assert.equal(L.packEstimate(snap, t + 60_000 + 10 * 180_000, 180).packs, 14, 'plus de 10 : le stock monte jusqu’à 20');
+  assert.equal(L.packEstimate(snap, t + 24 * 3600_000, 180).packs, 20, 'plafonné à 20');
+  assert.equal(L.packEstimate(snap, t, 180).fullAt, t + 60_000 + 16 * 180_000, 'stock plein après 17 paquets');
+  assert.equal(L.packEstimate({ packs: 3, t, nextAt: null }, t, 180).max, 10, 'ancien relevé sans maximum : 10');
+});

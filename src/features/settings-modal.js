@@ -34,7 +34,7 @@
           options: [['off', 'Jamais'], ['SR', 'SR ou mieux'], ['UR', 'UR ou mieux'], ['L', 'Légendaire']] },
         { key: 'reserve', type: 'select', label: 'Réserve de paquets', desc: 'Paquets gardés en stock : l’auto n’ouvre que s’il en reste plus.', number: true,
           options: [...Array(10).keys()].map((i) => [i, plural(i, 'paquet')]) },
-        { key: 'fullStockOpen', type: 'toggle', label: 'Ouvrir quand le stock est plein', desc: 'À 10/10, ouvre aussitôt les paquets au-dessus de la réserve pour ne pas bloquer la régénération.' },
+        { key: 'fullStockOpen', type: 'toggle', label: 'Ouvrir quand le stock est plein', desc: 'Stock plein (par exemple 20/20), ouvre aussitôt les paquets au-dessus de la réserve pour ne pas bloquer la régénération.' },
         { key: 'anticipate', type: 'toggle', label: 'Anticiper le blocage du stock', desc: 'Ouvre un paquet plus tôt si le stock risque d’être plein avant la prochaine ouverture planifiée.' },
       ],
     },

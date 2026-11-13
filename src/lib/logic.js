@@ -308,8 +308,10 @@
       plan.cards.sort((x, y) => (rank[y.rarity] ?? 0) - (rank[x.rarity] ?? 0) || y.avg - x.avg || String(x.title).localeCompare(String(y.title)));
       return plan;
     },
-    /** Stock maximum de paquets, quel que soit le compte. */
+    /** Stock maximum de paquets par défaut, tant que la page Paquets n'a pas été lue (le jeu affiche « N / M paquets » : M fait foi, 20 depuis nov. 2026). */
     PACK_MAX: 10,
+    /** Stock maximum lisible (« M » de « N / M paquets »), borné ; sinon `fallback` (ou PACK_MAX). */
+    packMax(v, fallback) { const n = Math.floor(Number(v)); return n >= 1 && n <= 200 ? n : (fallback > 0 ? fallback : L.PACK_MAX); },
     /** Recharge d'un paquet (secondes) : 3 min en compte Pro, 10 min en compte classique. */
     packRegen(account) { return account === 'pro' ? 180 : 600; },
     /**
@@ -328,12 +330,12 @@
     },
     /**
      * Stock de paquets estimé à `now` d'après un relevé de la page Paquets : snap = { packs, t, nextAt (date d'arrivée du prochain paquet, ms) }
-     * (ancien format accepté : nextIn en secondes au moment t). Les paquets suivants arrivent toutes les `regenS` secondes, jusqu'à 10.
+     * (ancien format accepté : nextIn en secondes au moment t). Les paquets suivants arrivent toutes les `regenS` secondes, jusqu'au maximum relevé (snap.max, sinon PACK_MAX).
      * Rend { packs, max, nextIn (s, null si plein ou inconnu), nextAt, fullAt (date où le stock sera plein) } ou null sans relevé.
      */
     packEstimate(snap, now, regenS) {
       if (!snap || !Number.isFinite(snap.t)) return null;
-      const max = L.PACK_MAX;
+      const max = L.packMax(snap.max);
       const step = Math.max(1, regenS || 600) * 1000;
       let packs = Math.min(max, Math.max(0, Math.floor(Number(snap.packs) || 0)));
       let nextAt = Number.isFinite(snap.nextAt) ? snap.nextAt : (Number.isFinite(snap.nextIn) ? snap.t + snap.nextIn * 1000 : null);

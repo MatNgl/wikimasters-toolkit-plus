@@ -40,7 +40,9 @@
   // --- Lecture de l'état du jeu --------------------------------------------------------------
   const packInfo = () => {
     const m = document.body.innerText.match(/(\d+)\s*\/\s*(\d+)\s*paquets?/i);
-    return m ? { packs: Math.min(WMX.logic.PACK_MAX, Number(m[1])), max: WMX.logic.PACK_MAX } : { packs: 0, max: WMX.logic.PACK_MAX }; // stock maximum : 10 pour tous les comptes
+    if (!m) return { packs: 0, max: WMX.logic.PACK_MAX };
+    const max = WMX.logic.packMax(m[2]); // stock maximum affiché par le jeu (« 3 / 20 paquets »)
+    return { packs: Math.min(max, Number(m[1])), max };
   };
   const packsLeft = () => packInfo().packs;
   const nextPackIn = () => {
@@ -51,7 +53,7 @@
   const rand = (a, b) => a + Math.random() * Math.max(0, b - a);
   const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
-  // Recharge d'un paquet : 3 min en compte Pro, 10 min en compte classique (stock maximum 10 dans les deux cas). Le type de compte est lu sur
+  // Recharge d'un paquet : 3 min en compte Pro, 10 min en compte classique (stock maximum lu sur la page : « N / M paquets »). Le type de compte est lu sur
   // la page Paquets (encadré « Pack PRO du jour » = Pro ; proposition de passer Pro, ou encadré absent = classique) et mémorisé.
   let account = 'classic';
   const regenS = () => WMX.logic.packRegen(account);
@@ -397,7 +399,7 @@
       if (c.packsSeen?.newValue && !/^\/pulls/.test(location.pathname)) seenSnap = c.packsSeen.newValue;
       if (c.packAccount?.newValue?.type) account = c.packAccount.newValue.type;
     });
-    // Avertissement « stock plein » : l'ouverture auto ne s'exécute que sur la page Paquets. Quand le stock est plein (10/10) alors qu'on est
+    // Avertissement « stock plein » : l'ouverture auto ne s'exécute que sur la page Paquets. Quand le stock est plein (N/N) alors qu'on est
     // ailleurs, un message et un bouton ramènent sur la page Paquets, où l'ouverture reprend d'elle-même.
     const goPulls = () => window.dispatchEvent(new CustomEvent('wmx:navigate', { detail: '/pulls' }));
     let warnDismissed = false;
@@ -407,20 +409,21 @@
       el('button', { class: 'wmx-qclear', title: 'Masquer', 'aria-label': 'Masquer', onclick: () => { warnDismissed = true; warn.hidden = true; } }, '×'));
     const updateFab = () => {
       const onPulls = /^\/pulls/.test(location.pathname);
-      const live = onPulls && document.body.innerText.match(/(\d+)\s*\/\s*(\d+)\s*paquets?/i); // compteur « N / 10 paquets » affiché (pas encore : on garde l'estimation)
+      const live = onPulls && document.body.innerText.match(/(\d+)\s*\/\s*(\d+)\s*paquets?/i); // compteur « N / M paquets » affiché (pas encore : on garde l'estimation)
       if (live) {
         const before = account;
         readAccount();
         const now = Date.now();
-        const packs = Math.min(WMX.logic.PACK_MAX, Number(live[1]));
+        const max = WMX.logic.packMax(live[2], seenSnap?.max); // maximum affiché par le jeu (20 aujourd'hui)
+        const packs = Math.min(max, Number(live[1]));
         const nextIn = nextPackIn();
         // L'heure EXACTE du prochain paquet est mémorisée (et non un compte à rebours) : un rechargement ou un changement de page ne la décale pas.
         // Compteur « Prochain dans » pas encore affiché : on garde l'heure déjà connue si le stock n'a pas changé.
         const prev = estimateSeen(seenSnap);
-        const nextAt = packs >= WMX.logic.PACK_MAX ? null : nextIn != null ? now + nextIn * 1000 : (prev && prev.packs === packs ? prev.nextAt : null);
-        lastPacks = { packs, max: WMX.logic.PACK_MAX, nextIn: nextAt ? Math.max(0, (nextAt - now) / 1000) : null };
-        const changed = !seenSnap || seenSnap.packs !== packs || before !== account || (nextAt == null) !== (seenSnap.nextAt == null);
-        seenSnap = { packs, max: WMX.logic.PACK_MAX, nextAt, t: now, account };
+        const nextAt = packs >= max ? null : nextIn != null ? now + nextIn * 1000 : (prev && prev.packs === packs ? prev.nextAt : null);
+        lastPacks = { packs, max, nextIn: nextAt ? Math.max(0, (nextAt - now) / 1000) : null };
+        const changed = !seenSnap || seenSnap.packs !== packs || seenSnap.max !== max || before !== account || (nextAt == null) !== (seenSnap.nextAt == null);
+        seenSnap = { packs, max, nextAt, t: now, account };
         if (changed || now - lastSave > 15000) { lastSave = now; WMX.store.set('packsSeen', seenSnap); } // tout de suite quand le stock change (ouverture, nouveau paquet)
       } else lastPacks = estimateSeen(seenSnap) || (onPulls ? lastPacks : null); // hors de la page Paquets : estimation recalculée chaque seconde
       const full = !!lastPacks && lastPacks.packs >= lastPacks.max;
