@@ -347,6 +347,69 @@
       if (packs >= max) return { packs: max, max, nextIn: null, nextAt: null, fullAt: null };
       return { packs, max, nextIn: Math.max(0, (nextAt - now) / 1000), nextAt, fullAt: nextAt + (max - packs - 1) * step };
     },
+    // --- Plus-values (registre des achats et des ventes au marché) -------------------------------------------------
+    /**
+     * Rapproche les ventes des achats : chaque vente prend l'achat le PLUS ANCIEN encore en stock de la même carte (même card_id, même rareté,
+     * même version shiny), acheté avant elle. buys / sells : [{ id, t (ms), price, card_id, rarity, shiny, ... }].
+     * Rend { ops, stock } : ops = achats ('buy'), reventes ('resale' : vente rapprochée d'un achat, avec buy, gain, hold) et ventes de cartes
+     * non achetées ('sell') ; stock = achats pas encore revendus.
+     */
+    ledgerPair(buys, sells) {
+      const key = (e) => `${e.card_id}|${e.rarity}|${e.shiny ? 1 : 0}`;
+      const queues = new Map();
+      for (const b of [...(buys || [])].sort((x, y) => x.t - y.t)) { const k = key(b); if (!queues.has(k)) queues.set(k, []); queues.get(k).push(b); }
+      const used = new Set();
+      const ops = (buys || []).map((b) => ({ ...b, kind: 'buy' }));
+      for (const s of [...(sells || [])].sort((x, y) => x.t - y.t)) {
+        const q = queues.get(key(s)) || [];
+        const b = q.find((x) => !used.has(x.id) && x.t <= s.t);
+        if (b) { used.add(b.id); ops.push({ ...s, kind: 'resale', buy: { id: b.id, t: b.t, price: b.price }, gain: s.price - b.price, hold: s.t - b.t }); } else ops.push({ ...s, kind: 'sell' });
+      }
+      ops.sort((x, y) => y.t - x.t);
+      const stock = (buys || []).filter((b) => !used.has(b.id)).sort((x, y) => y.t - x.t);
+      return { ops, stock };
+    },
+    /** Début de la période qui contient t (heure locale) : 'day' → ce jour à 0 h, 'week' → lundi 0 h, 'month' → le 1er à 0 h. */
+    periodStart(t, unit) {
+      const d = new Date(t);
+      d.setHours(0, 0, 0, 0);
+      if (unit === 'week') d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+      else if (unit === 'month') d.setDate(1);
+      return d.getTime();
+    },
+    /** Période suivante (ou précédente si n < 0) : début de la période décalée de n. */
+    periodShift(start, unit, n) {
+      const d = new Date(start);
+      if (unit === 'day') d.setDate(d.getDate() + n);
+      else if (unit === 'week') d.setDate(d.getDate() + 7 * n);
+      else d.setMonth(d.getMonth() + n);
+      return L.periodStart(d.getTime(), unit);
+    },
+    /**
+     * Chiffres d'une liste d'opérations (une période) : plus-value réalisée et reventes (gagnantes, à perte, détention), ventes (dont cartes non
+     * achetées), achats, flux net (ventes − achats).
+     */
+    ledgerSummary(ops) {
+      const s = { gain: 0, resales: 0, wins: 0, losses: 0, holdSum: 0, resaleSold: 0, resaleBought: 0, sold: 0, nSold: 0, soldNotBought: 0, bought: 0, nBought: 0 };
+      for (const o of ops || []) {
+        if (o.kind === 'buy') { s.bought += o.price; s.nBought += 1; continue; }
+        s.sold += o.price; s.nSold += 1;
+        if (o.kind === 'sell') { s.soldNotBought += o.price; continue; }
+        s.resales += 1; s.gain += o.gain; s.holdSum += o.hold; s.resaleSold += o.price; s.resaleBought += o.buy.price;
+        if (o.gain > 0) s.wins += 1; else if (o.gain < 0) s.losses += 1;
+      }
+      s.net = s.sold - s.bought;
+      s.pct = s.resaleBought ? (s.gain / s.resaleBought) * 100 : 0;
+      s.hold = s.resales ? s.holdSum / s.resales : 0;
+      return s;
+    },
+    /** Durée de détention lisible : « 45 min », « 3 h », « 2 j ». */
+    holdText(ms) {
+      const m = Math.round(Math.max(0, ms) / 60000);
+      if (m < 60) return `${m} min`;
+      const h = Math.round(m / 60);
+      return h < 48 ? `${h} h` : `${Math.round(h / 24)} j`;
+    },
     /** Message clair pour un échec réseau ou un code HTTP. */
     friendlyError(status) {
       if (status === 0 || status == null) return 'Pas de connexion au jeu : vérifiez votre connexion internet.';

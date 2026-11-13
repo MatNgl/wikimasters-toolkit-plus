@@ -398,7 +398,7 @@ test('activité en direct : requêtes comptées par type, pages cachées et surv
   assert.equal(s.auctions.watchOver, 1, 'dont une au-dessus du plafond');
   assert.equal(s.auctions.frames.length, 1, 'une seule page cachée : celle de l’enchère encore intéressante');
   assert.equal(s.auctions.frames[0].title, 'Carte ac1');
-  WMX.openSettings();
+  WMX.openSettings('Journal d’activité');
   const row = [...w.document.querySelectorAll('.wmx-setrow')].find((r) => /Activité en direct/.test(r.textContent));
   assert.ok(row, 'entrée dans les réglages');
   row.querySelector('button').click();
@@ -703,7 +703,7 @@ test('mise automatique : jamais de surenchère sur soi-même (état réel de l\'
 test('réglages : raretés à vendre de l’assistant (toutes par défaut, liste ordonnée modifiable, enregistrée)', async () => {
   const env = createEnv({ fetchImpl: async () => json({}) });
   const { w, WMX } = env;
-  WMX.openSettings();
+  WMX.openSettings('Assistant de vente');
   const wrap = w.document.querySelector('.wmx-rord');
   assert.ok(wrap, 'le podium est dans les réglages');
   assert.equal(wrap.querySelectorAll('.wmx-rord-list li').length, 0, 'aucune priorité au départ');
@@ -726,7 +726,7 @@ test('réglages : raretés à vendre de l’assistant (toutes par défaut, liste
   [...w.document.querySelectorAll('.wmx-modal footer .wmx-btn')].find((b) => b.textContent === 'Appliquer').click();
   await sleep(300);
   assert.equal(WMX.settings.autoSellPriorityRar, 'UR,L,SR', 'l’ordre est enregistré');
-  WMX.openSettings();
+  WMX.openSettings('Assistant de vente');
   [...w.document.querySelectorAll('.wmx-rord .wmx-seg-btn')].find((b) => b.textContent === 'Toutes les raretés').click();
   assert.equal(w.document.querySelectorAll('.wmx-rord-list li').length, 0, 'retour à aucune priorité');
   [...w.document.querySelectorAll('.wmx-modal footer .wmx-btn')].find((b) => b.textContent === 'Appliquer').click();
@@ -996,7 +996,7 @@ test('réglages : les étiquettes de l\'assistant se choisissent dans un menu d�
   const { w, WMX } = env;
   const card = (id, ...tags) => ({ card_id: id, title: id, rarity: 'R', count: 1, starred: false, tags: tags.map((name) => ({ name })) });
   WMX.inventory.items = () => [card('a', 'VENTE'), card('b', 'VENTE', 'Animaux'), card('c', 'Sport')];
-  WMX.openSettings();
+  WMX.openSettings('Assistant de vente');
   const btn = w.document.querySelector('.wmx-tagbtn');
   assert.match(btn.textContent, /VENTE/, 'la sélection actuelle est affichée');
   btn.click();
@@ -1162,7 +1162,7 @@ test('réglages : « Appliquer » n\'enregistre que les réglages modifiés (n\'
   const env = createEnv({ fetchImpl: async () => json({}) });
   const { w, WMX } = env;
   Object.assign(WMX.settings, { autoSell: false, quickCoef: 0.9 });
-  WMX.openSettings(); // cet onglet a une copie ancienne : autoSell = false
+  WMX.openSettings('Enchère rapide'); // cet onglet a une copie ancienne : autoSell = false
   await WMX.store.set('wmxSettings', { ...WMX.settings, autoSell: true }); // un autre onglet vient d'activer l'assistant
   const input = w.document.querySelector('input[type=number]');
   const row = [...w.document.querySelectorAll('.wmx-setrow')].find((r) => /Coefficient du prix/.test(r.textContent));
@@ -1680,5 +1680,41 @@ test('marché : une moyenne de plus de 24 h reste affichée (icône « non à jo
   for (let i = 0; i < 40 && !/1s500 W/.test(chip('vieux').textContent); i++) await sleep(150);
   assert.match(chip('vieux').textContent, /Moy\. 1\s500 W/, 'la nouvelle moyenne remplace l’ancienne');
   assert.ok(chip('vieux').querySelector('.wmx-age.fresh'), 'et passe « à jour »');
+  env.close();
+});
+
+test('réglages : menu de gauche (une page par thème), brouillon gardé d’une page à l’autre, et entrée « WikiMasters+ » sous « Paramètres » du jeu', async () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  const { w, WMX } = env;
+  // Barre latérale du jeu (jsdom ne calcule pas les tailles : on donne une largeur à la barre)
+  w.document.body.insertAdjacentHTML('afterbegin', '<nav id="side"><a href="/collection"><span><svg></svg></span>Collection</a><a href="/trades"><span><svg></svg></span>Échanges</a><a href="/settings"><span><svg></svg></span>Paramètres</a></nav>');
+  w.document.getElementById('side').getBoundingClientRect = () => ({ width: 240, height: 600, top: 0, left: 0, right: 240, bottom: 600 });
+  await WMX.features.find((f) => f.name === 'dashboard').init();
+  const entry = w.document.querySelector('[data-wmx-nav="settings"]');
+  assert.ok(entry, 'entrée ajoutée');
+  assert.equal(entry.previousElementSibling.getAttribute('href'), '/settings', 'juste sous « Paramètres »');
+  assert.match(entry.textContent, /WikiMasters\+/);
+  entry.click();
+  const modal = w.document.querySelector('.wmx-modal--nav');
+  assert.ok(modal, 'les paramètres s’ouvrent');
+  const navBtns = [...modal.querySelectorAll('.wmx-set-navbtn')];
+  assert.deepEqual(navBtns.map((b) => b.querySelector('b').textContent), ['Paquets', 'Enchères', 'Vente', 'Aspect des cartes', 'Journal et données']);
+  const titles = () => [...modal.querySelectorAll('.wmx-sec h3')].map((h) => h.textContent);
+  assert.deepEqual(titles(), ['Révélation', 'Ouverture automatique'], 'une seule page à la fois');
+  // Un réglage changé sur une page reste en brouillon quand on passe à une autre.
+  const sw = [...modal.querySelectorAll('.wmx-setrow')].find((r) => /Ouvrir quand le stock est plein/.test(r.textContent)).querySelector('.wmx-switch');
+  const before = sw.getAttribute('aria-checked');
+  sw.click();
+  navBtns[2].click();
+  assert.deepEqual(titles(), ['Enchère rapide', 'Assistant de vente']);
+  assert.equal(modal.querySelector('.wmx-set-navbtn[aria-current="page"] b').textContent, 'Vente');
+  [...modal.querySelectorAll('.wmx-set-navbtn')][0].click();
+  assert.notEqual([...modal.querySelectorAll('.wmx-setrow')].find((r) => /Ouvrir quand le stock est plein/.test(r.textContent)).querySelector('.wmx-switch').getAttribute('aria-checked'), before, 'le brouillon est gardé');
+  [...modal.querySelectorAll('footer .wmx-btn')].find((b) => b.textContent === 'Appliquer').click();
+  await sleep(50);
+  assert.equal(String(WMX.settings.fullStockOpen), before === 'true' ? 'false' : 'true', 'appliqué');
+  // Ouvrir directement sur une partie : la bonne page est affichée.
+  WMX.openSettings('Mises automatiques');
+  assert.ok([...w.document.querySelectorAll('.wmx-modal--nav .wmx-sec h3')].some((h) => h.textContent === 'Mises automatiques'));
   env.close();
 });

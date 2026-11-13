@@ -123,6 +123,16 @@
     },
   ];
 
+  // Menu de gauche : une page par thème, chacune regroupant une ou plusieurs parties ci-dessus (au lieu d'un seul long bloc à faire défiler).
+  const GROUPS = [
+    { id: 'packs', label: 'Paquets', hint: 'Révélation, ouverture automatique', sections: ['Révélation', 'Ouverture automatique'] },
+    { id: 'auctions', label: 'Enchères', hint: 'Bulle, alertes, mises automatiques, surveillance', sections: ['Enchères', 'Mises automatiques'] },
+    { id: 'sell', label: 'Vente', hint: 'Enchère rapide ⚡, assistant de vente', sections: ['Enchère rapide', 'Assistant de vente'] },
+    { id: 'cards', label: 'Aspect des cartes', hint: 'Style, description, attaque et défense', sections: ['Aspect des cartes'] },
+    { id: 'data', label: 'Journal et données', hint: 'Journal d’activité, diagnostic, historique', sections: ['Journal d’activité', 'Données', 'Extension'] },
+  ];
+  let lastGroup = 'packs';
+
   /**
    * Enregistre UNIQUEMENT les réglages donnés, par-dessus ce qui est déjà enregistré : un onglet resté ouvert avec d'anciens réglages
    * n'écrase plus ceux qu'un autre onglet a changés (l'assistant de vente se retrouvait ainsi désactivé sans que personne ne l'ait demandé).
@@ -141,7 +151,10 @@
     if (document.querySelector('.wmx-modal-backdrop')) return;
     const initial = { ...WMX.settings }; // pour ne sauvegarder que ce que l'utilisateur a réellement modifié
     let draft = { ...WMX.settings };
-    const content = el('div', { class: 'wmx-modal-body' });
+    const content = el('div', { class: 'wmx-modal-body wmx-set-page' });
+    const nav = el('nav', { class: 'wmx-set-nav', 'aria-label': 'Rubriques des paramètres' });
+    const visible = SECTIONS.filter((sec) => !sec.dev || devBuild());
+    let group = GROUPS.find((g) => g.sections.includes(sectionTitle))?.id || lastGroup;
 
     const control = (it) => {
       if (it.type === 'select') {
@@ -267,7 +280,14 @@
     };
 
     const render = () => {
-      content.replaceChildren(...SECTIONS.filter((sec) => !sec.dev || devBuild()).map((sec) => el('section', { class: 'wmx-sec' },
+      lastGroup = group;
+      nav.replaceChildren(...GROUPS.filter((g) => visible.some((sec) => g.sections.includes(sec.title))).map((g) => {
+        const b = el('button', { type: 'button', class: 'wmx-set-navbtn', 'aria-current': g.id === group ? 'page' : 'false' }, el('b', {}, g.label), el('small', {}, g.hint));
+        b.addEventListener('click', () => { if (group === g.id) return; group = g.id; render(); content.scrollTop = 0; });
+        return b;
+      }));
+      const g = GROUPS.find((x) => x.id === group) || GROUPS[0];
+      content.replaceChildren(...visible.filter((sec) => g.sections.includes(sec.title)).map((sec) => el('section', { class: 'wmx-sec' },
         el('h3', {}, sec.title), el('p', {}, sec.desc),
         el('div', { class: 'wmx-rows' }, ...sec.items.map((it) =>
           el('div', { class: 'wmx-setrow' }, el('div', {}, el('strong', {}, it.label), el('small', {}, it.desc)), control(it)))))));
@@ -278,10 +298,10 @@
     const onKey = (e) => { if (e.key === 'Escape') close(); };
     document.addEventListener('keydown', onKey);
 
-    const modal = el('div', { class: 'wmx-modal', role: 'dialog', 'aria-label': 'Paramètres de l’extension' },
+    const modal = el('div', { class: 'wmx-modal wmx-modal--nav', role: 'dialog', 'aria-label': 'Paramètres de l’extension' },
       el('header', {}, el('div', {}, el('h2', {}, 'Paramètres de l’extension'), el('p', {}, 'Réglez uniquement ce dont vous avez besoin.')),
         el('button', { class: 'wmx-close', title: 'Fermer', onclick: close }, '×')),
-      content,
+      el('div', { class: 'wmx-set-layout' }, nav, content),
       el('footer', {}, el('span', {}, 'Les changements s’appliquent avec « Appliquer ».'),
         el('div', {},
           el('button', { class: 'wmx-btn wmx-btn--ghost', onclick: () => { draft = { ...WMX.DEFAULTS }; render(); } }, 'Valeurs par défaut'),

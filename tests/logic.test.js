@@ -359,3 +359,43 @@ test('marché : fraîcheur d’une moyenne (à jour sous 24 h, sinon non à jour
   assert.match(L.priceFreshness(30 * H, true).line, /actualisation en cours/);
   assert.equal(L.priceFreshness(null, true).state, 'loading');
 });
+
+test('plus-values : chaque vente prend l’achat le plus ancien de la même carte (rareté, shiny), achats avant la vente seulement', () => {
+  const H = 3600000;
+  const buys = [
+    { id: 'b1', t: 1 * H, price: 100, card_id: 'x', rarity: 'L', shiny: false },
+    { id: 'b2', t: 2 * H, price: 150, card_id: 'x', rarity: 'L', shiny: false },
+    { id: 'b3', t: 3 * H, price: 500, card_id: 'x', rarity: 'L', shiny: true },
+    { id: 'b4', t: 9 * H, price: 80, card_id: 'y', rarity: 'SR', shiny: false },
+  ];
+  const sells = [
+    { id: 's1', t: 4 * H, price: 160, card_id: 'x', rarity: 'L', shiny: false },
+    { id: 's2', t: 5 * H, price: 90, card_id: 'x', rarity: 'L', shiny: false },
+    { id: 's3', t: 6 * H, price: 20, card_id: 'z', rarity: 'C', shiny: false },
+    { id: 's4', t: 7 * H, price: 70, card_id: 'y', rarity: 'SR', shiny: false }, // l'achat de y est APRÈS : vente d'une carte non achetée
+  ];
+  const { ops, stock } = L.ledgerPair(buys, sells);
+  const by = Object.fromEntries(ops.map((o) => [o.id, o]));
+  assert.equal(by.s1.kind, 'resale'); assert.equal(by.s1.buy.id, 'b1'); assert.equal(by.s1.gain, 60); assert.equal(by.s1.hold, 3 * H);
+  assert.equal(by.s2.kind, 'resale'); assert.equal(by.s2.buy.id, 'b2'); assert.equal(by.s2.gain, -60);
+  assert.equal(by.s3.kind, 'sell'); assert.equal(by.s4.kind, 'sell');
+  assert.deepEqual(stock.map((b) => b.id), ['b4', 'b3'], 'la shiny et l’achat postérieur restent en stock');
+  assert.equal(ops[0].id, 'b4', 'opérations de la plus récente à la plus ancienne');
+  const s = L.ledgerSummary(ops);
+  assert.equal(s.gain, 0); assert.equal(s.resales, 2); assert.equal(s.wins, 1); assert.equal(s.losses, 1);
+  assert.equal(s.sold, 340); assert.equal(s.nSold, 4); assert.equal(s.soldNotBought, 90);
+  assert.equal(s.bought, 830); assert.equal(s.nBought, 4); assert.equal(s.net, 340 - 830);
+  assert.equal(Math.round(s.pct), 0);
+});
+
+test('plus-values : périodes jour / semaine (lundi) / mois en heure locale, et décalage', () => {
+  const t = new Date(2026, 10, 13, 15, 30).getTime(); // vendredi 13 novembre 2026
+  assert.equal(L.periodStart(t, 'day'), new Date(2026, 10, 13).getTime());
+  assert.equal(L.periodStart(t, 'week'), new Date(2026, 10, 9).getTime(), 'semaine du lundi 9');
+  assert.equal(L.periodStart(t, 'month'), new Date(2026, 10, 1).getTime());
+  assert.equal(L.periodShift(new Date(2026, 10, 1).getTime(), 'month', -1), new Date(2026, 9, 1).getTime());
+  assert.equal(L.periodShift(new Date(2026, 10, 9).getTime(), 'week', 1), new Date(2026, 10, 16).getTime());
+  assert.equal(L.holdText(45 * 60000), '45 min');
+  assert.equal(L.holdText(3 * 3600000), '3 h');
+  assert.equal(L.holdText(72 * 3600000), '3 j');
+});

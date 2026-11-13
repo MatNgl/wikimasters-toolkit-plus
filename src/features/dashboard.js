@@ -8,6 +8,9 @@
   let page = null;
   let body = null;
   let range = 30; // période du graphique en jours (0 = tout)
+  let tab = 'collection'; // onglet : 'collection' (valeur, raretés, top 10) ou 'profits' (plus-values, ledger.js)
+  let priceBar = null;
+  let tabsEl = null;
 
   const isOpen = () => !!page && !page.hidden;
 
@@ -121,6 +124,9 @@
 
   async function render() {
     if (!body) return;
+    paintTabs();
+    if (priceBar) priceBar.hidden = tab !== 'collection';
+    if (tab === 'profits') { await WMX.ledger?.render(body); return; }
     const t = WMX.inventory.totals();
     recordValue(t);
     const hist = await WMX.store.get('valueHistory', {});
@@ -138,27 +144,42 @@
           el('div', { class: 'wmx-stackbar' }, ...R.map((r) => el('i', { style: `flex:${t.byR[r] || 0.0001};background:rgb(${WMX.RARITY_RGB[r]})` }))),
           ...R.map((r) => el('div', { class: 'wmx-row2', style: `--rgb:${WMX.RARITY_RGB[r]}` }, el('b', {}, r), el('span', {}, `${fmt(t.byR[r])} W`)))),
         el('div', { class: 'wmx-panelbox' }, el('h4', {}, 'Top 10 des plus chères'),
-          ...(top.length ? top.map((it) => el('div', { class: 'wmx-row2', style: `--rgb:${WMX.RARITY_RGB[it.rarity]}` },
-            el('span', {}, `${it.rarity} · ${it.title}`), el('b', {}, `${fmt(avg(it))} W`))) : [el('p', { class: 'wmx-cp-empty' }, 'Aucun prix chargé pour le moment.')]))),
+          ...(top.length ? top.map((it, i) => el('div', { class: 'wmx-top-row', style: `--rgb:${WMX.RARITY_RGB[it.rarity]}` },
+            el('span', { class: 'wmx-top-n' }, String(i + 1)),
+            el('span', { class: 'wmx-lg-thumb' }, it.image ? el('img', { src: it.image, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' }) : el('span', { class: 'wmx-lg-noimg' }, 'W')),
+            el('span', { class: 'wmx-top-name' }, el('b', { title: it.title }, it.title), el('small', {}, `${it.rarity}${it.count > 1 ? ` · ×${it.count}` : ''}`)),
+            el('b', { class: 'wmx-top-price' }, `${fmt(avg(it))} W`))) : [el('p', { class: 'wmx-cp-empty' }, 'Aucun prix chargé pour le moment.')]))),
       valueBlock(hist));
   }
 
   function build() {
     body = el('div', { class: 'wmx-dash' });
     const status = el('span', { class: 'wmx-cp-status' });
+    tabsEl = el('div', { class: 'wmx-seg wmx-dash-tabs' });
     page = el('section', { class: 'wmx-cplus', id: 'wmx-dashboard', hidden: '' },
-      el('header', { class: 'wmx-cp-head' }, el('h2', {}, 'Tableau de bord'), status,
+      el('header', { class: 'wmx-cp-head' }, el('h2', {}, 'Tableau de bord'), tabsEl, status,
         el('button', { class: 'wmx-close', title: 'Paramètres (enchère rapide, prix…)', onclick: () => WMX.openSettings() }, '⚙')),
-      el('div', { class: 'wmx-cp-scroll' }, WMX.inventory.makePriceBar(), body));
+      el('div', { class: 'wmx-cp-scroll' }, priceBar = WMX.inventory.makePriceBar(), body));
     document.body.append(page);
     window.addEventListener('resize', place);
-    WMX.inventory.onChange(() => { if (isOpen()) render(); });
+    WMX.inventory.onChange(() => { if (isOpen() && tab === 'collection') render(); });
+    WMX.ledger?.onChange(() => { if (isOpen() && tab === 'profits') render(); });
+  }
+
+  /** Onglets « Collection » / « Plus-values » de l'en-tête. */
+  function paintTabs() {
+    if (!tabsEl) return;
+    tabsEl.replaceChildren(...[['collection', 'Collection'], ['profits', 'Plus-values']].map(([v, label]) => {
+      const b = el('button', { type: 'button', class: 'wmx-seg-btn', 'aria-pressed': String(tab === v) }, label);
+      b.addEventListener('click', () => { if (tab === v) return; tab = v; if (v === 'profits') WMX.ledger?.refresh(); render(); });
+      return b;
+    }));
   }
 
   const place = () => { if (page) page.style.left = `${Math.round(WMX.dom.sidebarRight())}px`; };
 
   function markNav() {
-    document.querySelectorAll('[data-wmx-nav]').forEach((a) => a.classList.toggle('wmx-nav-active', isOpen()));
+    document.querySelectorAll('[data-wmx-nav="dash"]').forEach((a) => a.classList.toggle('wmx-nav-active', isOpen()));
   }
 
   function close() {
@@ -182,10 +203,11 @@
   const ICON = '<path d="M21 12c.552 0 1.005-.449.95-.998a10 10 0 0 0-8.953-8.951c-.55-.055-.998.398-.998.95v8a1 1 0 0 0 1 1z"/><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/>';
 
   function mountNav() {
-    if (document.querySelector('[data-wmx-nav]')?.isConnected) return; // déjà posée : aucun calcul de mise en page
+    mountSettingsNav();
+    if (document.querySelector('[data-wmx-nav="dash"]')?.isConnected) return; // déjà posée : aucun calcul de mise en page
     const nav = [...document.querySelectorAll('nav')].find((n) => n.getBoundingClientRect().width > 100);
     const coll = nav?.querySelector('a[href="/collection"]');
-    if (!nav || !coll || nav.querySelector('[data-wmx-nav]')) return;
+    if (!nav || !coll || nav.querySelector('[data-wmx-nav="dash"]')) return;
     const tpl = nav.querySelector('a[href="/trades"]') || coll; // lien inactif : même gabarit, sans l'état « actif »
     const a = tpl.cloneNode(true);
     a.removeAttribute('href');
@@ -205,7 +227,34 @@
     markNav();
   }
 
-  WMX.dashboard = { open, render };
+  // --- Entrée « WikiMasters+ » sous « Paramètres » : ouvre les paramètres de l'extension -------------------
+  const SET_ICON = '<path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/>';
+  function mountSettingsNav() {
+    if (document.querySelector('[data-wmx-nav="settings"]')?.isConnected) return;
+    const nav = [...document.querySelectorAll('nav')].find((n) => n.getBoundingClientRect().width > 100);
+    if (!nav) return;
+    const anchor = nav.querySelector('a[href="/settings"]') || [...nav.querySelectorAll('a[href]')].find((a) => /^\s*Paramètres\s*$/i.test(a.textContent));
+    if (!anchor) return;
+    const tpl = nav.querySelector('a[href="/trades"]') || anchor;
+    const a = tpl.cloneNode(true);
+    a.removeAttribute('href');
+    a.setAttribute('role', 'button');
+    a.setAttribute('tabindex', '0');
+    a.setAttribute('title', 'Paramètres de WikiMasters Toolkit+');
+    a.className = a.className.replace(/bg-\[var\(--color-accent\)\]\/10|text-\[var\(--color-accent\)\]/g, '');
+    a.classList.add('wmx-nav-item');
+    a.dataset.wmxNav = 'settings';
+    const svg = a.querySelector('svg');
+    if (svg) svg.innerHTML = SET_ICON;
+    const iconWrap = a.querySelector('span');
+    a.replaceChildren(...(iconWrap ? [iconWrap] : []), 'WikiMasters+', el('i', { class: 'wmx-nav-tag' }, 'ext'));
+    const go = (e) => { e.preventDefault(); e.stopPropagation(); WMX.openSettings(); };
+    a.addEventListener('click', go);
+    a.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') go(e); });
+    anchor.after(a);
+  }
+
+  WMX.dashboard = { open, render, show: (t) => { tab = t; return open(); } };
 
   WMX.register({
     name: 'dashboard',
