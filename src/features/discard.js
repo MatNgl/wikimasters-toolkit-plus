@@ -20,6 +20,13 @@
 
   // ---- quelles cartes ----
   const saleTags = () => String(WMX.settings?.autoSellTags || '').split(',').map((t) => t.trim()).filter(Boolean);
+  /** Étiquettes choisies qui existent encore dans la collection (une étiquette vidée par une défausse, ou supprimée, est ignorée). */
+  function liveTags(tags, items) {
+    if (!(tags || []).length) return [];
+    const have = new Set();
+    for (const it of items) for (const t of it.tags || []) have.add(key(t.name));
+    return tags.filter((x) => have.has(key(x)));
+  }
   function plan(p = prefs) {
     const items = WMX.inventory.items();
     const day = Date.now() - 24 * WMX.logic.HOUR;
@@ -27,7 +34,7 @@
     const recent = p.keepRecent ? items.filter((it) => it.at && new Date(it.at).getTime() > day) : [];
     const recentIds = new Set(recent.map((it) => it.card_id));
     const res = WMX.logic.discardPlan(items.filter((it) => !recentIds.has(it.card_id)), {
-      rarities: p.rarities, tags: p.tags || [], includeTagged: p.includeTagged, keepOne: p.keepOne, maxAvg: p.useMax ? Number(p.maxAvg) || 0 : 0,
+      rarities: p.rarities, tags: liveTags(p.tags, items), includeTagged: p.includeTagged, keepOne: p.keepOne, maxAvg: p.useMax ? Number(p.maxAvg) || 0 : 0,
       // Le prix ne compte que pour le seuil : sans seuil, une carte au prix inconnu est traitée comme les autres. Avec le seuil : « défausser »,
       // sinon gardée pour l'instant (« attendre » et « en dernier » chargent son prix pendant la défausse, voir start()).
       unpriced: !p.useMax || unpricedMode(p) === 'discard' ? 'discard' : 'keep', onlyNoImage: p.onlyNoImage, busy,
@@ -108,6 +115,9 @@
       const tags = tagList();
       // Menu déroulant à cases : une ou plusieurs étiquettes. Aucune cochée : les cartes SANS étiquette de ces raretés.
       const chosen = (prefs.tags || []).filter((x) => tags.some((t) => key(t.name) === key(x)));
+      // Étiquette choisie la dernière fois qui n'existe plus (vidée par une défausse, supprimée) : on l'oublie, sinon le menu affiche « aucune
+      // étiquette choisie » alors que le calcul la cherche encore (« Aucune carte ne correspond »). Pas pendant une première lecture incomplète.
+      if (chosen.length !== (prefs.tags || []).length && !partial()) { prefs.tags = chosen; savePrefs(); }
       const tagBtn = el('button', { type: 'button', class: 'wmx-input wmx-select wmx-dc-tag', 'aria-haspopup': 'listbox', 'aria-expanded': String(!!S.tagOpen) },
         chosen.length ? `Étiquettes : ${chosen.join(', ')}` : 'Cartes sans étiquette (aucune étiquette choisie)');
       tagBtn.addEventListener('click', () => { S.tagOpen = !S.tagOpen; render(); });

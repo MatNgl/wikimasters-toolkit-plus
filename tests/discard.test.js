@@ -461,6 +461,19 @@ test('défausse : le panneau masqué pendant la défausse laisse une bulle « N 
   env.close();
 });
 
+test('défausse : une étiquette choisie la dernière fois qui n’existe plus (vidée) est oubliée : les cartes sans étiquette sont bien proposées', async () => {
+  const cards = cardsA().filter((c) => !(c.tags || []).some((t) => t.name === 'TEST')); // l'étiquette TEST a été vidée par une défausse
+  const { env, w, WMX } = setup(cards);
+  env.mem.discardPrefs = { rarities: ['C'], tags: ['TEST'] };
+  await WMX.features.find((f) => f.name === 'discard').init();
+  WMX.discard.openPicker();
+  const dlg = w.document.querySelector('.wmx-dc .wmx-dlg');
+  assert.match(dlg.querySelector('button.wmx-dc-tag').textContent, /Cartes sans étiquette/);
+  assert.match(dlg.querySelector('.wmx-dc-sum').textContent, /35 exemplaires à défausser/, 'les C sans étiquette, pas « Aucune carte ne correspond »');
+  assert.deepEqual([...(env.mem.discardPrefs.tags || [])], [], 'l’étiquette disparue est retirée des réglages');
+  env.close();
+});
+
 for (const mode of ['wait', 'last']) {
   test(`défausse : cartes au prix inconnu « ${mode === 'wait' ? 'attendre leur prix' : 'traiter en dernier'} » (seuil 20 W : la pas chère défaussée, la chère et l’introuvable gardées)`, async () => {
     const cards = [{ title: 'Connue', rarity: 'C' }, { title: 'Pas chère', rarity: 'C' }, { title: 'Chère', rarity: 'C' }, { title: 'Introuvable', rarity: 'C' }];
