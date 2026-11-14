@@ -1094,3 +1094,36 @@ html.wmx-opening .wmx-cover { display: block; }
 /* Réglage dépendant d'un interrupteur (showIf) : en retrait sous celui-ci (0.32.6) */
 .wmx-setrow--sub { padding-left: 32px; border-top-style: dashed; }
 .wmx-setrow--sub[hidden] { display: none; }
+
+/* ---- Échanges : bilan vu de mon côté (trades.js) ---- */
+.wmx-tv-sum { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 12px; background: #0b1411; border: 1px solid #27493b; font-family: Outfit, system-ui, sans-serif; }
+.wmx-tv-amounts { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; }
+.wmx-tv-amt { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.wmx-tv-amt.get { text-align: right; }
+.wmx-tv-amt small { font-size: 11px; color: #8fa89c; }
+.wmx-tv-amt b { font-size: 16px; color: #fff; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wmx-tv-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: #22302a; min-width: 60px; }
+.wmx-tv-bar i { display: block; height: 100%; transition: width .3s ease; }
+.wmx-tv-bar i.give { background: #f59e0b; }
+.wmx-tv-bar i.get { background: #2dd4a0; }
+.wmx-tv-verdict { display: flex; flex-direction: column; gap: 2px; }
+.wmx-tv-verdict b { font-size: 13px; }
+.wmx-tv-verdict small { font-size: 11px; color: #8fa89c; }
+.wmx-tv-sum[data-kind=win] { border-color: rgb(45 212 160 / .55); background: rgb(45 212 160 / .08); } .wmx-tv-sum[data-kind=win] .wmx-tv-verdict b { color: #2dd4a0; }
+.wmx-tv-sum[data-kind=loss] { border-color: rgb(239 68 68 / .55); background: rgb(239 68 68 / .08); } .wmx-tv-sum[data-kind=loss] .wmx-tv-verdict b { color: #fca5a5; }
+.wmx-tv-sum[data-kind=even] { border-color: rgb(100 191 255 / .45); } .wmx-tv-sum[data-kind=even] .wmx-tv-verdict b { color: #7cc6ff; }
+.wmx-tv-sum[data-kind=pending] .wmx-tv-verdict b, .wmx-tv-sum[data-kind=neutral] .wmx-tv-verdict b { color: #d7e6df; }
+.wmx-tv { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; }
+.wmx-tv .wmx-tv-note { grid-column: 1 / -1; margin: 0; font-size: 11px; color: #7f8f87; }
+@media (max-width: 640px) { .wmx-tv { grid-template-columns: 1fr; } .wmx-tv-amounts { grid-template-columns: 1fr 1fr; } .wmx-tv-bar { grid-column: 1 / -1; order: 3; } }
+.wmx-tv-row em { display: inline-flex; align-items: center; gap: 5px; justify-content: flex-end; }
+.wmx-tv-own { margin-left: 6px; padding: 0 6px; border-radius: 999px; font-size: 10px; font-weight: 700; vertical-align: 1px; }
+.wmx-tv-own.new { background: rgb(45 212 160 / .16); color: #2dd4a0; }
+.wmx-tv-own.dup { background: rgb(255 255 255 / .08); color: #9db5a8; }
+.wmx-tv-none span { color: #7f8f87; }
+
+/* ---- Collection des autres joueurs (profile-prices.js) ---- */
+.wmx-pp-bar { width: 100%; margin: 6px 0 10px; padding: 8px 12px; border-radius: 12px; background: #0b1411; border: 1px solid #27493b; color: #d9f5ea; font: 600 13px/1.4 Outfit, system-ui, sans-serif; text-align: center; }
+.wmx-pp-price[data-state=stale] { border-color: #f59e0b88; }
+.wmx-pp-price[data-state=loading] { border-color: #7cc6ff88; }
+.wmx-pp-price.wmx-pp-mine::after { content: " ✓"; color: #2dd4a0; }

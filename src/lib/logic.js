@@ -412,6 +412,31 @@
       const h = Math.round(m / 60);
       return h < 48 ? `${h} h` : `${Math.round(h / 24)} j`;
     },
+    /**
+     * Bilan d'un échange vu de MON côté. give / get : { cards: [{ avg (moyenne ou null), priced (prix chargé, même « sans vente ») }], w: wikibidous }.
+     * Une carte « sans vente » compte 0 W ; une carte au prix pas encore chargé rend l'estimation incomplète (`missing`).
+     * Rend { give, get, diff (get − give), pct (écart rapporté à ce que je donne), kind: 'win' | 'loss' | 'even' | 'pending', label, missing, noSale }.
+     * « Équilibré » : écart de 5 % au plus (ou 2 W au plus).
+     */
+    tradeBalance(give, get) {
+      const side = (s) => {
+        let v = Number(s?.w) || 0; let missing = 0; let noSale = 0;
+        for (const c of s?.cards || []) { if (c.avg > 0) v += c.avg; else if (c.priced) noSale += 1; else missing += 1; }
+        return { v, missing, noSale };
+      };
+      const a = side(give); const b = side(get);
+      const diff = b.v - a.v;
+      const base = Math.max(a.v, b.v, 1);
+      const pct = a.v > 0 ? Math.round((diff / a.v) * 100) : (b.v > 0 ? 100 : 0);
+      const missing = a.missing + b.missing;
+      const fmt = (n) => Math.round(Math.abs(n)).toLocaleString('fr-FR');
+      let kind; let label;
+      if (missing) { kind = 'pending'; label = `Estimation en cours (${missing} prix à charger)`; }
+      else if (Math.abs(diff) <= 2 || Math.abs(diff) / base <= 0.05) { kind = 'even'; label = 'Échange équilibré'; }
+      else if (diff > 0) { kind = 'win'; label = `Avantageux : vous gagnez ${fmt(diff)} W${a.v > 0 ? ` (+${pct} %)` : ''}`; }
+      else { kind = 'loss'; label = `Désavantageux : vous perdez ${fmt(diff)} W${a.v > 0 ? ` (${pct} %)` : ''}`; }
+      return { give: a.v, get: b.v, diff, pct, kind, label, missing, noSale: a.noSale + b.noSale };
+    },
     /** Message clair pour un échec réseau ou un code HTTP. */
     friendlyError(status) {
       if (status === 0 || status == null) return 'Pas de connexion au jeu : vérifiez votre connexion internet.';

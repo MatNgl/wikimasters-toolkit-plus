@@ -1,12 +1,13 @@
-// Échanges : bouton « Valeurs » sur chaque offre d'échange (reçues, envoyées, historique) : les cartes de chaque côté avec leur
-// moyenne du marché, les wikibidous ajoutés, le total par côté et l'écart. Les offres viennent de GET /api/trades (déjà demandé
-// par le jeu) ; les moyennes de la même source que la collection. Principe repris de l'ancienne extension (cartes repérées par
-// leurs titres dans l'offre affichée).
+// Échanges : sur chaque offre (reçues, envoyées, historique), un bilan visible tout de suite, vu de MON côté : « Vous donnez X W » / « Vous recevez Y W »,
+// une barre d'équilibre et un verdict (avantageux, désavantageux, équilibré, estimation en cours). « Détail des cartes » : chaque carte avec sa moyenne
+// du marché (icône de fraîcheur : relue au-delà de 24 h, comme sur le Marché), les wikibidous, et pour les cartes que je recevrais, si je les ai déjà.
+// Les offres viennent de GET /api/trades (déjà demandé par le jeu) ; les moyennes de la même source que la collection.
 (() => {
   const { el } = WMX.dom;
   const trades = new Map();
   const open = new Set();
   let timer = null;
+  let me = null; // mon identifiant de joueur (déduit, puis mémorisé)
   const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
   const fmt = (n) => Math.round(n).toLocaleString('fr-FR');
 
@@ -48,51 +49,109 @@
     return best;
   }
 
-  function panel(t) {
-    const rows = [];
-    const totals = t.sides.map((s) => {
-      const items = t.items.filter((i) => i.by === s.uid);
+  /**
+   * Mon côté de l'échange : mon identifiant s'il est connu (enchères, ou déjà déduit), sinon le joueur présent dans toutes mes offres,
+   * sinon le texte de l'offre (« À X » : c'est moi qui propose ; « De X » : c'est X qui propose). Null si rien ne permet de le dire.
+   */
+  function mySide(t, elm) {
+    const known = me || WMX.auctions?.state?.()?.me || null;
+    if (known && t.sides.some((s) => s.uid === known)) return t.sides.findIndex((s) => s.uid === known);
+    const all = [...trades.values()];
+    if (all.length > 1) {
+      const common = t.sides.map((s) => s.uid).filter((uid) => all.every((x) => x.sides.some((s) => s.uid === uid)));
+      if (common.length === 1) { remember(common[0]); return t.sides.findIndex((s) => s.uid === common[0]); }
+    }
+    const head = norm(elm?.textContent || '').slice(0, 80);
+    const to = /^à\s+(.+?)(\s|·|$)/.exec(head);
+    const from = /^de\s+(.+?)(\s|·|$)/.exec(head);
+    if (to && head.startsWith(`à ${norm(t.sides[1].name)}`)) { remember(t.sides[0].uid); return 0; }
+    if (from && head.startsWith(`de ${norm(t.sides[0].name)}`)) { remember(t.sides[1].uid); return 1; }
+    return -1;
+  }
+  function remember(uid) { if (uid && uid !== me) { me = uid; WMX.store.set('myUserId', uid); } }
+
+  /** Valeur d'une carte : moyenne, « sans vente » (prix chargé, aucune vente) ou pas encore chargée ; fraîcheur (✓ / ! / ↻). */
+  function cardValue(i) {
+    const p = WMX.prices.get(i.id, i.rarity);
+    return { avg: p?.avg ?? null, priced: WMX.prices.has(i.id), fresh: WMX.prices.freshness ? WMX.prices.freshness(i.id) : null };
+  }
+  const sideOf = (t, k) => ({ ...t.sides[k], items: t.items.filter((i) => i.by === t.sides[k].uid) });
+
+  function balanceOf(t, mine) {
+    const give = sideOf(t, mine < 0 ? 0 : mine);
+    const get = sideOf(t, mine < 0 ? 1 : 1 - mine);
+    const b = WMX.logic.tradeBalance(
+      { w: give.w, cards: give.items.map((i) => { const v = cardValue(i); return { avg: v.avg, priced: v.priced }; }) },
+      { w: get.w, cards: get.items.map((i) => { const v = cardValue(i); return { avg: v.avg, priced: v.priced }; }) });
+    return { give, get, b };
+  }
+
+  /** Bilan toujours visible : deux montants, barre d'équilibre, verdict. Sans « mon côté » connu : les deux joueurs nommés. */
+  function summary(t, mine) {
+    const { give, get, b } = balanceOf(t, mine);
+    const total = b.give + b.get;
+    const share = total > 0 ? Math.round((b.give / total) * 100) : 50;
+    const who = (s, mineSide) => (mine < 0 ? `${s.name} donne` : mineSide ? 'Vous donnez' : 'Vous recevez');
+    let label = b.label;
+    if (mine < 0 && (b.kind === 'win' || b.kind === 'loss')) label = `Écart : ${fmt(Math.abs(b.diff))} W en faveur de ${b.diff > 0 ? give.name : get.name}`; // vu de nulle part : on nomme le gagnant
+    const notes = [b.noSale ? `${b.noSale} carte${b.noSale > 1 ? 's' : ''} sans vente sur le marché, comptée${b.noSale > 1 ? 's' : ''} 0 W` : '',
+      mine < 0 ? 'côté de l’échange non déterminé : montants des deux joueurs' : ''].filter(Boolean);
+    return el('div', { class: 'wmx-tv-sum', 'data-kind': mine < 0 && b.kind !== 'pending' && b.kind !== 'even' ? 'neutral' : b.kind },
+      el('div', { class: 'wmx-tv-amounts' },
+        el('div', { class: 'wmx-tv-amt give' }, el('small', {}, who(give, true)), el('b', {}, `${b.missing ? '≈ ' : ''}${fmt(b.give)} W`)),
+        el('div', { class: 'wmx-tv-bar', title: `${fmt(b.give)} W donnés · ${fmt(b.get)} W reçus` }, el('i', { class: 'give', style: `width:${share}%` }), el('i', { class: 'get', style: `width:${100 - share}%` })),
+        el('div', { class: 'wmx-tv-amt get' }, el('small', {}, mine < 0 ? `${get.name} donne` : 'Vous recevez'), el('b', {}, `${b.missing ? '≈ ' : ''}${fmt(b.get)} W`))),
+      el('div', { class: 'wmx-tv-verdict' }, el('b', {}, label), notes.length ? el('small', {}, notes.join(' · ')) : ''));
+  }
+
+  /** Détail : les deux côtés, chaque carte avec sa valeur ; pour les cartes reçues, « déjà possédée » ou « nouvelle ». */
+  function detail(t, mine) {
+    const col = (k, receiving) => {
+      const s = sideOf(t, k);
       let sum = s.w;
-      let known = 0;
-      const lines = items.map((i) => {
-        const p = WMX.prices.get(i.id, i.rarity);
-        const fresh = WMX.prices.fresh(i.id);
-        if (p) { sum += p.avg; known += 1; } else if (fresh) known += 1;
-        return el('div', { class: 'wmx-tv-row', style: `--rgb:${WMX.RARITY_RGB[i.rarity]}` },
-          el('b', {}, i.rarity), el('span', {}, i.title), el('em', {}, p ? `${fmt(p.avg)} W` : fresh ? 'sans vente' : '…'));
+      const rows = s.items.map((i) => {
+        const v = cardValue(i);
+        if (v.avg) sum += v.avg;
+        const owned = receiving ? WMX.inventory?.find?.(i.title, i.rarity) : null;
+        return el('div', { class: 'wmx-tv-row', style: `--rgb:${WMX.RARITY_RGB?.[i.rarity] || '160 175 168'}` },
+          el('b', {}, i.rarity),
+          el('span', { title: i.title }, i.title, receiving && mine >= 0 ? el('small', { class: `wmx-tv-own ${owned ? 'dup' : 'new'}` }, owned ? `déjà ×${owned.count || 1}` : 'nouvelle') : ''),
+          el('em', {}, v.avg ? `${fmt(v.avg)} W` : v.priced ? 'sans vente' : '…', v.fresh ? el('i', { class: `wmx-age ${v.fresh.state}`, title: v.fresh.line, 'aria-label': v.fresh.line }, v.fresh.icon) : ''));
       });
-      if (s.w) lines.push(el('div', { class: 'wmx-tv-row' }, el('b', {}, 'W'), el('span', {}, 'Wikibidous ajoutés'), el('em', {}, `${fmt(s.w)} W`)));
-      if (!items.length && !s.w) lines.push(el('div', { class: 'wmx-tv-row' }, el('span', {}, 'Aucune carte')));
-      rows.push(el('div', { class: 'wmx-tv-side' }, el('h5', {}, `${s.name} · ${items.length} carte${items.length > 1 ? 's' : ''}`), ...lines,
-        el('div', { class: 'wmx-tv-total' }, el('span', {}, `Total${known < items.length ? ` (prix connus : ${known}/${items.length})` : ''}`), el('b', {}, `${fmt(sum)} W`))));
-      return sum;
-    });
-    const diff = totals[0] - totals[1];
-    return el('div', { class: 'wmx-tv' }, ...rows,
-      el('div', { class: 'wmx-tv-diff' }, diff === 0 ? 'Valeurs équivalentes' : `Écart : ${fmt(Math.abs(diff))} W en faveur de ${diff > 0 ? t.sides[1].name : t.sides[0].name}`));
+      if (s.w) rows.push(el('div', { class: 'wmx-tv-row' }, el('b', {}, 'W'), el('span', {}, 'Wikibidous'), el('em', {}, `${fmt(s.w)} W`)));
+      if (!rows.length) rows.push(el('div', { class: 'wmx-tv-row wmx-tv-none' }, el('span', {}, 'Rien')));
+      const title = mine < 0 ? `${s.name} donne` : receiving ? `Vous recevez (de ${s.name})` : 'Vous donnez';
+      return el('div', { class: 'wmx-tv-side' }, el('h5', {}, title), ...rows, el('div', { class: 'wmx-tv-total' }, el('span', {}, 'Total'), el('b', {}, `${fmt(sum)} W`)));
+    };
+    const giveK = mine < 0 ? 0 : mine;
+    return el('div', { class: 'wmx-tv' }, col(giveK, false), col(1 - giveK, true),
+      el('p', { class: 'wmx-tv-note' }, 'Valeur = moyenne des ventes du marché pour la rareté de la carte (relue si elle a plus de 24 h) ; 1 wikibidou = 1 W.'));
   }
 
   function render(elm, t) {
+    const mine = mySide(t, elm);
+    t.items.forEach((i, k) => WMX.prices.keepFresh ? WMX.prices.keepFresh(i.id, k) : (!WMX.prices.has(i.id) && WMX.prices.fetchOne(i.id))); // jamais chargée ou de plus de 24 h : relue
     let wrap = elm.querySelector(':scope > .wmx-tv-wrap');
     if (!wrap) {
-      const btn = el('button', { class: 'wmx-btn wmx-btn--ghost wmx-tv-btn', type: 'button' }, 'Valeurs');
-      wrap = el('div', { class: 'wmx-tv-wrap' }, btn);
+      const btn = el('button', { class: 'wmx-btn wmx-btn--ghost wmx-tv-btn', type: 'button' }, 'Détail des cartes');
+      wrap = el('div', { class: 'wmx-tv-wrap' }, el('div', { class: 'wmx-tv-slot' }), btn);
       btn.addEventListener('click', (e) => {
         e.preventDefault(); e.stopPropagation();
         const cur = trades.get(elm.dataset.wmxTrade);
         if (!cur) return;
-        if (open.has(cur.id)) open.delete(cur.id); else { open.add(cur.id); for (const i of cur.items) if (!WMX.prices.get(i.id, i.rarity) && !WMX.prices.fresh(i.id)) WMX.prices.fetchOne(i.id); }
+        if (open.has(cur.id)) open.delete(cur.id); else open.add(cur.id);
         render(elm, cur);
       });
       elm.append(wrap);
     }
     const isOpen = open.has(t.id);
-    const sig = isOpen ? t.items.map((i) => `${WMX.prices.get(i.id, i.rarity)?.avg ?? ''}${WMX.prices.fresh(i.id) ? 1 : 0}`).join(',') : 'closed';
+    const sig = [mine, isOpen, ...t.items.map((i) => { const v = cardValue(i); return `${v.avg ?? ''}|${v.priced ? 1 : 0}|${v.fresh?.state || ''}`; })].join(',');
     if (wrap.dataset.sig === sig) return; // rien n'a changé : pas de reconstruction (évite une boucle avec l'observateur)
     wrap.dataset.sig = sig;
-    wrap.querySelector('.wmx-tv-btn').textContent = open.has(t.id) ? 'Masquer les valeurs' : 'Valeurs';
-    wrap.querySelector('.wmx-tv')?.remove();
-    if (open.has(t.id)) wrap.append(panel(t));
+    wrap.querySelector('.wmx-tv-slot').replaceChildren(summary(t, mine));
+    wrap.querySelector('.wmx-tv-btn').textContent = isOpen ? 'Masquer le détail' : 'Détail des cartes';
+    wrap.querySelector(':scope > .wmx-tv')?.remove();
+    if (isOpen) wrap.append(detail(t, mine));
   }
 
   function scan() {
@@ -111,14 +170,15 @@
   WMX.register({
     name: 'trades',
     match: /^\/trades/,
-    init() {
+    async init() {
+      me = await WMX.store.get('myUserId', null);
       WMX.onApi(({ path, data }) => {
         if (path !== '/api/trades') return;
         for (const raw of data?.trades || []) { const t = mapTrade(raw); if (t) trades.set(t.id, t); }
         schedule();
       });
       new MutationObserver((muts) => { if (WMX.dom.foreign(muts)) schedule(); }).observe(document.body, { childList: true, subtree: true });
-      WMX.prices.onProgress(() => { if (open.size) schedule(); });
+      WMX.prices.onProgress(() => schedule());
       schedule();
     },
   });

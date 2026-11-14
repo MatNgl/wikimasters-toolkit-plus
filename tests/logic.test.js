@@ -423,3 +423,16 @@ test('paquets : le stock maximum est celui affiché par le jeu (« 3 / 20 paquet
   assert.equal(L.packEstimate(snap, t, 180).fullAt, t + 60_000 + 16 * 180_000, 'stock plein après 17 paquets');
   assert.equal(L.packEstimate({ packs: 3, t, nextAt: null }, t, 180).max, 10, 'ancien relevé sans maximum : 10');
 });
+
+test('échanges : bilan vu de mon côté (gain, perte, équilibré, prix manquants, cartes sans vente)', () => {
+  const c = (avg, priced = true) => ({ avg, priced });
+  let b = L.tradeBalance({ w: 0, cards: [c(40)] }, { w: 5, cards: [c(100)] });
+  assert.equal(b.kind, 'win'); assert.equal(b.diff, 65); assert.match(b.label, /vous gagnez 65 W \(\+163 %\)/);
+  b = L.tradeBalance({ w: 15, cards: [] }, { w: 0, cards: [c(3)] });
+  assert.equal(b.kind, 'loss'); assert.match(b.label, /vous perdez 12 W \(-80 %\)/);
+  assert.equal(L.tradeBalance({ w: 0, cards: [c(100)] }, { w: 0, cards: [c(97)] }).kind, 'even', '3 % d’écart : équilibré');
+  b = L.tradeBalance({ w: 0, cards: [c(100)] }, { w: 0, cards: [c(null, false)] });
+  assert.equal(b.kind, 'pending'); assert.equal(b.missing, 1);
+  b = L.tradeBalance({ w: 0, cards: [c(null, true)] }, { w: 10, cards: [] });
+  assert.equal(b.noSale, 1, 'une carte sans vente compte 0 W'); assert.equal(b.kind, 'win');
+});

@@ -618,16 +618,18 @@ test('marché : « Miser le minimum » pose le minimum de la page d\'enchère, s
   env.close();
 });
 
-test('échanges : valeurs des deux côtés, wikibidous et écart', async () => {
+test('échanges : bilan visible tout de suite, vu de mon côté (je donne / je reçois, verdict), détail des cartes avec « nouvelle / déjà »', async () => {
   const env = createEnv({ fetchImpl: async (u) => {
     const id = String(u).match(/cards\/([^/]+)\//)?.[1];
     return json({ summary: { UR: { average: id === 'c1' ? 100 : 40, count: 9, latest: 1 }, R: { average: 10, count: 9, latest: 1 } } });
   } });
-  const { w, WMX } = env;
+  const { w, mem, WMX } = env;
+  mem.myUserId = 'u2';
   w.history.pushState({}, '', '/trades');
-  w.document.body.innerHTML = `<div class="card-frame"><span title="Alpha">Alpha</span><span title="Beta">Beta</span>Offre de bob et moi
+  w.document.body.innerHTML = `<div class="card-frame">De bob · En attente<span title="Alpha">Alpha</span><span title="Beta">Beta</span>
     <button aria-label="Voir le détail de l'échange">+</button></div>`;
-  for (const f of WMX.features) if (f.name === 'trades') f.init();
+  WMX.inventory.find = (t) => (t === 'Alpha' ? { count: 2 } : null);
+  for (const f of WMX.features) if (f.name === 'trades') await f.init();
   w.dispatchEvent(new w.CustomEvent('wmx:api', { detail: { url: '/api/trades', method: 'GET', status: 200, data: { trades: [{
     id: 't1', initiator_id: 'u1', recipient_id: 'u2', initiator_wikibidous: 5, recipient_wikibidous: 0,
     initiator: { username: 'bob' }, recipient: { username: 'moi' },
@@ -635,14 +637,19 @@ test('échanges : valeurs des deux côtés, wikibidous et écart', async () => {
       { offered_by: 'u1', card_id: 'c1', snapshot_rarity: 'UR', card: { wikipedia_title: 'Alpha' } },
       { offered_by: 'u2', card_id: 'c2', snapshot_rarity: 'UR', card: { wikipedia_title: 'Beta' } },
     ] }] } } }));
-  for (let i = 0; i < 40 && !w.document.querySelector('.wmx-tv-btn'); i++) await sleep(150);
+  const sum = () => w.document.querySelector('.wmx-tv-sum');
+  for (let i = 0; i < 60 && !(sum() && sum().dataset.kind === 'win'); i++) await sleep(150);
+  assert.ok(sum(), 'bilan affiché sans clic');
+  assert.match(sum().textContent, /Vous donnez\s*40 W/, 'je donne Beta (40 W)');
+  assert.match(sum().textContent, /Vous recevez\s*105 W/, 'je reçois Alpha (100 W) + 5 wikibidous');
+  assert.match(sum().textContent, /Avantageux : vous gagnez 65 W \(\+163 %\)/);
   w.document.querySelector('.wmx-tv-btn').click();
-  for (let i = 0; i < 60 && !/Écart/.test(w.document.body.textContent) || /…/.test(w.document.querySelector('.wmx-tv')?.textContent || ''); i++) await sleep(150);
-  const txt = w.document.querySelector('.wmx-tv').textContent;
-  assert.match(txt, /bob · 1 carte/);
-  assert.match(txt, /Total.*105 W/, 'Alpha 100 + 5 wikibidous');
-  assert.match(txt, /Total.*40 W/);
-  assert.match(txt, /Écart : 65 W en faveur de moi/);
+  await sleep(50);
+  const d = w.document.querySelector('.wmx-tv').textContent;
+  assert.match(d, /Vous donne/);
+  assert.match(d, /Vous recevez \(de bob\)/);
+  assert.match(d, /Alphadéjà ×2/, 'carte reçue déjà possédée');
+  assert.match(d, /Wikibidous\s*5 W/);
   env.close();
 });
 
@@ -1845,5 +1852,28 @@ test('réglages : « Limiter les remises en vente » (4 par défaut) ; le nombre
   assert.equal(WMX.settings.autoSellRelistLimit, false, 'sans limite');
   WMX.openSettings('Assistant de vente');
   assert.equal(row('Mises en vente par carte (sur 24 h)').hidden, true, 'rouvert : toujours masqué');
+  env.close();
+});
+
+test('profil d’un autre joueur : moyenne sur chaque carte de sa collection, valeur des cartes affichées, « vous l’avez » au survol', async () => {
+  const env = createEnv({ fetchImpl: async (u) => (String(u).includes('/sales') ? json({ summary: { L: { average: 2500, count: 4, latest: 2400 }, C: { average: 3, count: 9, latest: 3 } } }) : json({})) });
+  const { w, WMX } = env;
+  w.history.pushState({}, '', '/profile/Atsuya');
+  const tile = (title, r) => `<div class="relative"><div class="relative rounded-2xl overflow-hidden"><div class="absolute top-2 left-2">${r}</div><h3>${title}</h3></div></div>`;
+  w.document.body.innerHTML = `<main><input placeholder="Rechercher par titre ou catégorie..."><div class="flex flex-wrap justify-center">${tile('Thomas Pesquet', 'L')}${tile('Planète', 'C')}${tile('Inconnue', 'C')}</div></main>`;
+  for (const f of WMX.features) if (f.name === 'profile-prices') f.init();
+  w.dispatchEvent(new w.CustomEvent('wmx:api', { detail: { url: '/api/profile/Atsuya/collection?page=0&sort=rarity', method: 'GET', status: 200, data: { collection: [
+    { card_id: 'k1', count: 2, owned_by_viewer: false, card: { id: 'k1', wikipedia_title: 'Thomas Pesquet', rarity: 'legendaire' } },
+    { card_id: 'k2', count: 1, owned_by_viewer: true, card: { id: 'k2', wikipedia_title: 'Planète', rarity: 'commun' } },
+  ] } } }));
+  const chip = (t) => [...w.document.querySelectorAll('main h3')].find((h) => h.textContent === t).closest('.rounded-2xl').querySelector('.wmx-nt-price');
+  for (let i = 0; i < 80 && !(/2\s500/.test(chip('Thomas Pesquet')?.textContent || '') && /3 W/.test(chip('Planète')?.textContent || '')); i++) await sleep(150);
+  assert.match(chip('Thomas Pesquet').textContent, /Moy\. 2\s500 W/, 'moyenne sur la carte d’un autre joueur');
+  assert.match(chip('Planète').textContent, /Moy\. 3 W/);
+  assert.equal(chip('Inconnue'), null, 'carte non reconnue : pas de pastille');
+  assert.match(chip('Planète').title, /Vous avez aussi cette carte/);
+  assert.match(chip('Thomas Pesquet').title, /2 exemplaires chez ce joueur/);
+  for (let i = 0; i < 20 && !/5\s003/.test(w.document.querySelector('.wmx-pp-bar')?.textContent || ''); i++) await sleep(150);
+  assert.match(w.document.querySelector('.wmx-pp-bar').textContent, /Valeur des cartes affichées : 5\s003 W · 2 cartes · 1 que vous avez aussi/, '2 × 2 500 + 3');
   env.close();
 });

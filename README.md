@@ -20,7 +20,8 @@ Extension Chrome (Manifest V3) pour [WikiMasters](https://www.wiki-masters.com) 
 | **Toutes les pages** | style de carte « plein cadre » (anneau de rareté, vagues, reflet) sur toutes les cartes affichées par le jeu : collection, marché, échanges, profil, révélation des paquets |
 | **Tableau de bord** | valeur estimée, valeur par rareté, top 10 des cartes, courbe de la valeur |
 | **Marché** | moyenne et verdict (bonne affaire / prix correct / trop cher) sous chaque enchère, bouton « Miser le minimum » (file d'attente), verdict bénéfice/perte sur mes ventes |
-| **Échanges** | bouton « Valeurs » sur chaque offre (cartes, wikibidous, total, écart) |
+| **Échanges** | bilan visible sur chaque offre, vu de votre côté : « Vous donnez / Vous recevez », barre d'équilibre, verdict (avantageux, désavantageux, équilibré) ; « Détail des cartes » : valeur de chaque carte, wikibidous, et pour les cartes reçues « nouvelle » ou « déjà ×N » |
+| **Profils des autres joueurs** | moyenne du marché sur chaque carte de leur vitrine et de leur collection, valeur des cartes affichées, « vous l'avez aussi » au survol |
 | **Partout** | cadran des paquets (stock, alerte « stock plein ») ; bulle « Enchères » (mes enchères, mes ventes, redimensionnable, liens vers le Marché, surenchère au minimum, annulation), alertes (surenchéri, moins de 2 min), mises automatiques (dès surenchère ou X s avant la fin) |
 | **Assistant de vente** | désactivé par défaut : garde des enchères actives avec les cartes portant les étiquettes choisies (menu des étiquettes du compte), seulement les raretés choisies et dans leur ordre (une rareté à la fois), et remet en vente les invendues ; état et raisons visibles (bulle des enchères, fenêtre « Détails »), plafond de prix, jamais une favorite ni une carte déjà vendue |
 | **Réglages** | ⚙ : paquets, enchère rapide, assistant, enchères, style de carte, journal d'activité (« Copier le diagnostic ») |
