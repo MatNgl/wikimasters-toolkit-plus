@@ -27,7 +27,7 @@ Extension Chrome (Manifest V3) pour [WikiMasters](https://www.wiki-masters.com) 
 | **Réglages** | ⚙ : paquets, enchère rapide, assistant, enchères, style de carte, journal d'activité (« Copier le diagnostic ») |
 
 ## Règles de prix
-Un prix est valable 4 jours dans la collection. **Sur le marché** (liste, page d'une enchère, bulle des enchères), une moyenne de plus de 24 h reste affichée mais est relue, les enchères qui finissent le plus tôt d'abord ; une icône indique si elle est à jour (✓), en retard (!) ou en cours d'actualisation (↻), avec « à jour / non à jour depuis X » au survol. Rien n'est rechargé automatiquement : au chargement demandé, les prix jamais chargés passent d'abord, l'actualisation (> 4 jours) seulement ensuite. Source : `GET /api/marketplace/cards/{id}/sales?scope=summary` (une requête à la fois, pauses adaptatives si le jeu limite).
+Une moyenne est valable **24 h**, sur toutes les pages. Au-delà, elle reste affichée mais est relue : une icône indique si elle est à jour (✓), en retard (!) ou en cours d'actualisation (↻), avec « à jour / non à jour depuis X » au survol. Les cartes de la page affichée passent avant tout le reste (bulle des enchères, mises automatiques, chargements par lots), puis les pages quittées. Source : `GET /api/marketplace/cards/{id}/sales?scope=summary` (requêtes espacées, pauses adaptatives si le jeu limite).
 
 ## Principes
 - L'extension agit comme l'utilisateur : elle lit les réponses du jeu et pilote ses boutons ; les rares appels directs sont des lectures.

@@ -427,6 +427,18 @@
       }
       setNumber(input, amount); // exactement le minimum proposé par le jeu
       await sleep(200);
+      // Un rival mise pendant la saisie : la page remplace notre montant par son nouveau minimum. Au lieu d'abandonner (et de perdre les dernières
+      // secondes), on reprend aussitôt ce nouveau minimum, deux fois au plus, tant qu'il reste sous le plafond.
+      for (let k = 0; Number(input.value) !== amount && k < 2; k++) {
+        const nm = Number(input.min);
+        if (!(nm > amount) || msLeft(a) < 1500) break;
+        if (opts.cap && nm > opts.cap) { capStop(a, nm, opts.cap, (v, c) => `le minimum est monté à ${fmt(v)} W pendant la saisie, au-dessus du plafond de ${fmt(c)} W : pas de mise`, jr, opts); return undefined; }
+        jr(`le minimum est monté à ${fmt(nm)} W pendant la saisie (quelqu’un vient de miser) : nouvel essai aussitôt`);
+        amount = nm;
+        S.minSeen[a.id] = { min: amount, bid: a.current_bid || 0 };
+        setNumber(input, amount);
+        await sleep(200);
+      }
       if (Number(input.value) !== amount) { jr(`le montant ${fmt(amount)} W n’a pas été pris en compte : rien n’a été misé`, 'error'); return WMX.toast('Le montant n’a pas été accepté par la page : rien n’a été misé. Réessayez.', 7000, { kind: 'warn' }); }
       const before = Number(live?.bid) || 0;
       S.autoLast[a.id] = { bid: before, t: Date.now() };
@@ -464,6 +476,19 @@
         try { said = raw.startsWith('{') ? (JSON.parse(raw).error || raw) : raw; } catch (_) { said = raw; }
       } catch (_) { /* cadre libéré */ }
       const blocking = /→ (403|429|réseau)/.test(refusal); // vérification humaine, limite du site : alerte rouge
+      // « Mise trop basse (minimum N) » : un rival a misé à la même seconde. Le jeu donne le nouveau minimum : on remise aussitôt à ce montant
+      // (une fois), s'il reste sous le plafond et qu'il reste du temps ; au-dessus du plafond, la règle s'arrête comme d'habitude.
+      let gameMin = null;
+      try { const raw = (refusal.match(/«\s*(\{.*\})\s*»/) || [])[1]; const j = raw ? JSON.parse(raw) : null; if (j && (j.code === 'bid_too_low' || /trop basse/i.test(j.error || '')) && Number(j.min) > 0) gameMin = Number(j.min); } catch (_) { /* réponse illisible */ }
+      if (!placed && gameMin && opts.auto) {
+        if (opts.cap && gameMin > opts.cap) { capStop(a, gameMin, opts.cap, (v, c) => `le jeu demande désormais ${fmt(v)} W, au-dessus du plafond de ${fmt(c)} W : pas de mise`, jr, opts); return undefined; }
+        if (!opts.retried && msLeft(a) > 2500) {
+          jr(`le jeu demande au moins ${fmt(gameMin)} W (quelqu’un a misé à la même seconde) : nouvel essai aussitôt`);
+          S.minSeen[a.id] = { min: gameMin, bid: a.current_bid || 0 };
+          delete S.autoLast[a.id]; // la mise refusée n'a rien changé : pas d'attente « ma mise n'est pas encore visible »
+          return bidInner(a, { ...opts, retried: true });
+        }
+      }
       if (!placed && refusal) {
         if (blocking) {
           const why = WMX.explainRefusal(refusal);
@@ -634,6 +659,7 @@
       const m = knownMin(a);
       // Plafond en W : valeur fixe, ou moyenne du marché de la carte (+/− un pourcentage). Moyenne inconnue : on la demande et on attend.
       const capW = WMX.logic.resolveCap(rule, avgOf(a));
+      if (rule.capMode === 'avg') WMX.prices.keepFresh(a.card_id, msLeft(a)); // plafond « selon la moyenne » : moyenne de plus de 24 h relue (en fond), la plus urgente d'abord
       if (rule.capMode === 'avg' && capW == null) {
         if (!WMX.prices.has(a.card_id)) WMX.prices.fetchOne(a.card_id);
         else if (!S.noAvgAlert?.[a.id]) { (S.noAvgAlert ||= {})[a.id] = 1; alertUser('Mise automatique en attente', `« ${cardTitle(a)} » : pas de moyenne du marché pour fixer le plafond.`, `${a.id}:noavg`); }

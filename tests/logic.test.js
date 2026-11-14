@@ -4,12 +4,12 @@ const L = require('../src/lib/logic.js');
 
 const H = L.HOUR;
 
-test('priceTtl / isFresh : un prix est valable 4 jours', () => {
+test('priceTtl / isFresh : un prix est valable 24 h, sur toutes les pages', () => {
   const now = 1_000_000_000_000;
-  assert.equal(L.priceTtl(), 96 * H);
+  assert.equal(L.priceTtl(), 24 * H);
   assert.equal(L.isFresh(null, now), false);
-  assert.equal(L.isFresh({ t: now - 95 * H, s: { UR: { count: 1 } } }, now), true);
-  assert.equal(L.isFresh({ t: now - 97 * H, s: { UR: { count: 40 } } }, now), false);
+  assert.equal(L.isFresh({ t: now - 23 * H, s: { UR: { count: 1 } } }, now), true);
+  assert.equal(L.isFresh({ t: now - 25 * H, s: { UR: { count: 40 } } }, now), false);
   assert.equal(L.isFresh({ s: {} }, now), false);
 });
 

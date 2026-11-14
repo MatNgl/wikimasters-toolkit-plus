@@ -1,6 +1,7 @@
-// Collection des autres joueurs (page /profile/{pseudo}, onglets « Vitrine » et « Collection ») : la moyenne du marché sur chaque carte, comme dans
-// ma collection (« Moy. X W »), et au-dessus de la grille la valeur des cartes affichées. Les cartes sont reconnues grâce aux réponses que le jeu
-// demande lui-même (GET /api/profile/{pseudo}/collection et /showcase : card_id, titre, rareté, exemplaires, « owned_by_viewer »).
+// Collection des autres joueurs (page /profile/{pseudo}, onglets « Vitrine » et « Collection ») et page « Toutes les cartes » (/global-collection) :
+// la moyenne du marché sur chaque carte, comme dans ma collection (« Moy. X W » + icône de fraîcheur), et au-dessus de la grille la valeur des cartes
+// affichées. Les cartes sont reconnues grâce aux réponses que le jeu demande lui-même : GET /api/profile/{pseudo}/collection et /showcase (card_id,
+// titre, rareté, exemplaires, « owned_by_viewer ») ; GET /api/cards (« Toutes les cartes » : id, titre, rareté, et la liste ownedCardIds).
 // Les moyennes viennent de la même source que la collection ; seules les cartes à l'écran sont demandées (relues au-delà de 24 h, comme sur le Marché).
 (() => {
   const { el } = WMX.dom;
@@ -11,7 +12,9 @@
   const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim();
   const keyOf = (title, rarity) => `${norm(title).toLowerCase()}|${rarity}`;
   const fmt = (n) => Math.round(n).toLocaleString('fr-FR');
-  const isPage = () => /^\/profile\/[^/]+\/?$/.test(location.pathname);
+  const isPage = () => /^\/(profile\/[^/]+|global-collection)\/?$/.test(location.pathname);
+  const isProfile = () => /^\/profile\//.test(location.pathname);
+  let owned = new Set(); // « Toutes les cartes » : cartes que j'ai (liste donnée par le jeu)
 
   /** Lignes de carte d'une réponse du jeu (collection ou vitrine) : tout objet portant card_id et card.wikipedia_title. */
   function learn(data, depth = 0) {
@@ -22,7 +25,12 @@
     const id = data.card_id || card?.id;
     if (id && card?.wikipedia_title) {
       const rarity = WMX.normRarity(data.snapshot_rarity || card.rarity) || 'C';
-      known.set(keyOf(card.wikipedia_title, rarity), { card_id: id, rarity, count: Number(data.count) || 1, mine: data.owned_by_viewer === true });
+      known.set(keyOf(card.wikipedia_title, rarity), { card_id: id, rarity, count: Number(data.count) || 1, mine: data.owned_by_viewer === true || !!WMX.inventory?.find?.(card.wikipedia_title, rarity) });
+      return;
+    }
+    if (!card && data.id && data.wikipedia_title && data.rarity) { // carte seule (« Toutes les cartes »)
+      const rarity = WMX.normRarity(data.rarity) || 'C';
+      known.set(keyOf(data.wikipedia_title, rarity), { card_id: data.id, rarity, count: 1, mine: owned.has(data.id) || !!WMX.inventory?.find?.(data.wikipedia_title, rarity), global: true });
       return;
     }
     for (const v of Object.values(data)) if (v && typeof v === 'object') learn(v, depth + 1);
@@ -44,12 +52,12 @@
     const p = WMX.prices.get(info.card_id, info.rarity);
     const f = WMX.prices.freshness?.(info.card_id);
     const text = p ? `Moy. ${fmt(p.avg)} W` : WMX.prices.has(info.card_id) ? 'Sans vente' : 'Moy. …';
-    const title = [f?.line, info.mine ? 'Vous avez aussi cette carte' : 'Vous n’avez pas cette carte', info.count > 1 ? `${info.count} exemplaires chez ce joueur` : ''].filter(Boolean).join('\n');
+    const title = [f?.line, info.mine ? 'Vous avez aussi cette carte' : 'Vous n’avez pas cette carte', isProfile() && info.count > 1 ? `${info.count} exemplaires chez ce joueur` : ''].filter(Boolean).join('\n');
     const sig = `${text}|${f?.state || ''}|${info.mine}`;
     if (chip.dataset.sig === sig) return; // rien n'a changé : pas de réécriture
     chip.dataset.sig = sig;
     chip.dataset.state = f?.state || '';
-    chip.textContent = text;
+    chip.replaceChildren(text, ...(WMX.prices.has(info.card_id) ? [' ', WMX.prices.icon(info.card_id)] : []));
     chip.title = title;
     chip.classList.toggle('wmx-pp-mine', info.mine);
   }
@@ -86,12 +94,13 @@
   const schedule = () => { clearTimeout(timer); timer = setTimeout(scan, 200); };
 
   WMX.register({
-    name: 'profile-prices',
-    match: /^\/profile\//,
+    name: 'profile-prices', // profils des autres joueurs et « Toutes les cartes »
+    match: /^\/(profile|global-collection)/,
     init() {
       WMX.onApi(({ path, data }) => {
-        if (!/^\/api\/profile\/[^/]+\/(collection|showcase)\/?$/.test(path)) return;
-        learn(data);
+        if (!/^\/api\/profile\/[^/]+\/(collection|showcase)\/?$/.test(path) && !/^\/api\/cards\/?$/.test(path)) return;
+        if (Array.isArray(data?.ownedCardIds)) owned = new Set(data.ownedCardIds);
+        learn(data?.cards || data);
         document.querySelectorAll('main [data-wmx-pp]').forEach((c) => { delete c.dataset.wmxPp; }); // nouvelle page de cartes : elles seront reprises
         schedule();
       });
@@ -101,7 +110,7 @@
           if (!e.isIntersecting) continue;
           io.unobserve(e.target);
           const info = infoOf(e.target);
-          if (info) WMX.prices.keepFresh ? WMX.prices.keepFresh(info.card_id, order++, { front: true }) : (!WMX.prices.has(info.card_id) && WMX.prices.fetchOne(info.card_id));
+          if (info) WMX.prices.keepFresh(info.card_id, order++, { front: true });
         }
       }, { rootMargin: '200px' });
       new MutationObserver((muts) => { if (WMX.dom.foreign(muts)) schedule(); }).observe(document.body, { childList: true, subtree: true });

@@ -36,7 +36,19 @@
     const item = WMX.inventory.find(title, rarity);
     card._wmxItem = item;
     const chip = card.querySelector('.wmx-nt-price');
-    if (chip) chip.textContent = item ? WMX.inventory.priceText(item) : 'Moy. …';
+    if (chip) {
+      // Moyenne et icône de fraîcheur (✓ à jour, ! en retard, ↻ actualisation) ; sans réécriture si rien n'a changé.
+      const text = item ? WMX.inventory.priceText(item) : 'Moy. …';
+      const f = item && WMX.prices.has(item.card_id) ? WMX.prices.freshness(item.card_id) : null;
+      const sig = `${text}|${f?.state || ''}|${f?.line || ''}`;
+      if (chip.dataset.sig !== sig) {
+        chip.dataset.sig = sig;
+        chip.replaceChildren(text, ...(f ? [' ', WMX.prices.icon(item.card_id)] : []));
+        chip.title = f?.line || '';
+      }
+    }
+    // Carte de la page affichée : moyenne jamais chargée ou de plus de 24 h relue, avant les tâches de fond, dans l'ordre de la page.
+    if (item) WMX.prices.keepFresh(item.card_id, Number(card.dataset.wmxIdx) || 0, { front: true });
     boltFor(card);
   }
 
@@ -90,8 +102,10 @@
   function scan() {
     if (!isPage()) return;
     ensureBar();
+    let idx = 0;
     for (const h3 of document.querySelectorAll('main h3')) {
       const card = cardOf(h3);
+      if (card) card.dataset.wmxIdx = String(idx++); // position à l'écran : les moyennes sont relues dans cet ordre
       // Seulement les vraies cartes : une pastille de rareté. L'étoile n'est PAS exigée : en mode sélection le jeu la remplace par une case, et les
       // cartes redessinées après une action de masse n'auraient plus de moyenne (le ⚡ revient avec l'étoile, au prochain passage).
       if (card && card.querySelector('div.absolute.top-2.left-2') && !card.closest('.wmx-cplus, .wmx-modal, .wmx-bubble')) decorate(card);

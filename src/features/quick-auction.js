@@ -181,7 +181,8 @@
     if (S.selling.has(item.card_id)) return { skipped: true };
     if (S.selling.size >= S.max) return { limit: true };
     let p = WMX.prices.get(item.card_id, item.rarity);
-    if (!p) { await WMX.prices.fetchOne(item.card_id); p = WMX.prices.get(item.card_id, item.rarity); }
+    // Prix de départ calculé sur une moyenne À JOUR : jamais chargée ou de plus de 24 h, elle est relue avant la mise en vente (⚡ et assistant).
+    if (!p || !WMX.prices.fresh(item.card_id)) { await WMX.prices.fetchOne(item.card_id); p = WMX.prices.get(item.card_id, item.rarity) || p; }
     // Aucune vente sur le marché pour cette rareté (prix bien chargé, mais sans moyenne) : prix de départ par défaut (réglage, 10 W).
     // Si le prix n'a simplement pas pu être chargé (réseau), on n'invente rien : nouvel essai plus tard.
     if (!p && !WMX.prices.has(item.card_id)) return { error: 'le prix de la carte n’a pas pu être chargé (le jeu est lent) : réessayez dans un instant' };

@@ -9,7 +9,7 @@ WikiMasters Toolkit+ est développée indépendamment de WikiMasters et n'est af
 
 ## Données
 - L'extension **ne collecte aucune donnée personnelle** et n'envoie **rien** à l'éditeur ni à un tiers.
-- Réglages, prix mis en cache (4 jours), copie de votre collection, statistiques de tirage et journal d'activité sont enregistrés **uniquement dans votre navigateur** (`chrome.storage.local`). Ils sont supprimés à la désinstallation de l'extension.
+- Réglages, prix mis en cache (24 h), copie de votre collection, statistiques de tirage et journal d'activité sont enregistrés **uniquement dans votre navigateur** (`chrome.storage.local`). Ils sont supprimés à la désinstallation de l'extension.
 - Le journal d'activité ne quitte votre ordinateur que si vous utilisez vous-même « Copier le diagnostic » pour le transmettre.
 
 ## Requêtes réseau

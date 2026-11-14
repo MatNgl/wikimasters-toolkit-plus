@@ -130,7 +130,7 @@
 
   function render(elm, t) {
     const mine = mySide(t, elm);
-    t.items.forEach((i, k) => WMX.prices.keepFresh ? WMX.prices.keepFresh(i.id, k) : (!WMX.prices.has(i.id) && WMX.prices.fetchOne(i.id))); // jamais chargée ou de plus de 24 h : relue
+    t.items.forEach((i, k) => WMX.prices.keepFresh(i.id, k, { front: true })); // carte de la page affichée : jamais chargée ou de plus de 24 h, relue avant les tâches de fond
     let wrap = elm.querySelector(':scope > .wmx-tv-wrap');
     if (!wrap) {
       const btn = el('button', { class: 'wmx-btn wmx-btn--ghost wmx-tv-btn', type: 'button' }, 'Détail des cartes');

@@ -4,9 +4,9 @@
 
   const L = {
     HOUR,
-    /** Durée de validité d'un prix : 4 jours pour toutes les cartes. Un prix plus ancien n'est rechargé que sur demande. */
+    /** Durée de validité d'un prix : 24 h pour toutes les cartes et sur toutes les pages (les moyennes bougent vite). Au-delà, il est relu. */
     priceTtl() {
-      return 96 * HOUR;
+      return 24 * HOUR;
     },
     /** Sur le marché (liste, page d'une enchère, bulle), une moyenne de plus de 24 h est relue : les moyennes bougent vite. */
     MARKET_TTL: 24 * HOUR,
@@ -36,8 +36,8 @@
     },
     /**
      * Plan d'un chargement de prix : d'abord les cartes dont le prix n'a JAMAIS été chargé ; ce n'est qu'une fois toutes passées
-     * au moins une fois qu'on actualise celles dont le prix a plus de 4 jours. Ne touche jamais un prix encore valable.
-     * `has(it)` : un prix a déjà été chargé ; `fresh(it)` : il a moins de 4 jours.
+     * au moins une fois qu'on actualise celles dont le prix a plus de 24 h. Ne touche jamais un prix encore valable.
+     * `has(it)` : un prix a déjà été chargé ; `fresh(it)` : il a moins de 24 h.
      */
     priceBatch(items, has, fresh) {
       const missing = items.filter((it) => !has(it));

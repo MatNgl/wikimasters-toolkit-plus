@@ -3,11 +3,15 @@
 // sans compte Pro). Réponse : { summary: { RARETÉ: { average, count, latest } } } — un prix par rareté.
 //
 // Toutes les requêtes passent par UN ordonnanceur : une seule à la fois, espacées, avec une pause qui s'allonge à chaque
-// refus du jeu (429 ou 403 par rafales) puis repart de zéro. Deux files : « haute » (cartes qu'on vient de tirer, enchère
-// rapide) servie avant la file « basse » (chargement par lots demandé depuis la collection).
+// refus du jeu (429 ou 403 par rafales) puis repart de zéro. Ordre de service :
+//  1. les cartes de la PAGE AFFICHÉE (Marché, échange, collection, profil, « Toutes les cartes », clic ⚡), dans l'ordre de l'écran ;
+//  2. les besoins de fond (bulle des enchères, plafond des mises automatiques, assistant, cartes tirées) ;
+//  3. les cartes d'une page qu'on a quittée (encore utiles, mais plus à l'écran) ;
+//  4. le chargement par lots demandé depuis la collection.
+// Une moyenne de plus de 24 h est relue, sur toutes les pages (l'ancienne reste affichée en attendant).
 (() => {
   const { sleep } = WMX.dom;
-  const L = WMX.logic;          // validité 48 h (96 h si la carte a beaucoup de ventes), pauses et écarts : voir lib/logic.js
+  const L = WMX.logic;          // validité 24 h (voir L.priceTtl), pauses et écarts : voir lib/logic.js
   const BASE_GAP = 600;         // écart de base entre deux requêtes ; il grandit après un refus du jeu et se resserre très lentement
   let gap = BASE_GAP;
   let lastStatus = 0;           // dernier code d'échec (pour le message d'erreur)
@@ -68,12 +72,20 @@
   }
 
   const queued = () => sched.hi.length || sched.lo.length;
+  /** Prochaine carte à servir (ordre ci-dessus) : la page affichée d'abord, puis le fond, puis les pages quittées, puis les lots. */
+  function take() {
+    const here = location.pathname;
+    let i = sched.hi.findIndex((x) => x.front && x.page === here);
+    if (i < 0) i = sched.hi.findIndex((x) => !x.front);
+    if (i < 0 && sched.hi.length) i = 0;
+    return i >= 0 ? sched.hi.splice(i, 1)[0] : sched.lo.shift();
+  }
   /** Un ouvrier traite la file ; les suivants (idx 1 à 3) n'interviennent que si le jeu est lent (paliers EXTRA_AT) et qu'aucun refus n'est en cours. */
   async function worker(idx) {
     await load();
     while (queued() && WMX.alive()) {
       if (idx > 0 && (lat < EXTRA_AT[idx] || sched.blocks > 0 || waitLeft() > 0)) { await sleep(500); continue; }
-      const item = sched.hi.shift() || sched.lo.shift();
+      const item = take();
       if (!item) continue;
       const left = Math.max(sched.penaltyUntil, WMX.gameBlockedUntil || 0) - Date.now(); // le jeu refuse aussi les mises en vente : on ne l'interroge plus
       if (left > 0) await sleep(left);
@@ -120,14 +132,17 @@
     });
   }
 
-  /** front : la carte passe devant toutes les autres demandes (clic de l'utilisateur sur ⚡ : il attend ce prix précis). */
+  /**
+   * front : la carte est sur la page affichée (ou l'utilisateur attend ce prix précis, clic ⚡) : elle est servie avant le reste, tant que cette page
+   * reste affichée. Une carte déjà en file, de nouveau demandée par la page affichée, remonte en tête et passe à cette page.
+   */
   function schedule(cardId, high, front = false) {
-    if (high && sched.pending.has(cardId)) { // déjà demandée : on la fait passer devant si l'utilisateur l'attend
-      if (front) { const i = sched.hi.findIndex((x) => x.cardId === cardId); if (i > 0) sched.hi.unshift(...sched.hi.splice(i, 1)); }
+    if (high && sched.pending.has(cardId)) { // déjà demandée : on la fait passer devant si la page affichée l'attend
+      if (front) { const i = sched.hi.findIndex((x) => x.cardId === cardId); if (i >= 0) { const [it] = sched.hi.splice(i, 1); it.front = true; it.page = location.pathname; sched.hi.unshift(it); } }
       return sched.pending.get(cardId);
     }
     const p = new Promise((resolve) => {
-      const item = { cardId, high, resolve, tries: 0 };
+      const item = { cardId, high, resolve, tries: 0, front: !!front, page: location.pathname };
       if (high && front) sched.hi.unshift(item); else (high ? sched.hi : sched.lo).push(item);
     });
     if (high) sched.pending.set(cardId, p);
@@ -168,7 +183,9 @@
     fresh(cardId) {
       return L.isFresh(cache?.[cardId]);
     },
-    /** Fraîcheur de la moyenne de cette carte pour le marché : { state: 'fresh' | 'stale' | 'loading', icon, line } (voir logic.priceFreshness). */
+    /** Icône de fraîcheur de la moyenne (✓ à jour, ! en retard, ↻ actualisation) ; la ligne d'explication est dans `title`. */
+    icon(cardId) { const f = WMX.prices.freshness(cardId); return WMX.dom.el('i', { class: `wmx-age ${f.state}`, title: f.line, 'aria-label': f.line }, f.icon); },
+    /** Fraîcheur de la moyenne de cette carte : { state: 'fresh' | 'stale' | 'loading', icon, line } (voir logic.priceFreshness). */
     freshness(cardId) { return L.priceFreshness(WMX.prices.age(cardId), sched.pending.has(cardId)); },
     /**
      * Marché : garde la moyenne de cette carte à jour. Jamais chargée ou de plus de 24 h : relue (l'ancienne reste affichée en attendant).
@@ -221,7 +238,7 @@
       await load();
       for (const c of cards || []) {
         const r = WMX.normRarity(c?.rarity);
-        if (c?.id && r && !WMX.prices.fresh(c.id)) schedule(c.id, true); // rien à faire si le prix a moins de 4 jours (même « sans vente »)
+        if (c?.id && r && !WMX.prices.fresh(c.id)) schedule(c.id, true); // rien à faire si le prix a moins de 24 h (même « sans vente »)
       }
     },
     /** Charge les prix de ces cartes par lots (celles dont le prix est déjà à jour sont ignorées). */

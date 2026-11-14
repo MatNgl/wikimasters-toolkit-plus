@@ -847,10 +847,14 @@ test('assistant de vente : une carte invendue retrouve l’étiquette de vente (
   R.remember('c1'); R.remember('c2'); R.remember('c3');
   assert.deepEqual(Object.keys(R.memory()).sort(), ['c1', 'c2'], 'seules les cartes portant l’étiquette de vente sont mémorisées');
   assert.deepEqual(R.memory().c1.tags, ['VENTE'], 'uniquement l’étiquette de vente, pas les autres');
-  const end = new Date(now + 1000).toISOString();
-  hist.value = [{ card_id: 'c1', status: 'settled_unsold', owned: true, end_at: end }, { card_id: 'c2', status: 'settled_sold', owned: false, end_at: end }];
+  R.memory().c1.at = now - 30 * 60000; R.memory().c2.at = now - 30 * 60000; // mises en vente il y a 30 min
+  hist.value = [{ card_id: 'c1', status: 'settled_unsold', owned: true, end_at: new Date(now - 60000).toISOString() }, { card_id: 'c2', status: 'settled_sold', owned: false, end_at: new Date(now - 60000).toISOString() }];
   await R.pass();
-  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [{ type: 'tag', id: 'c1', extra: { tag: 'VENTE', add: true } }], 'étiquette remise à la carte invendue seulement');
+  assert.equal(calls.length, 0, 'enchère finie il y a 1 min : le jeu n’a peut-être pas encore rendu la carte, on attend');
+  assert.equal(R.memory().c2, undefined, 'la carte vendue est oubliée tout de suite');
+  hist.value = [{ card_id: 'c1', status: 'settled_unsold', owned: true, end_at: new Date(now - 4 * 60000).toISOString() }];
+  await R.pass();
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [{ type: 'tag', id: 'c1', extra: { tag: 'VENTE', add: true } }], 'finie il y a 4 min : étiquette remise à la carte invendue seulement');
   assert.equal(R.memory().c2, undefined, 'la carte vendue est oubliée');
   await R.pass();
   assert.equal(calls.length, 1, 'pas de seconde demande tant que la première est en cours');
@@ -868,13 +872,13 @@ test('collection du jeu : en mode sélection (pas d\'étoile), les cartes redess
   for (const f of WMX.features) if (['collection-native', 'quick-auction'].includes(f.name)) await f.init?.();
   await WMX.prices.fetchOne('k1');
   for (let i = 0; i < 40 && !/42 W/.test(w.document.querySelector('.wmx-nt-price')?.textContent || ''); i++) await sleep(200);
-  assert.equal(w.document.querySelector('.wmx-nt-price')?.textContent, 'Moy. 42 W', 'moyenne affichée même sans étoile (mode sélection)');
+  assert.match(w.document.querySelector('.wmx-nt-price')?.textContent, /^Moy\. 42 W ✓$/, 'moyenne affichée même sans étoile (mode sélection), avec l’icône « à jour »');
   assert.equal(w.document.querySelectorAll('.wmx-nt-bolt').length, 0, 'pas de ⚡ sans étoile');
   // Sortie du mode sélection : la carte est redessinée avec son étoile, le ⚡ apparaît et la moyenne est toujours là.
   w.document.querySelector('.flex-wrap').innerHTML = tile(true);
   for (let i = 0; i < 30 && !w.document.querySelector('.wmx-nt-bolt'); i++) await sleep(200);
   assert.ok(w.document.querySelector('.wmx-nt-bolt'), '⚡ de retour avec l’étoile');
-  assert.equal(w.document.querySelector('.wmx-nt-price')?.textContent, 'Moy. 42 W');
+  assert.match(w.document.querySelector('.wmx-nt-price')?.textContent, /^Moy\. 42 W/);
   env.close();
 });
 
@@ -897,9 +901,9 @@ test('collection du jeu : prix et bouton ⚡ ajoutés sur les cartes, barre des 
   // Les prix n'arrivent qu'une fois demandés : on les charge pour vérifier l'affichage.
   await WMX.prices.fetchOne('k1');
   await WMX.prices.fetchOne('k2');
-  for (let i = 0; i < 40 && ![...w.document.querySelectorAll('.wmx-nt-price')].every((c) => /\d W$/.test(c.textContent)); i++) await sleep(200);
+  for (let i = 0; i < 40 && ![...w.document.querySelectorAll('.wmx-nt-price')].every((c) => /\d W ✓$/.test(c.textContent)); i++) await sleep(200);
   const chips = [...w.document.querySelectorAll('.wmx-nt-price')].map((c) => c.textContent);
-  assert.deepEqual(chips, ['Moy. 42 W', 'Moy. 3 W']);
+  assert.deepEqual(chips, ['Moy. 42 W ✓', 'Moy. 3 W ✓'], 'moyennes avec l’icône « à jour »');
   const bolts = [...w.document.querySelectorAll('.wmx-nt-bolt')];
   assert.equal(bolts.length, 2);
   assert.equal(bolts[0].disabled, false);
@@ -1879,5 +1883,55 @@ test('profil d’un autre joueur : moyenne sur chaque carte de sa collection, va
   assert.match(chip('Thomas Pesquet').title, /2 exemplaires chez ce joueur/);
   for (let i = 0; i < 20 && !/5\s003/.test(w.document.querySelector('.wmx-pp-bar')?.textContent || ''); i++) await sleep(150);
   assert.match(w.document.querySelector('.wmx-pp-bar').textContent, /Valeur des cartes affichées : 5\s003 W · 2 cartes · 1 que vous avez aussi/, '2 × 2 500 + 3');
+  env.close();
+});
+
+test('prix : la page affichée passe avant tout (puis les tâches de fond, puis la page quittée), et une moyenne de plus de 24 h est relue', async () => {
+  const asked = [];
+  let release = null;
+  const gate = new Promise((r) => { release = r; });
+  const env = createEnv({ fetchImpl: async (u) => {
+    const id = String(u).match(/cards\/([^/]+)\//)?.[1];
+    asked.push(id);
+    if (id === 'x0') await gate; // la première requête occupe l'ouvrier pendant qu'on remplit la file
+    return json({ summary: { C: { average: 5, count: 3, latest: 5 } } });
+  } });
+  const { w, mem, WMX } = env;
+  mem.priceCache = { vieux: { t: Date.now() - 30 * 3600000, s: { C: { average: 1, count: 1, latest: 1 } } }, recent: { t: Date.now() - 3600000, s: { C: { average: 1, count: 1, latest: 1 } } } };
+  await WMX.prices.load();
+  w.history.pushState({}, '', '/marketplace');
+  WMX.prices.fetchOne('x0');
+  await sleep(50);
+  WMX.prices.keepFresh('fond', 0); // bulle des enchères, mise automatique… (pas à l'écran)
+  WMX.prices.keepFresh('marche', 0, { front: true }); // carte du Marché
+  WMX.prices.keepFresh('recent', 0, { front: true }); // moyenne d'il y a 1 h : rien à relire
+  await sleep(250);
+  w.history.pushState({}, '', '/trades'); // l'utilisateur passe sur les échanges
+  WMX.prices.keepFresh('echange', 0, { front: true });
+  WMX.prices.keepFresh('vieux', 1, { front: true }); // moyenne de 30 h : relue
+  await sleep(250);
+  release();
+  for (let i = 0; i < 60 && asked.length < 5; i++) await sleep(150);
+  assert.deepEqual(asked.slice(), ['x0', 'echange', 'vieux', 'fond', 'marche'], 'page affichée, puis fond, puis page quittée ; la moyenne récente n’est pas redemandée');
+  env.close();
+});
+
+test('« Toutes les cartes » : moyenne et icône de fraîcheur sur chaque carte visible, « vous l’avez » d’après la liste du jeu', async () => {
+  const env = createEnv({ fetchImpl: async (u) => (String(u).includes('/sales') ? json({ summary: { L: { average: 4200, count: 4, latest: 4000 } } }) : json({})) });
+  const { w, WMX } = env;
+  w.history.pushState({}, '', '/global-collection');
+  const tile = (title, r) => `<div class="relative"><div class="relative rounded-2xl overflow-hidden"><div class="absolute top-2 left-2">${r}</div><h3>${title}</h3></div></div>`;
+  w.document.body.innerHTML = `<main><div class="flex flex-wrap justify-center">${tile('1984 (roman)', 'L')}${tile('.xxx', 'L')}</div></main>`;
+  for (const f of WMX.features) if (f.name === 'profile-prices') f.init();
+  w.dispatchEvent(new w.CustomEvent('wmx:api', { detail: { url: '/api/cards?page=0&sort=rarity', method: 'GET', status: 200, data: {
+    ownedCardIds: ['g2'],
+    cards: [{ id: 'g1', wikipedia_title: '1984 (roman)', rarity: 'legendaire' }, { id: 'g2', wikipedia_title: '.xxx', rarity: 'legendaire' }],
+  } } }));
+  const chip = (t) => [...w.document.querySelectorAll('main h3')].find((h) => h.textContent === t).closest('.rounded-2xl').querySelector('.wmx-nt-price');
+  for (let i = 0; i < 80 && !(/4\s200/.test(chip('1984 (roman)')?.textContent || '') && /4\s200/.test(chip('.xxx')?.textContent || '')); i++) await sleep(150);
+  assert.match(chip('1984 (roman)').textContent, /^Moy\. 4\s200 W ✓$/, 'moyenne et icône « à jour »');
+  assert.match(chip('.xxx').title, /Vous avez aussi cette carte/);
+  assert.match(chip('1984 (roman)').title, /Vous n’avez pas cette carte/);
+  assert.match(w.document.querySelector('.wmx-pp-bar').textContent, /2 cartes · 1 que vous avez aussi/);
   env.close();
 });
