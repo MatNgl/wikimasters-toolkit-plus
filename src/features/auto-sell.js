@@ -216,9 +216,10 @@
       if (!list.length) continue;
       if (list.some((a) => a.status === 'settled_sold')) { delete retag.mem[id]; continue; } // vendue : plus rien à remettre
       // Invendue ET revenue : le jeu met un moment à rendre la carte après la fin de l'enchère (vu : « l'étiquette n'a pas été ajoutée », puis
-      // « Vous ne possédez pas cette carte » juste après la fin). On attend donc 3 minutes après la fin avant de lui remettre son étiquette.
+      // « Vous ne possédez pas cette carte » juste après la fin). On laisse 30 s après la fin ; si ce n'est pas assez, l'échec est retenté vite
+      // (1, 2, puis 5 min…, voir onResult) plutôt que d'attendre longtemps d'office.
       const ended = list.find((a) => a.status === 'settled_unsold' && a.owned !== false);
-      if (!ended || Date.now() - new Date(ended.end_at).getTime() < 3 * 60000) continue; // pas encore terminée, pas revenue, ou trop récente
+      if (!ended || Date.now() - new Date(ended.end_at).getTime() < 30000) continue; // pas encore terminée, pas revenue, ou finie il y a moins de 30 s
       if ((retag.queued.get(id) || 0) > Date.now()) continue; // demande en cours, ou nouvel essai programmé plus tard
       retag.queued.set(id, Date.now() + 10 * 60000); // une demande refaite au plus toutes les 10 min si elle reste sans réponse
       for (const tag of m.tags) WMX.quick.bulk('tag', [{ card_id: id, title: m.title, rarity: m.rarity }], { tag, add: true });
@@ -329,9 +330,9 @@
         if (op.type === 'tag' && op.item.add && retag.mem[op.item.card_id]) { // étiquette de vente remise à une carte invendue
           const m = retag.mem[op.item.card_id];
           if (res.ok) { m.done = (m.done || 0) + 1; if (m.done >= m.tags.length) { delete retag.mem[op.item.card_id]; retag.queued.delete(op.item.card_id); } saveRetag(); }
-          else if (res.error) { // échec (souvent : la carte n'est pas encore tout à fait revenue) : nouvel essai dans 5, 10, 15… min (30 au plus), pas tout de suite
+          else if (res.error) { // échec (souvent : la carte n'est pas encore tout à fait revenue) : nouvel essai dans 1, 2, 5, 10, puis 30 min
             m.fails = (m.fails || 0) + 1;
-            retag.queued.set(op.item.card_id, Date.now() + Math.min(30, 5 * m.fails) * 60000);
+            retag.queued.set(op.item.card_id, Date.now() + [1, 2, 5, 10, 30][Math.min(4, m.fails - 1)] * 60000);
             saveRetag();
           }
         }
@@ -339,8 +340,8 @@
         if (res.ok) { delete S.fails[op.item.card_id]; rememberSaleTags(op.item.card_id); return; }
         if (res.blocked) return; // le jeu bloque les requêtes (403) : longue pause (WMX.gameBlockedUntil, posée par la file), la carte n'y est pour rien
         // « Vous ne possédez pas cette carte » : elle revient d'une enchère invendue et le jeu ne l'a pas encore rendue. Ce n'est ni un échec de la
-        // carte ni un blocage du jeu : on la laisse de côté 10 minutes, sans mettre l'assistant en pause.
-        if (/ne poss[eé]dez pas/i.test(`${res.tech || ''} ${res.error || ''}`)) { skipCard(op.item.card_id, 10 * 60000); WMX.journal?.add('Assistant de vente', `${op.item.title} : pas encore revenue dans la collection (enchère invendue) : nouvel essai dans 10 min`); return; }
+        // carte ni un blocage du jeu : on la laisse de côté 2 minutes, sans mettre l'assistant en pause.
+        if (/ne poss[eé]dez pas/i.test(`${res.tech || ''} ${res.error || ''}`)) { skipCard(op.item.card_id, 2 * 60000); WMX.journal?.add('Assistant de vente', `${op.item.title} : pas encore revenue dans la collection (enchère invendue) : nouvel essai dans 2 min`); return; }
         if (res.unconfirmed) { S.pauseUntil = Date.now() + PAUSE; return; } // le jeu n'a rien enregistré : ce n'est pas la faute de la carte (pas d'écart), on réessaie après une pause
         if (res.gone) { skipCard(op.item.card_id, 24 * H); WMX.journal?.add('Assistant de vente', op.item.title + ' introuvable dans la collection : écartée 24 h', 'warn'); return; } // vendue entre-temps
         if (res.capped) { skipCard(op.item.card_id, 24 * H); return; } // trop chère pour l'assistant : on n'y revient pas avant demain

@@ -848,13 +848,13 @@ test('assistant de vente : une carte invendue retrouve l’étiquette de vente (
   assert.deepEqual(Object.keys(R.memory()).sort(), ['c1', 'c2'], 'seules les cartes portant l’étiquette de vente sont mémorisées');
   assert.deepEqual(R.memory().c1.tags, ['VENTE'], 'uniquement l’étiquette de vente, pas les autres');
   R.memory().c1.at = now - 30 * 60000; R.memory().c2.at = now - 30 * 60000; // mises en vente il y a 30 min
-  hist.value = [{ card_id: 'c1', status: 'settled_unsold', owned: true, end_at: new Date(now - 60000).toISOString() }, { card_id: 'c2', status: 'settled_sold', owned: false, end_at: new Date(now - 60000).toISOString() }];
+  hist.value = [{ card_id: 'c1', status: 'settled_unsold', owned: true, end_at: new Date(now - 10000).toISOString() }, { card_id: 'c2', status: 'settled_sold', owned: false, end_at: new Date(now - 10000).toISOString() }];
   await R.pass();
-  assert.equal(calls.length, 0, 'enchère finie il y a 1 min : le jeu n’a peut-être pas encore rendu la carte, on attend');
+  assert.equal(calls.length, 0, 'enchère finie il y a 10 s : le jeu n’a peut-être pas encore rendu la carte, on attend 30 s');
   assert.equal(R.memory().c2, undefined, 'la carte vendue est oubliée tout de suite');
-  hist.value = [{ card_id: 'c1', status: 'settled_unsold', owned: true, end_at: new Date(now - 4 * 60000).toISOString() }];
+  hist.value = [{ card_id: 'c1', status: 'settled_unsold', owned: true, end_at: new Date(now - 40000).toISOString() }];
   await R.pass();
-  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [{ type: 'tag', id: 'c1', extra: { tag: 'VENTE', add: true } }], 'finie il y a 4 min : étiquette remise à la carte invendue seulement');
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [{ type: 'tag', id: 'c1', extra: { tag: 'VENTE', add: true } }], 'finie il y a 40 s : étiquette remise à la carte invendue seulement');
   assert.equal(R.memory().c2, undefined, 'la carte vendue est oubliée');
   await R.pass();
   assert.equal(calls.length, 1, 'pas de seconde demande tant que la première est en cours');
