@@ -829,35 +829,53 @@ test('inventaire : une carte partie en vente puis revenue invendue revient dans 
   env.close();
 });
 
-test('assistant de vente : une carte invendue retrouve l’étiquette de vente (le jeu la retire), une carte vendue est oubliée', async () => {
+test('assistant de vente : une carte invendue retrouve l’étiquette de vente 30 s après la fin ; pas revenue : 5 essais espacés de 30 s puis erreur au journal ; vendue ou remise en vente : on n’y touche pas', async () => {
   const now = Date.now();
-  const hist = { value: [] };
-  const env = createEnv({ fetchImpl: async () => json({ selling: [], bidding: [], won: [], history: hist.value }) });
+  const market = { history: [], selling: [] };
+  const env = createEnv({ fetchImpl: async () => json({ selling: market.selling, bidding: [], won: [], history: market.history }) });
   const { WMX } = env;
   env.mem.invCacheV2 = { t: now, complete: true, items: [
     { id: 'i1', card_id: 'c1', title: 'Invendue', rarity: 'R', count: 1, starred: false, tags: [{ name: 'VENTE' }, { name: 'Animaux' }] },
     { id: 'i2', card_id: 'c2', title: 'Vendue', rarity: 'C', count: 1, starred: false, tags: [{ name: 'VENTE' }] },
     { id: 'i3', card_id: 'c3', title: 'Sans étiquette de vente', rarity: 'C', count: 1, starred: false, tags: [{ name: 'Animaux' }] },
+    { id: 'i4', card_id: 'c4', title: 'Pas revenue', rarity: 'C', count: 1, starred: false, tags: [{ name: 'VENTE' }] },
+    { id: 'i5', card_id: 'c5', title: 'Remise en vente', rarity: 'C', count: 1, starred: false, tags: [{ name: 'VENTE' }] },
   ] };
   await WMX.inventory.ensure();
   WMX.settings.autoSellTags = 'VENTE';
   const calls = [];
+  const log = [];
   WMX.quick.bulk = (type, items, extra) => calls.push({ type, id: items[0].card_id, extra });
+  WMX.journal.add = (cat, text, level) => log.push([level || 'info', text]);
   const R = WMX.autoSell.retag;
-  R.remember('c1'); R.remember('c2'); R.remember('c3');
-  assert.deepEqual(Object.keys(R.memory()).sort(), ['c1', 'c2'], 'seules les cartes portant l’étiquette de vente sont mémorisées');
+  for (const id of ['c1', 'c2', 'c3', 'c4', 'c5']) R.remember(id);
+  assert.deepEqual(Object.keys(R.memory()).sort(), ['c1', 'c2', 'c4', 'c5'], 'seules les cartes portant l’étiquette de vente sont mémorisées');
   assert.deepEqual(R.memory().c1.tags, ['VENTE'], 'uniquement l’étiquette de vente, pas les autres');
-  R.memory().c1.at = now - 30 * 60000; R.memory().c2.at = now - 30 * 60000; // mises en vente il y a 30 min
-  hist.value = [{ card_id: 'c1', status: 'settled_unsold', owned: true, end_at: new Date(now - 10000).toISOString() }, { card_id: 'c2', status: 'settled_sold', owned: false, end_at: new Date(now - 10000).toISOString() }];
+  for (const m of Object.values(R.memory())) m.at = now - 3600000; // mises en vente il y a 1 h
+  const end = (ms) => new Date(Date.now() - ms).toISOString();
+  const due = () => { for (const m of Object.values(R.memory())) m.nextAt = 0; }; // on avance le temps : tous les essais sont dus
+  market.history = [
+    { card_id: 'c1', status: 'settled_unsold', owned: true, end_at: end(10000) },
+    { card_id: 'c2', status: 'settled_sold', owned: false, end_at: end(10000) },
+    { card_id: 'c4', status: 'settled_unsold', owned: false, end_at: end(10000) },
+    { card_id: 'c5', status: 'settled_unsold', owned: true, end_at: end(10000) },
+  ];
+  market.selling = [{ card_id: 'c5', status: 'active' }]; // remise en vente entre-temps
   await R.pass();
-  assert.equal(calls.length, 0, 'enchère finie il y a 10 s : le jeu n’a peut-être pas encore rendu la carte, on attend 30 s');
-  assert.equal(R.memory().c2, undefined, 'la carte vendue est oubliée tout de suite');
-  hist.value = [{ card_id: 'c1', status: 'settled_unsold', owned: true, end_at: new Date(now - 40000).toISOString() }];
-  await R.pass();
-  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [{ type: 'tag', id: 'c1', extra: { tag: 'VENTE', add: true } }], 'finie il y a 40 s : étiquette remise à la carte invendue seulement');
+  assert.equal(calls.length, 0, 'finies il y a 10 s : on attend 30 s ; en vente : on n’y touche pas');
   assert.equal(R.memory().c2, undefined, 'la carte vendue est oubliée');
+  for (const h of market.history) h.end_at = end(40000); // 40 s plus tard
+  due();
   await R.pass();
-  assert.equal(calls.length, 1, 'pas de seconde demande tant que la première est en cours');
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [{ type: 'tag', id: 'c1', extra: { tag: 'VENTE', add: true } }], 'finie il y a 40 s et revenue : étiquette remise ; pas revenue ou en vente : rien');
+  assert.equal(R.memory().c4.tries, 1, 'pas revenue : 1er essai compté');
+  assert.ok(R.memory().c4.nextAt > Date.now() + 20000, 'nouvel essai dans 30 s');
+  assert.ok(R.memory().c5, 'la carte remise en vente reste suivie (si elle revient invendue, l’étiquette sera remise)');
+  assert.equal(R.memory().c5.tries, 0);
+  for (let k = 2; k <= 5; k++) { due(); await R.pass(); }
+  assert.equal(R.memory().c4, undefined, 'après 5 essais : abandon');
+  assert.ok(log.some(([lvl, t]) => lvl === 'error' && /« Pas revenue » invendue : l’étiquette VENTE n’a pas pu être remise après 5 essais/.test(t)), 'erreur au journal');
+  assert.ok(log.some(([, t]) => /« Pas revenue » invendue : la carte n’est pas encore revenue.*essai 4\/5/.test(t)), 'chaque essai raté est noté');
   env.close();
 });
 

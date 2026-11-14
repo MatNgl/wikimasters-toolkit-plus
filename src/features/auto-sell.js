@@ -29,7 +29,7 @@
   const REASONS = { gone: 'plus dans votre collection (vendue ?)', favorite: 'favorite (verrouillée)', busy: 'déjà en vente ou en file', skipped: 'écartée temporairement', capped: 'trop chère pour l’assistant', get perDay() { return `limite de ${relistMax()} mise${relistMax() > 1 ? 's' : ''} en vente par 24 h atteinte (réglable dans les paramètres)`; }, later: 'rareté suivante : attend la fin de la précédente' };
   const plural = (n, w) => `${n} ${w}${n > 1 ? 's' : ''}`;
   /** Cartes mises en vente par l'assistant qui peuvent encore revenir (en vente, ou revenues invendues et en attente de leur étiquette). */
-  const pendingSales = () => Object.entries(retag.mem).filter(([id]) => WMX.quick.selling(id) || retag.queued.has(id)).map(([card_id, m]) => ({ card_id, rarity: m.rarity }));
+  const pendingSales = () => Object.entries(retag.mem).map(([card_id, m]) => ({ card_id, rarity: m.rarity }));
   /** « 2 à vendre · 1 en vente · 3 trop chères (> 500 W) » pour une rareté. */
   function rarSummary(b, capW) {
     if (!b) return '';
@@ -184,8 +184,15 @@
   }
   // ---- Étiquette de vente remise aux cartes invendues ----
   // Constaté sur le jeu : une carte dont l'enchère est « settled_unsold » revient dans la collection SANS aucune étiquette. On mémorise donc, au moment
-  // de la mise en vente, les étiquettes de vente de la carte (celles des Paramètres) ; l'enchère terminée sans acheteur, on les lui remet.
-  const retag = { mem: {}, queued: new Map() }; // queued : carte -> date de la demande (une demande restée sans réponse 10 min est refaite)
+  // de la mise en vente, les étiquettes de vente de la carte (celles des Paramètres) ; l'enchère terminée sans acheteur, on les lui remet :
+  //  - 30 s après la fin de l'enchère (le jeu met un moment à rendre la carte) ;
+  //  - carte pas encore revenue (le jeu la dit non possédée, ou l'étiquette n'a pas pu être posée) : nouvel essai 30 s plus tard, 5 essais au plus,
+  //    puis une erreur dans le journal (à faire à la main) ;
+  //  - avant chaque essai : carte vendue entre-temps → oubliée ; remise en vente (par vous ou par l'assistant) → on n'y touche pas, une carte en
+  //    vente ne peut pas être étiquetée (si cette nouvelle vente se termine sans acheteur, l'étiquette sera remise de la même façon).
+  const RETAG_WAIT = 30000;
+  const RETAG_TRIES = 5;
+  const retag = { mem: {}, queued: new Map() }; // mem : carte -> { tags, title, rarity, at, done, tries, nextAt } ; queued : demande d'étiquette en cours
   const saveRetag = () => WMX.store.set('autoSellRetag', retag.mem);
   function rememberSaleTags(cardId) {
     const wanted = new Set(tags().map((t) => t.toLowerCase()));
@@ -193,44 +200,63 @@
     const it = WMX.inventory.items().find((x) => x.card_id === cardId);
     const mine = (it?.tags || []).map((t) => t.name).filter((n) => wanted.has(String(n).toLowerCase()));
     if (!mine.length) return;
-    retag.mem[cardId] = { tags: mine, title: it.title, rarity: it.rarity, at: Date.now(), done: 0 };
+    retag.mem[cardId] = { tags: mine, title: it.title, rarity: it.rarity, at: Date.now(), done: 0, tries: 0, nextAt: 0 };
     saveRetag();
+  }
+  /** Abandon après 5 essais : erreur dans le journal (l'étiquette est à remettre à la main), la carte est oubliée. */
+  function giveUp(id, m, why) {
+    WMX.journal?.add('Assistant de vente', `« ${m.title} » invendue : l’étiquette ${m.tags.join(', ')} n’a pas pu être remise après ${RETAG_TRIES} essais (${why}). Remettez-la à la main pour qu’elle soit revendue.`, 'error');
+    WMX.notify?.({ kind: 'warn', key: `retag-fail:${id}`, ms: 0, title: 'Étiquette de vente non remise', text: `« ${m.title} » est revenue invendue mais l’étiquette ${m.tags.join(', ')} n’a pas pu lui être remise (${why}). Remettez-la à la main.` });
+    delete retag.mem[id];
+    retag.queued.delete(id);
+  }
+  /** Un essai de plus pour cette carte : nouvel essai dans 30 s, ou abandon au 5e. Rend vrai si on abandonne. */
+  function nextTry(id, m, why) {
+    m.tries = (m.tries || 0) + 1;
+    if (m.tries >= RETAG_TRIES) { giveUp(id, m, why); return true; }
+    m.nextAt = Date.now() + RETAG_WAIT;
+    WMX.journal?.add('Assistant de vente', `« ${m.title} » invendue : ${why}, nouvel essai dans 30 s (essai ${m.tries}/${RETAG_TRIES})`);
+    return false;
   }
   async function retagPass() {
     const ids = Object.keys(retag.mem);
     if (!ids.length || !WMX.alive()) return;
+    const now = Date.now();
     const day14 = 14 * 24 * H;
-    for (const id of ids) if (Date.now() - retag.mem[id].at > day14) delete retag.mem[id]; // trop ancien : on oublie
+    for (const id of ids) if (now - retag.mem[id].at > day14) delete retag.mem[id]; // trop ancien : on oublie
+    // Rien à faire tant qu'aucune carte n'attend son essai (pas de requête au jeu pour rien).
+    if (!Object.entries(retag.mem).some(([id, m]) => (m.nextAt || 0) <= now && !retag.queued.has(id))) return;
     let hist;
+    let selling = [];
     try {
       const u = new URL('/api/marketplace', location.origin);
       u.searchParams.set('page', '1'); u.searchParams.set('limit', '50'); u.searchParams.set('sort', 'recent'); u.searchParams.set('mine', '1');
       const res = await fetch(u);
       if (!res.ok) return;
-      hist = (await res.json()).history || [];
+      const j = await res.json();
+      hist = j.history || [];
+      selling = j.selling || [];
     } catch (_) { return; }
     const back = [];
     for (const id of Object.keys(retag.mem)) {
       const m = retag.mem[id];
+      if (retag.queued.has(id) || (m.nextAt || 0) > Date.now()) continue; // demande en cours, ou essai pas encore dû
       const list = hist.filter((a) => a.card_id === id && new Date(a.end_at).getTime() > m.at - 60000);
-      if (!list.length) continue;
       if (list.some((a) => a.status === 'settled_sold')) { delete retag.mem[id]; continue; } // vendue : plus rien à remettre
-      // Invendue ET revenue : le jeu met un moment à rendre la carte après la fin de l'enchère (vu : « l'étiquette n'a pas été ajoutée », puis
-      // « Vous ne possédez pas cette carte » juste après la fin). On laisse 30 s après la fin ; si ce n'est pas assez, l'échec est retenté vite
-      // (1, 2, puis 5 min…, voir onResult) plutôt que d'attendre longtemps d'office.
-      const ended = list.find((a) => a.status === 'settled_unsold' && a.owned !== false);
-      if (!ended || Date.now() - new Date(ended.end_at).getTime() < 30000) continue; // pas encore terminée, pas revenue, ou finie il y a moins de 30 s
-      if ((retag.queued.get(id) || 0) > Date.now()) continue; // demande en cours, ou nouvel essai programmé plus tard
-      retag.queued.set(id, Date.now() + 10 * 60000); // une demande refaite au plus toutes les 10 min si elle reste sans réponse
+      // De nouveau en vente (remise par vous ou par l'assistant) : une carte en vente ne peut pas être étiquetée, on attend la fin de cette vente.
+      // Pendant la vente, on ne regarde qu'une fois par minute (inutile d'interroger le jeu toutes les 15 s pendant une enchère d'une heure).
+      if (selling.some((a) => a.card_id === id && a.status === 'active') || WMX.quick.selling(id)) { m.tries = 0; m.nextAt = Date.now() + 60000; continue; }
+      const ended = list.filter((a) => a.status === 'settled_unsold').sort((a, b) => new Date(b.end_at) - new Date(a.end_at))[0];
+      if (!ended) { m.nextAt = Date.now() + 60000; continue; } // enchère pas encore terminée (ou pas encore dans l'historique) : on repasse dans 1 min
+      const endT = new Date(ended.end_at).getTime();
+      if (Date.now() - endT < RETAG_WAIT) { m.nextAt = endT + RETAG_WAIT; continue; } // finie il y a moins de 30 s : le jeu n'a peut-être pas rendu la carte
+      if (ended.owned === false) { nextTry(id, m, 'la carte n’est pas encore revenue dans la collection'); continue; } // le jeu dit qu'elle n'est pas (encore) à nous
+      retag.queued.set(id, Date.now());
       for (const tag of m.tags) WMX.quick.bulk('tag', [{ card_id: id, title: m.title, rarity: m.rarity }], { tag, add: true });
       back.push(m.title);
     }
     saveRetag();
-    if (back.length) {
-      WMX.journal?.add('Assistant de vente', `Invendue${back.length > 1 ? 's' : ''} : l’étiquette de vente est remise à ${back.join(', ')}`);
-      WMX.notify?.({ kind: 'info', key: 'retag', ms: 9000, title: `Carte${back.length > 1 ? 's' : ''} invendue${back.length > 1 ? 's' : ''} : étiquette remise`,
-        text: `${back.slice(0, 3).join(', ')}${back.length > 3 ? ` et ${back.length - 3} autre${back.length > 4 ? 's' : ''}` : ''} ${back.length > 1 ? 'ont retrouvé' : 'a retrouvé'} l’étiquette de vente (le jeu la retire quand une carte est mise en vente).` });
-    }
+    if (back.length) WMX.journal?.add('Assistant de vente', `Invendue${back.length > 1 ? 's' : ''} : remise de l’étiquette de vente à ${back.join(', ')}`);
   }
   const retagSafely = () => (navigator.locks?.request ? navigator.locks.request('wmx-retag', { ifAvailable: true }, async (l) => { if (l) await retagPass(); }) : retagPass());
 
@@ -329,10 +355,16 @@
         if (op.type === 'cancel') skipCard(op.item.card_id, 12 * H); // vente annulée par vous : l'assistant ne la relance pas
         if (op.type === 'tag' && op.item.add && retag.mem[op.item.card_id]) { // étiquette de vente remise à une carte invendue
           const m = retag.mem[op.item.card_id];
-          if (res.ok) { m.done = (m.done || 0) + 1; if (m.done >= m.tags.length) { delete retag.mem[op.item.card_id]; retag.queued.delete(op.item.card_id); } saveRetag(); }
-          else if (res.error) { // échec (souvent : la carte n'est pas encore tout à fait revenue) : nouvel essai dans 1, 2, 5, 10, puis 30 min
-            m.fails = (m.fails || 0) + 1;
-            retag.queued.set(op.item.card_id, Date.now() + [1, 2, 5, 10, 30][Math.min(4, m.fails - 1)] * 60000);
+          if (res.ok) {
+            m.done = (m.done || 0) + 1;
+            if (m.done >= m.tags.length) {
+              WMX.journal?.add('Assistant de vente', `« ${m.title} » invendue : étiquette ${m.tags.join(', ')} remise${m.tries ? ` (essai ${m.tries + 1})` : ''}`);
+              delete retag.mem[op.item.card_id]; retag.queued.delete(op.item.card_id);
+            }
+            saveRetag();
+          } else if (res.error) { // échec (le plus souvent : la carte n'est pas encore revenue) : nouvel essai dans 30 s, 5 essais au plus
+            retag.queued.delete(op.item.card_id);
+            nextTry(op.item.card_id, m, 'l’étiquette n’a pas pu être posée (carte pas encore revenue ?)');
             saveRetag();
           }
         }
@@ -359,6 +391,9 @@
           await sleep(EVERY);
         }
       })();
+      // Cartes invendues : vérifiées toutes les 15 s pour tenir le rythme « 30 s après la fin, puis toutes les 30 s » (aucune requête au jeu
+      // tant qu'aucune carte n'attend son essai).
+      setInterval(() => { if (WMX.alive() && Object.keys(retag.mem).length) retagSafely().catch(() => {}); }, 15000);
     },
   });
   WMX.autoSell = { tick, skipCard, runNow, resetSkips, footer, openPanel, line, retag: { remember: rememberSaleTags, pass: retagPass, memory: () => retag.mem } };
