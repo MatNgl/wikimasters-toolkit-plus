@@ -1,11 +1,11 @@
 // Échanges : sur chaque offre (reçues, envoyées, historique), un bilan visible tout de suite, vu de MON côté : « Vous donnez X W » / « Vous recevez Y W »,
-// une barre d'équilibre et un verdict (avantageux, désavantageux, équilibré, estimation en cours). « Détail des cartes » : chaque carte avec sa moyenne
+// une barre d'équilibre et un verdict (avantageux, désavantageux, équilibré, estimation en cours). Détail des cartes, déplié d'office (repliable) : chaque carte avec sa moyenne
 // du marché (icône de fraîcheur : relue au-delà de 24 h, comme sur le Marché), les wikibidous, et pour les cartes que je recevrais, si je les ai déjà.
 // Les offres viennent de GET /api/trades (déjà demandé par le jeu) ; les moyennes de la même source que la collection.
 (() => {
   const { el } = WMX.dom;
   const trades = new Map();
-  const open = new Set();
+  const closed = new Set(); // offres dont l'utilisateur a replié le détail (déplié par défaut)
   let timer = null;
   let me = null; // mon identifiant de joueur (déduit, puis mémorisé)
   const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -139,12 +139,12 @@
         e.preventDefault(); e.stopPropagation();
         const cur = trades.get(elm.dataset.wmxTrade);
         if (!cur) return;
-        if (open.has(cur.id)) open.delete(cur.id); else open.add(cur.id);
+        if (closed.has(cur.id)) closed.delete(cur.id); else closed.add(cur.id);
         render(elm, cur);
       });
       elm.append(wrap);
     }
-    const isOpen = open.has(t.id);
+    const isOpen = !closed.has(t.id);
     const sig = [mine, isOpen, ...t.items.map((i) => { const v = cardValue(i); return `${v.avg ?? ''}|${v.priced ? 1 : 0}|${v.fresh?.state || ''}`; })].join(',');
     if (wrap.dataset.sig === sig) return; // rien n'a changé : pas de reconstruction (évite une boucle avec l'observateur)
     wrap.dataset.sig = sig;

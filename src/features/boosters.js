@@ -147,7 +147,15 @@
       if (openError && openError.t >= clickedAt) {
         const d = openError.data || {};
         openError = null;
-        if (d.rate_limit_daily) { dailyLimit = true; setStatus('Limite quotidienne d’ouvertures atteinte'); break; }
+        // Réponse exacte du serveur gardée dans le journal (la première de chaque ouverture) : c'est elle qui dit s'il s'agit d'un refus « trop rapide »
+        // ou d'une vraie limite du jour (le code de la page du jeu, lui, ne connaît aucune limite quotidienne des paquets).
+        if (!blocks || d.rate_limit_daily) WMX.journal?.add('Paquets', `le jeu refuse l’ouverture : ${JSON.stringify(d).slice(0, 300)}`, 'warn');
+        if (d.rate_limit_daily) {
+          dailyLimit = true;
+          const msg = String(d.error || d.message || '').trim();
+          setStatus(`Le jeu indique une limite d’ouvertures pour aujourd’hui${msg ? ` : « ${msg} »` : ''}`);
+          break;
+        }
         blocks += 1;
         if (blocks === 1 && cooldownS < 6) cooldownS = Math.min(6, cooldownS + 1); // le jeu a refusé cette pause : on l'allonge pour le reste de cette ouverture
         if (blocks > 15) { setStatus('Le jeu refuse l’ouverture : arrêt'); break; }
@@ -246,7 +254,7 @@
       const cards = await openOne();
       state.busy = false;
       if (!cards) {
-        if (dailyLimit) { stopAuto(); setStatus('Limite quotidienne d’ouvertures atteinte'); }
+        if (dailyLimit) { dailyLimit = false; stopAuto(); setStatus('Ouverture auto arrêtée : le jeu indique une limite d’ouvertures pour aujourd’hui (réponse du jeu dans le journal)'); } // remis à zéro : une prochaine ouverture repart normalement
         return;
       }
       state.buffer.push(...cards);

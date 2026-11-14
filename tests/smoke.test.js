@@ -643,13 +643,17 @@ test('échanges : bilan visible tout de suite, vu de mon côté (je donne / je r
   assert.match(sum().textContent, /Vous donnez\s*40 W/, 'je donne Beta (40 W)');
   assert.match(sum().textContent, /Vous recevez\s*105 W/, 'je reçois Alpha (100 W) + 5 wikibidous');
   assert.match(sum().textContent, /Avantageux : vous gagnez 65 W \(\+163 %\)/);
-  w.document.querySelector('.wmx-tv-btn').click();
-  await sleep(50);
+  assert.ok(w.document.querySelector('.wmx-tv'), 'détail des cartes déplié d’office');
+  assert.equal(w.document.querySelector('.wmx-tv-btn').textContent, 'Masquer le détail');
   const d = w.document.querySelector('.wmx-tv').textContent;
   assert.match(d, /Vous donne/);
   assert.match(d, /Vous recevez \(de bob\)/);
   assert.match(d, /Alphadéjà ×2/, 'carte reçue déjà possédée');
   assert.match(d, /Wikibidous\s*5 W/);
+  w.document.querySelector('.wmx-tv-btn').click();
+  await sleep(50);
+  assert.equal(w.document.querySelector('.wmx-tv'), null, 'repliable d’un clic');
+  assert.equal(w.document.querySelector('.wmx-tv-btn').textContent, 'Détail des cartes');
   env.close();
 });
 
