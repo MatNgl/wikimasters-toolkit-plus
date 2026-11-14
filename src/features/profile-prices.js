@@ -71,7 +71,7 @@
     }
     if (!n) { bar?.remove(); return; }
     if (!bar || bar.nextElementSibling !== grid) { bar?.remove(); bar = el('div', { class: 'wmx-pp-bar', role: 'status' }); grid.before(bar); }
-    const text = `Valeur des cartes affichées : ${priced < n ? '≈ ' : ''}${fmt(sum)} W · ${n} carte${n > 1 ? 's' : ''}${priced < n ? ` · ${n - priced} prix en cours de chargement` : ''} · ${mine} que vous avez aussi`;
+    const text = `Valeur des cartes affichées : ${priced < n ? '≈ ' : ''}${fmt(sum)} W · ${n} carte${n > 1 ? 's' : ''}${priced < n ? ` · ${n - priced} prix en cours de chargement` : ''}${mine ? ` · ${mine} que vous avez aussi` : ''}`;
     if (bar.textContent !== text) bar.textContent = text;
   }
 
