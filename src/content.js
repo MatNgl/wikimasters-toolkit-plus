@@ -3,12 +3,16 @@
   const started = new Set();
   const run = () => {
     document.documentElement.dataset.wmxRoute = location.pathname; // permet de masquer le panneau hors /pulls
+    let fresh = 0;
     for (const f of WMX.features) {
       if (started.has(f.name)) continue;
       if (f.match && !f.match.test(location.pathname)) continue;
       started.add(f.name);
+      fresh += 1;
       try { f.init(); } catch (e) { console.warn('[WMX]', f.name, e); }
     }
+    // Des fonctions viennent de démarrer : les réponses du jeu arrivées juste avant (lecture de la page) leur sont renvoyées (page-hook.js).
+    if (fresh) setTimeout(() => window.dispatchEvent(new CustomEvent('wmx:replay')), 300);
   };
   run();
   // Deux copies de l'extension actives dans Chrome (par ex. celle du Chrome Web Store et celle de développement) : chacune a sa propre mémoire

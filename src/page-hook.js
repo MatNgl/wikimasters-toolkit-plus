@@ -10,6 +10,14 @@
     try { if (window.next?.router?.push) return window.next.router.push(url); } catch (_) {}
     location.assign(url);
   });
+  // Rattrapage : les réponses de LECTURE (GET) récentes sont gardées (15 au plus). Le jeu demande souvent ses données avant que l'extension
+  // n'écoute (chargement direct d'une page, changement de page) : à sa demande (« wmx:replay »), celles de moins de 30 s lui sont renvoyées.
+  // Jamais une écriture (mise, ouverture de paquet…) : elle ne doit être traitée qu'une fois.
+  const recent = [];
+  window.addEventListener('wmx:replay', () => {
+    const now = Date.now();
+    for (const r of recent) if (now - r.t < 30000) window.dispatchEvent(new CustomEvent('wmx:api', { detail: { ...r.detail, replay: true } }));
+  });
   const origFetch = window.fetch;
   window.fetch = async function (...args) {
     let url = null;
@@ -27,7 +35,9 @@
           try { req = JSON.parse(args[1].body); } catch (_) { /* corps non JSON */ }
         }
         res.clone().json().then((data) => {
-          window.dispatchEvent(new CustomEvent('wmx:api', { detail: { url, method, status: res.status, data, req } }));
+          const detail = { url, method, status: res.status, data, req };
+          if (method === 'GET' && res.ok) { recent.push({ t: Date.now(), detail }); if (recent.length > 15) recent.shift(); }
+          window.dispatchEvent(new CustomEvent('wmx:api', { detail }));
         }).catch(() => {});
       }
     } catch (_) {}

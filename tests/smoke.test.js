@@ -1935,3 +1935,22 @@ test('« Toutes les cartes » : moyenne et icône de fraîcheur sur chaque carte
   assert.match(w.document.querySelector('.wmx-pp-bar').textContent, /2 cartes · 1 que vous avez aussi/);
   env.close();
 });
+
+test('rattrapage : une réponse du jeu arrivée AVANT le démarrage d’une fonction lui est renvoyée (pages chargées directement)', async () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  const { w, WMX } = env;
+  const res = (body) => { const r = json(body); r.clone = () => r; return r; };
+  w.fetch = async (u) => (String(u).includes('/api/cards') ? res({ cards: [{ id: 'g1', wikipedia_title: 'X', rarity: 'L' }] }) : res({ error: 'non' }));
+  w.eval(require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'src/page-hook.js'), 'utf8'));
+  await w.fetch('/api/cards?page=0'); // le jeu lit sa page avant que la fonction n'écoute
+  await sleep(50);
+  const seen = [];
+  WMX.onApi(({ path, data }) => seen.push([path, data?.cards?.length]));
+  w.dispatchEvent(new w.CustomEvent('wmx:replay'));
+  await sleep(50);
+  assert.deepEqual(seen, [['/api/cards', 1]], 'la réponse lui est renvoyée au démarrage');
+  w.dispatchEvent(new w.CustomEvent('wmx:replay'));
+  await sleep(50);
+  assert.equal(seen.length, 2, 'renvoyée à chaque démarrage (les fonctions ignorent les doublons)');
+  env.close();
+});
