@@ -83,8 +83,18 @@
     if (bar.textContent !== text) bar.textContent = text;
   }
 
+  // « Toutes les cartes » chargée directement : le jeu livre sa première page déjà rendue par son serveur, sans requête à lire. Si des cartes sont
+  // à l'écran sans être reconnues, on fait UNE fois la même lecture que lui (première page, tri par rareté), comme le Marché le fait déjà.
+  let selfAsked = false;
+  async function readFirstPage() {
+    if (selfAsked) return;
+    selfAsked = true;
+    try { const res = await fetch('/api/cards?page=0&sort=rarity'); if (res.ok) { const j = await res.json(); if (Array.isArray(j?.ownedCardIds)) owned = new Set(j.ownedCardIds); learn(j?.cards || []); schedule(); } } catch (_) { /* jeu injoignable : les pages suivantes seront lues au passage */ }
+  }
+
   function scan() {
     if (!isPage()) { document.querySelector('.wmx-pp-bar')?.remove(); return; }
+    if (/^\/global-collection/.test(location.pathname) && cards().length && !cards().some((c) => infoOf(c))) readFirstPage();
     for (const c of cards()) {
       paint(c);
       if (!c.dataset.wmxPp && infoOf(c)) { c.dataset.wmxPp = '1'; io.observe(c); }

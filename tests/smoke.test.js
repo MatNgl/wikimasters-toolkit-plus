@@ -1954,3 +1954,21 @@ test('rattrapage : une réponse du jeu arrivée AVANT le démarrage d’une fonc
   assert.equal(seen.length, 2, 'renvoyée à chaque démarrage (les fonctions ignorent les doublons)');
   env.close();
 });
+
+test('« Toutes les cartes » chargée directement (page déjà rendue, aucune requête du jeu) : l’extension lit elle-même la première page', async () => {
+  const asked = [];
+  const env = createEnv({ fetchImpl: async (u) => {
+    const s = String(u); asked.push(s.replace(/^https?:\/\/[^/]+/, ''));
+    if (s.includes('/api/cards')) return json({ ownedCardIds: [], cards: [{ id: 'g1', wikipedia_title: '1984 (roman)', rarity: 'legendaire' }] });
+    return json({ summary: { L: { average: 4200, count: 4, latest: 4000 } } });
+  } });
+  const { w, WMX } = env;
+  w.history.pushState({}, '', '/global-collection');
+  w.document.body.innerHTML = '<main><div class="flex flex-wrap"><div class="relative"><div class="relative rounded-2xl"><div class="absolute top-2 left-2">L</div><h3>1984 (roman)</h3></div></div></div></main>';
+  for (const f of WMX.features) if (f.name === 'profile-prices') f.init();
+  const chip = () => w.document.querySelector('main .wmx-nt-price');
+  for (let i = 0; i < 80 && !/4\s200/.test(chip()?.textContent || ''); i++) await sleep(150);
+  assert.ok(asked.some((u) => u.startsWith('/api/cards?page=0&sort=rarity')), 'première page lue par l’extension');
+  assert.match(chip().textContent, /^Moy\. 4\s200 W ✓$/);
+  env.close();
+});
