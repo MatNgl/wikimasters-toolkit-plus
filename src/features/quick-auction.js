@@ -1,6 +1,6 @@
 // Enchère rapide (bouton ⚡ de la collection du jeu) : un clic met la carte en FILE D'ATTENTE ; la file se traite en arrière-plan,
 // une carte après l'autre, même si vous changez de page, ouvrez une fiche ou changiez d'écran. Chaque carte est mise aux
-// enchères avec le prix de départ calculé (moyenne du marché × coefficient, mode prudent optionnel) et la durée choisie
+// enchères avec le prix de départ calculé (moyenne du marché ± pourcentage, mode prudent optionnel) et la durée choisie
 // dans les paramètres. Recliquer sur ⚡ retire la carte de la file, ou annule l'enchère si elle est déjà en vente.
 // Tout passe par le formulaire et les boutons du jeu, pilotés comme le ferait l'utilisateur dans un cadre invisible :
 // l'extension n'invente aucun appel. La file est mémorisée : elle reprend si la page est rechargée.
@@ -36,12 +36,12 @@
     return true;
   });
 
-  const cfg = () => ({ noSale: Math.max(1, Math.round(Number(WMX.settings?.quickNoSalePrice) || 10)), coef: Number(WMX.settings?.quickCoef) || 0.9, dur: LABELS[WMX.settings?.quickDuration] || '1 h', prudent: !!WMX.settings?.quickPrudent });
+  const cfg = () => ({ noSale: Math.max(1, Math.round(Number(WMX.settings?.quickNoSalePrice) || 10)), pct: Number.isFinite(Number(WMX.settings?.quickPct)) ? Number(WMX.settings.quickPct) : -10, dur: LABELS[WMX.settings?.quickDuration] || '1 h', prudent: !!WMX.settings?.quickPrudent });
 
-  /** Prix de départ : moyenne × coefficient, plafonné à 1,2 × dernière vente en mode prudent, arrondi, 1 W minimum. */
+  /** Prix de départ : moyenne ± pourcentage (−10 = 10 % sous la moyenne), plafonné à 1,2 × dernière vente en mode prudent, arrondi, 1 W minimum. */
   function startPrice(p) {
     const c = cfg();
-    let v = p.avg * c.coef;
+    let v = p.avg * (1 + c.pct / 100);
     if (c.prudent && p.last) v = Math.min(v, p.last * 1.2);
     return Math.max(1, Math.round(v));
   }
@@ -516,7 +516,7 @@
       const c = cfg();
       const p = WMX.prices.get(item.card_id, item.rarity);
       if (!p && WMX.prices.has(item.card_id)) return `Enchère rapide : ${c.noSale} W pendant ${c.dur} (aucune vente sur le marché : prix par défaut)`;
-      return p ? `Enchère rapide : ${startPrice(p)} W pendant ${c.dur} (moyenne ${Math.round(p.avg)} W × ${c.coef})` : 'Enchère rapide (le prix sera chargé automatiquement)';
+      return p ? `Enchère rapide : ${startPrice(p)} W pendant ${c.dur} (moyenne ${Math.round(p.avg)} W ${c.pct > 0 ? '+' : c.pct < 0 ? '−' : '±'} ${Math.abs(c.pct)} %)` : 'Enchère rapide (le prix sera chargé automatiquement)';
     },
     /** Annule la vente d'une carte (depuis la page Enchères). Renvoie false si la carte n'est plus en vente. */
     cancelItem(item) {

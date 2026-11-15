@@ -80,9 +80,15 @@
       // À chaque passe : UNE requête compare le nombre de cartes de chaque étiquette de vente à celui de la fois précédente. Même nombre : rien n'est relu ;
       // nombre différent : les cartes de ces étiquettes sont relues (sans cela l'assistant ignorait, jusqu'à 30 min, les cartes étiquetées depuis le dernier
       // chargement complet, par exemple des Légendaires, et mettait d'abord d'autres raretés en vente).
-      if (!WMX.inventory.isLoading() && Date.now() - (S.taggedAt || 0) > 40000) {
+      // « Lancer » (forced) relit TOUJOURS les cartes étiquetées, même pendant une relecture complète de la collection (qui dure plusieurs minutes) :
+      // une carte étiquetée juste avant le clic est vue tout de suite.
+      const forced = !!S.forceTagged;
+      if (forced || (!WMX.inventory.isLoading() && Date.now() - (S.taggedAt || 0) > 40000)) {
         S.taggedAt = Date.now();
-        try { await WMX.inventory.syncTagged(st.tags, { force: !!S.forceTagged }); S.forceTagged = false; } catch (_) { /* jeu lent : on garde la copie actuelle */ }
+        S.forceTagged = false;
+        let ok = false;
+        try { ok = await WMX.inventory.syncTagged(st.tags, { force: forced }); } catch (_) { /* jeu lent : on garde la copie actuelle */ }
+        if (forced) S.syncFailed = !ok; // relecture demandée mais impossible : dit à l'utilisateur (le résultat se base sur la copie précédente)
       }
       const items = WMX.inventory.items(); // la liste en cache suffit : l'inventaire se recharge parfois pendant des minutes (jeu lent)
       if (!items.length) return done('no-inventory', WMX.inventory.isLoading() ? 'chargement de la collection en cours, reprise à la prochaine passe' : 'collection indisponible pour le moment, nouvelle tentative à la prochaine passe');
@@ -176,7 +182,15 @@
     ensureLock();
     S.pauseUntil = 0; // un lancement demandé à la main passe outre la pause
     S.taggedAt = 0; S.forceTagged = true; // et relit tout de suite les cartes étiquetées
-    if (S.leader) { await tick(); return WMX.toast?.(`Assistant de vente : ${line().text}`, 5000); }
+    // Réglages relus aussi (étiquettes, raretés…) : on ne se fie pas à une copie gardée en mémoire.
+    try { Object.assign(WMX.settings, WMX.migrateSettings(await WMX.store.get('wmxSettings', {}))); } catch (_) { /* on garde ceux en mémoire */ }
+    if (S.leader) {
+      for (let i = 0; S.busy && i < 100; i++) await sleep(200); // une passe déjà en cours : on attend sa fin, puis on relance avec la relecture
+      S.forceTagged = true; S.syncFailed = false;
+      await tick();
+      const warn = S.syncFailed ? ' (le jeu n’a pas répondu : étiquettes non relues, réessayez dans un instant)' : '';
+      return WMX.toast?.(`Assistant de vente : ${line().text}${warn}`, warn ? 8000 : 5000, warn ? { kind: 'warn' } : undefined);
+    }
     await WMX.store.set('autoSellForce', Date.now()); // l'onglet qui pilote l'assistant lance une passe
     WMX.toast?.('Demande transmise à votre autre onglet du jeu…', 4000);
     setTimeout(() => { if (!S.shared || Date.now() - S.shared.t > 15000) WMX.toast?.('L’assistant ne tourne dans aucun onglet pour l’instant : gardez un onglet du jeu ouvert.', 7000, { kind: 'warn' }); }, 8000);
@@ -339,16 +353,16 @@
         // Ancienne valeur par défaut (3 enchères) : passée une fois à la nouvelle (5), comme demandé ; un autre choix de l'utilisateur est gardé.
         if (s.autoSellMax === 3 && !(await WMX.store.get('autoSellMax5', false))) { s.autoSellMax = 5; await WMX.store.set('wmxSettings', { ...s }); }
         WMX.store.set('autoSellMax5', true);
-        Object.assign(WMX.settings, s); paintAll();
+        Object.assign(WMX.settings, WMX.migrateSettings(s)); paintAll();
       }); // la ligne d'état ne dit « désactivé » qu'avant le chargement des réglages
       // Réglages et état partagés entre les onglets : un réglage changé dans un onglet vaut aussitôt dans tous.
       WMX.onStorage((c) => {
-        if (c.wmxSettings?.newValue) { Object.assign(WMX.settings, c.wmxSettings.newValue); window.dispatchEvent(new CustomEvent('wmx:settings')); }
+        if (c.wmxSettings?.newValue) { Object.assign(WMX.settings, WMX.migrateSettings({ ...c.wmxSettings.newValue })); window.dispatchEvent(new CustomEvent('wmx:settings')); }
         if (c.autoSellStatus) { S.shared = c.autoSellStatus.newValue || null; paintAll(); }
         if (c.autoSellSkip) S.skip = c.autoSellSkip.newValue || {};
         if (c.autoSellRetag) retag.mem = c.autoSellRetag.newValue || {};
         if (c.gameBlockedUntil) { WMX.gameBlockedUntil = c.gameBlockedUntil.newValue || 0; paintAll(); }
-        if (c.autoSellForce && S.leader && on()) { S.pauseUntil = 0; tick(); }
+        if (c.autoSellForce && S.leader && on()) { S.pauseUntil = 0; S.taggedAt = 0; S.forceTagged = true; (async () => { for (let i = 0; S.busy && i < 100; i++) await sleep(200); S.forceTagged = true; tick(); })(); } // « Lancer » d'un autre onglet : même relecture
       });
       window.addEventListener('wmx:settings', () => { ensureLock(); paintAll(); });
       WMX.quick.onResult((op, res) => {

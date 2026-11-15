@@ -2,16 +2,16 @@
 // outils de développement (rechargement automatique, permission « alarms », version_name), et crée release/wikimasters-toolkit-plus-<version>.zip
 // pour le Chrome Web Store.
 // Usage : node scripts/build.js [version]
-// Sans argument, le numéro de version monte d'un cran à chaque build (1.0.1, 1.0.2, …) : le numéro du ZIP dit toujours quelle est la dernière
-// version construite. Il est mémorisé dans package.json ("storeVersion") ; les anciens ZIP de release/ sont supprimés.
+// UN SEUL numéro de version : celui de manifest.json. La version de développement et celle du store portent le même numéro (le ZIP construit
+// s'appelle comme la version chargée en développement). Chaque modification monte ce numéro d'un cran dans manifest.json (le rechargement
+// automatique de la version de développement en dépend) ; le store accepte des numéros qui sautent, tant qu'ils montent.
+// Un numéro donné en argument remplace celui du manifest (cas exceptionnel). Les anciens ZIP de release/ sont supprimés.
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 
 const root = path.resolve(__dirname, '..');
-const pj = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-const bump = (v) => { const p = v.split('.').map(Number); p[2] += 1; return p.join('.'); };
-const version = process.argv[2] || bump(pj.storeVersion || '1.0.0');
+const version = process.argv[2] || JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8')).version;
 const pkg = path.join(root, 'dist');
 const out = path.join(root, 'release');
 
@@ -27,9 +27,20 @@ const walk = (rel) => {
 walk('src');
 walk('icons');
 
-fs.rmSync(pkg, { recursive: true, force: true });
+// fs.rmSync ne supprime rien, sans erreur, sous Windows avec Node 24.2 quand le chemin contient un caractère accentué (« Matthéo ») :
+// suppression faite à la main (unlink / rmdir), qui marche partout.
+function removeAll(p) {
+  if (!fs.existsSync(p)) return;
+  if (fs.lstatSync(p).isDirectory()) { for (const e of fs.readdirSync(p)) removeAll(path.join(p, e)); fs.rmdirSync(p); } else fs.unlinkSync(p);
+}
+removeAll(pkg);
+if (fs.existsSync(pkg)) { console.error('Impossible de vider dist/'); process.exit(1); }
 fs.mkdirSync(out, { recursive: true });
-for (const old of fs.readdirSync(out)) if (/^wikimasters-toolkit-plus-.*.zip$/.test(old)) fs.rmSync(path.join(out, old));
+const removed = [];
+for (const old of fs.readdirSync(out)) {
+  if (!/^wikimasters-toolkit-plus-.*\.zip$/.test(old)) continue;
+  try { removeAll(path.join(out, old)); removed.push(old); } catch (e) { console.warn(`Ancien ZIP non supprimé (${e.code}) : ${old}`); }
+}
 for (const f of files) {
   fs.mkdirSync(path.dirname(path.join(pkg, f)), { recursive: true });
   fs.copyFileSync(path.join(root, f), path.join(pkg, f));
@@ -78,5 +89,6 @@ end.writeUInt32LE(cdSize, 12); end.writeUInt32LE(offset, 16);
 const zip = path.join(out, `wikimasters-toolkit-plus-${version}.zip`);
 fs.writeFileSync(zip, Buffer.concat([...chunks, ...central, end]));
 console.log(`${entries.length} fichiers, ${(fs.statSync(zip).size / 1024).toFixed(0)} Ko -> ${path.relative(root, zip)}`);
-pj.storeVersion = version;
-fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify(pj, null, 2) + String.fromCharCode(10));
+if (removed.filter((f) => !f.endsWith(`-${version}.zip`)).length) console.log(`Anciens ZIP supprimés : ${removed.filter((f) => !f.endsWith(`-${version}.zip`)).join(', ')}`);
+const left = fs.readdirSync(out).filter((f) => /^wikimasters-toolkit-plus-.*\.zip$/.test(f) && f !== path.basename(zip));
+if (left.length) { console.error(`Anciens ZIP encore présents : ${left.join(', ')}`); process.exit(1); }

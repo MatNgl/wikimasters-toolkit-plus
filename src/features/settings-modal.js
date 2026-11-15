@@ -7,8 +7,15 @@
   WMX.DEFAULTS = {
     speed: 'normal', order: 'rarity', images: true,
     stopOn: 'off', reserve: 0, fullStockOpen: true, anticipate: true,
-    quickCoef: 0.9, quickDuration: '1h', quickPrudent: false, auctionBubble: true, auctionNotify: true, autoReload: true,
+    quickPct: -10, quickDuration: '1h', quickPrudent: false, auctionBubble: true, auctionNotify: true, autoReload: true,
     autoDefaultMode: 'time', autoDefaultSecs: 35, autoCapMode: 'avg', autoCapW: 100, autoCapPct: 20, autoDefaultOn: false, watchMax: 12, autoSell: false, autoSellTags: 'VENTE', autoSellMax: 5, autoSellCap: 500, autoSellOrder: 'avg', autoSellPriorityRar: '', autoSellStrict: true, autoSellRelistLimit: true, autoSellRelistMax: 4, quickNoSalePrice: 10, cardStyle: true, cardShowDesc: true, cardShowStats: true,
+  };
+
+  /** Réglages d'anciennes versions : le coefficient du prix de départ (0,9) devient un pourcentage (−10). */
+  WMX.migrateSettings = (s) => {
+    if (s && s.quickPct == null && Number(s.quickCoef) > 0) s.quickPct = Math.round((Number(s.quickCoef) - 1) * 100);
+    if (s) delete s.quickCoef;
+    return s || {};
   };
 
   // La mise à jour automatique n'existe que dans la version de développement (permission « alarms ») : absente de la version publiée.
@@ -40,9 +47,9 @@
     },
     {
       title: 'Enchère rapide',
-      desc: 'Réglages du bouton ⚡ de la collection : prix de départ = moyenne du marché × coefficient.',
+      desc: 'Réglages du bouton ⚡ de la collection : prix de départ = moyenne du marché, plus ou moins un pourcentage.',
       items: [
-        { key: 'quickCoef', type: 'number', min: 0.1, max: 3, step: 0.05, label: 'Coefficient du prix de départ', desc: 'Appliqué à la moyenne du marché, arrondi à l\u2019entier (1 W minimum). 0,9 = 10 % sous la moyenne.' },
+        { key: 'quickPct', type: 'number', min: -90, max: 500, step: 5, label: 'Prix de départ par rapport à la moyenne (%)', desc: '−10 = 10 % sous la moyenne, 0 = la moyenne, +10 = 10 % au-dessus, +100 = le double. Arrondi à l’entier (1 W minimum).' },
         { key: 'quickNoSalePrice', type: 'number', min: 1, max: 1000000, step: 1, label: 'Prix de départ sans moyenne (W)', desc: 'Pour une carte sans aucune vente sur le marché (« Sans vente ») : prix de départ utilisé à la place de la moyenne. 10 W par défaut.' },
         { key: 'quickDuration', type: 'select', label: 'Durée de l\u2019enchère', desc: 'Durée proposée par défaut (celles du jeu).',
           options: [['10min', '10 min'], ['30min', '30 min'], ['1h', '1 h'], ['3h', '3 h'], ['6h', '6 h'], ['12h', '12 h']] },
@@ -140,7 +147,7 @@
    * n'écrase plus ceux qu'un autre onglet a changés (l'assistant de vente se retrouvait ainsi désactivé sans que personne ne l'ait demandé).
    */
   WMX.updateSettings = async (patch) => {
-    const stored = await WMX.store.get('wmxSettings', {});
+    const stored = WMX.migrateSettings(await WMX.store.get('wmxSettings', {}));
     const next = { ...WMX.settings, ...stored, ...patch };
     Object.assign(WMX.settings, next);
     await WMX.store.set('wmxSettings', next);

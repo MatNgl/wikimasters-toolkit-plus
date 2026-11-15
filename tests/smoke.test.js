@@ -1,5 +1,5 @@
 // Essais de fumée : exécutent vraiment le code de l'extension (jsdom + faux réseau) pour attraper les erreurs d'exécution.
-const test = require('node:test');
+const test = require('./parallel')('smoke', Number(process.env.WMX_TEST_CONCURRENCY) || 8);
 const assert = require('node:assert/strict');
 const { createEnv } = require('./harness');
 
@@ -1168,6 +1168,27 @@ test('prix : la carte sur laquelle on clique ⚡ passe devant le chargement des 
   env.close();
 });
 
+test('assistant de vente : « Lancer » relit les étiquettes même pendant une relecture complète de la collection, et attend une passe en cours', async () => {
+  const env = createEnv({ fetchImpl: async () => json({ selling: [], bidding: [], won: [{ winner_id: ME }], history: [] }) });
+  const { WMX } = env;
+  const card = (id, rarity) => ({ card_id: id, title: 'Carte ' + id, rarity, count: 1, starred: false, tags: [{ name: 'VENTE' }] });
+  let items = [];
+  WMX.inventory.items = () => items;
+  WMX.inventory.isLoading = () => true; // relecture complète en cours (plusieurs minutes sur le vrai jeu)
+  const syncs = [];
+  WMX.inventory.syncTagged = async (tags, opts) => { syncs.push(!!opts?.force); items = [card('L1', 'L')]; return true; }; // la Légendaire étiquetée juste avant
+  Object.assign(WMX.settings, { autoSell: true, autoSellTags: 'VENTE', autoSellMax: 3, autoSellPriorityRar: 'L', autoSellStrict: true });
+  const got = [];
+  WMX.quick.bulk = (type, list) => got.push(...list.map((i) => i.card_id));
+  await WMX.autoSell.tick(); // passe normale : pendant la relecture complète, pas de relecture des étiquettes
+  assert.deepEqual(syncs, []);
+  assert.deepEqual(got, []);
+  await WMX.autoSell.runNow();
+  assert.deepEqual(syncs, [true], '« Lancer » force la relecture des étiquettes');
+  assert.deepEqual(got, ['L1'], 'la Légendaire étiquetée juste avant est mise en vente');
+  env.close();
+});
+
 test('assistant de vente : l\'état publié dit pourquoi rien n\'est mis en vente, et « Lancer maintenant » refait une passe', async () => {
   const env = createEnv({ fetchImpl: async () => json({ selling: [], bidding: [], won: [{ winner_id: ME }], history: [] }) });
   const { w, WMX } = env;
@@ -1191,20 +1212,32 @@ test('assistant de vente : l\'état publié dit pourquoi rien n\'est mis en vent
   env.close();
 });
 
+test('réglages : l’ancien coefficient du prix de départ devient un pourcentage', () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  const { WMX } = env;
+  assert.equal(WMX.migrateSettings({ quickCoef: 0.9 }).quickPct, -10);
+  assert.equal(WMX.migrateSettings({ quickCoef: 1.1 }).quickPct, 10);
+  assert.equal(WMX.migrateSettings({ quickCoef: 2 }).quickPct, 100);
+  assert.equal(WMX.migrateSettings({ quickCoef: 0.9, quickPct: 5 }).quickPct, 5, 'un pourcentage déjà choisi est gardé');
+  assert.equal('quickCoef' in WMX.migrateSettings({ quickCoef: 0.9 }), false);
+  env.close();
+});
+
 test('réglages : « Appliquer » n\'enregistre que les réglages modifiés (n\'écrase pas ceux d\'un autre onglet)', async () => {
   const env = createEnv({ fetchImpl: async () => json({}) });
   const { w, WMX } = env;
-  Object.assign(WMX.settings, { autoSell: false, quickCoef: 0.9 });
+  Object.assign(WMX.settings, { autoSell: false, quickPct: -10 });
   WMX.openSettings('Enchère rapide'); // cet onglet a une copie ancienne : autoSell = false
   await WMX.store.set('wmxSettings', { ...WMX.settings, autoSell: true }); // un autre onglet vient d'activer l'assistant
   const input = w.document.querySelector('input[type=number]');
-  const row = [...w.document.querySelectorAll('.wmx-setrow')].find((r) => /Coefficient du prix/.test(r.textContent));
+  const row = [...w.document.querySelectorAll('.wmx-setrow')].find((r) => /Prix de départ par rapport/.test(r.textContent));
   const coef = row.querySelector('input');
-  coef.value = '0.8'; coef.dispatchEvent(new w.Event('change', { bubbles: true }));
+  coef.value = '-20'; coef.dispatchEvent(new w.Event('change', { bubbles: true }));
   [...w.document.querySelectorAll('.wmx-modal footer button')].find((b) => b.textContent === 'Appliquer').click();
   await sleep(100);
   const saved = await WMX.store.get('wmxSettings', {});
-  assert.equal(saved.quickCoef, 0.8, 'le réglage modifié est enregistré');
+  assert.equal(saved.quickPct, -20, 'le réglage modifié est enregistré');
+  assert.equal(saved.quickCoef, undefined, 'plus d’ancien coefficient');
   assert.equal(saved.autoSell, true, 'celui de l\'autre onglet est conservé');
   assert.ok(input);
   env.close();
@@ -1990,3 +2023,5 @@ test('« Toutes les cartes » chargée directement (page déjà rendue, aucune r
   assert.match(chip().textContent, /^Moy\. 4\s200 W ✓$/);
   env.close();
 });
+
+test.done();

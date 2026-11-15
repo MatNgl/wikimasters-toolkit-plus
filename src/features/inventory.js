@@ -97,6 +97,9 @@
     S.loading = false;
     if (complete) S.loadedAt = Date.now();
     if (complete || !S.items.length) setItems(withoutDiscarded([...byId.values()], startedAt));
+    // Une relecture complète lit ses pages pendant plusieurs minutes : une carte étiquetée entre-temps peut y apparaître sans son étiquette.
+    // Les cartes étiquetées seront donc relues au prochain contrôle (syncTagged), même si leur nombre n'a pas changé.
+    taggedSyncAt = 0;
     // Un chargement interrompu ne remplace pas un inventaire plus complet, et son cache est marqué incomplet (rechargé la prochaine fois).
     WMX.store.set('invCacheV2', { t: Date.now(), items: S.items, complete });
   }

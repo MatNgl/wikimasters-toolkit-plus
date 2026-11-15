@@ -1,6 +1,6 @@
 // Défausse par critères : fenêtres et pilotage de la sélection du jeu, sur une fausse page Collection qui reproduit la vraie
 // (relevée dans le jeu : menu « Filtrer par étiquette », boutons de rareté, clic sur la carte, compteur, fenêtre « Défausser N cartes ? »).
-const test = require('node:test');
+const test = require('./parallel')('discard', Number(process.env.WMX_TEST_CONCURRENCY) || 8);
 const assert = require('node:assert/strict');
 const { createEnv } = require('./harness');
 
@@ -582,3 +582,5 @@ for (const mode of ['wait', 'last']) {
     env.close();
   });
 }
+
+test.done();

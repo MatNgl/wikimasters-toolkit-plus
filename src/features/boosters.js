@@ -8,8 +8,8 @@
   const ui = {};
 
   WMX.settings = { ...WMX.DEFAULTS };
-  // Réglages enregistrés : chargés sur toutes les pages (le bouton ⚡ de la collection lit le coefficient d'enchère, par exemple).
-  WMX.store.get('wmxSettings', {}).then((s) => Object.assign(WMX.settings, s));
+  // Réglages enregistrés : chargés sur toutes les pages (le bouton ⚡ de la collection lit l'écart du prix de départ, par exemple).
+  WMX.store.get('wmxSettings', {}).then((s) => Object.assign(WMX.settings, WMX.migrateSettings(s)));
   const rank = (r) => WMX.RARITIES.length - 1 - WMX.RARITIES.indexOf(r); // C = 0 … L = 5
 
   let openError = null; // dernière réponse d'erreur (ex. 429) à l'ouverture d'un paquet
@@ -20,10 +20,11 @@
     else if (status === 429 || data?.rate_limited) openError = { t: Date.now(), data };
   });
 
-  // Pause entre deux paquets : 1,5 s (un humain enchaîne ses paquets aussi vite ; la vérification humaine arrive de toute façon, pause longue ou non).
-  // Si le jeu refuse une ouverture trop rapprochée, la pause monte d'1 s (jusqu'à 6 s) pour le reste de CETTE ouverture seulement :
-  // la suivante (« Tout ouvrir », ou la prochaine ouverture auto) repart de 1,5 s.
-  const BASE_COOLDOWN_S = 1.5;
+  // Pause entre deux paquets : 0,3 s (un humain enchaîne ses paquets au moins aussi vite ; la vérification humaine arrive de toute façon).
+  // Chaque fois que le jeu refuse une ouverture trop rapprochée, la pause passe au palier suivant : 0,5 s, puis 1 s, puis 1,5 s (au plus),
+  // pour le reste de CETTE ouverture ; sans refus, on garde 0,3 s. La suivante (« Tout ouvrir », ou la prochaine ouverture auto) repart de 0,3 s.
+  const COOLDOWN_STEPS_S = [0.3, 0.5, 1, 1.5];
+  const BASE_COOLDOWN_S = COOLDOWN_STEPS_S[0];
   let cooldownS = BASE_COOLDOWN_S;
   let blocks = 0;       // refus consécutifs : la pause s'allonge d'1 s à chaque refus, puis repart de la pause de base (cooldownS) au premier succès
 
@@ -157,7 +158,10 @@
           break;
         }
         blocks += 1;
-        if (blocks === 1 && cooldownS < 6) cooldownS = Math.min(6, cooldownS + 1); // le jeu a refusé cette pause : on l'allonge pour le reste de cette ouverture
+        if (blocks === 1) { // le jeu a refusé cette pause : palier suivant pour le reste de cette ouverture (0,3 → 0,5 → 1 → 1,5 s)
+          cooldownS = COOLDOWN_STEPS_S.find((v) => v > cooldownS) ?? COOLDOWN_STEPS_S[COOLDOWN_STEPS_S.length - 1];
+          WMX.journal?.add('Paquets', `ouverture trop rapide selon le jeu : pause entre paquets portée à ${String(cooldownS).replace('.', ',')} s`);
+        }
         if (blocks > 15) { setStatus('Le jeu refuse l’ouverture : arrêt'); break; }
         // Attente = pause de base + 1 s par refus consécutif (4, 5, 6… s), au moins ce que demande le jeu.
         const waitS = Math.min(120, Math.max(cooldownS + blocks, retryHint(d.retry_after) ?? 0));
@@ -363,7 +367,7 @@
   const field = (label, control, title) => el('label', title ? { title } : {}, label, control);
 
   async function buildPanel() {
-    Object.assign(WMX.settings, await WMX.store.get('wmxSettings', {}));
+    Object.assign(WMX.settings, WMX.migrateSettings(await WMX.store.get('wmxSettings', {})));
     const ap = await WMX.store.get('autoPrefs', { min: 5, max: 10 });
     const seenPacks = await WMX.store.get('packsSeen', null);
     account = (await WMX.store.get('packAccount', null))?.type || seenPacks?.account || 'classic';
