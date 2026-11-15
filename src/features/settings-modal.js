@@ -64,11 +64,11 @@
         { type: 'action', label: 'État de l’assistant', desc: 'Pourquoi il met (ou ne met pas) telle carte en vente, prochaines cartes, cartes écartées. Aussi dans la bulle des enchères.', button: 'Voir les détails', run: () => WMX.autoSell?.openPanel() },
         { type: 'action', label: 'Forcer une passe', desc: 'Lance tout de suite une passe de l’assistant, sans attendre la prochaine (toutes les 45 s).', button: 'Lancer maintenant', run: () => WMX.autoSell?.runNow() },
         { key: 'autoSellTags', type: 'tags', label: 'Étiquettes à vendre', desc: 'Cochez une ou plusieurs étiquettes de votre compte. Seules les cartes qui en portent une sont concernées.' },
-        { key: 'autoSellCap', type: 'number', min: 1, max: 1000000, step: 10, label: 'Prix de départ maximum (W)', desc: 'Garde-fou : l’assistant ne met jamais en vente une carte dont le prix de départ dépasserait ce montant (500 W par défaut). Pour une carte plus chère, utilisez le bouton ⚡ vous-même.' },
-        { key: 'autoSellMax', type: 'number', min: 1, max: 10, step: 1, label: 'Enchères actives visées', desc: 'L’assistant complète jusqu’à ce nombre d’enchères en cours (vos ventes manuelles comptent). Jamais plus que la limite de votre compte, lue sur le jeu : 5 enchères en compte classique, 10 en compte Pro.' },
-        { key: 'autoSellPriorityRar', type: 'rarityOrder', label: 'Raretés à vendre', desc: '« Toutes les raretés » : aucune restriction. « Seulement celles-ci » : l’assistant ne vend QUE les raretés de la liste, dans leur ordre (n°1 d’abord). Les cartes étiquetées d’une autre rareté ne sont jamais mises en vente. Quand il n’en reste plus, la bulle des enchères le dit.' },
-        { key: 'autoSellStrict', type: 'toggle', label: 'Une rareté à la fois', desc: 'Activé (recommandé) : la rareté n°2 n’est mise en vente que lorsqu’il ne reste plus aucune carte n°1 à vendre, y compris celles déjà en vente qui pourraient revenir invendues. Les places restent libres en attendant. Désactivé : les places libres sont complétées avec la rareté suivante. Une favorite ou une carte au-dessus du prix maximum ne retient jamais la liste.' },
-        { key: 'autoSellRelistLimit', type: 'toggle', label: 'Limiter les remises en vente', desc: 'Activé : une carte qui revient invendue n’est remise en vente qu’un nombre limité de fois par 24 h, puis l’assistant passe aux autres cartes (elle est reprise quand la plus ancienne mise en vente a plus de 24 h). Désactivé : remise en vente sans limite tant qu’elle ne trouve pas preneur.' },
+        { key: 'autoSellCap', type: 'number', min: 1, max: 1000000, step: 10, label: 'Prix de départ maximum (W)', desc: 'Garde-fou : aucune carte mise en vente au-dessus de ce prix de départ (500 W par défaut).', help: 'Garde-fou : l’assistant ne met jamais en vente une carte dont le prix de départ dépasserait ce montant (500 W par défaut). Pour une carte plus chère, utilisez le bouton ⚡ vous-même.' },
+        { key: 'autoSellMax', type: 'number', min: 1, max: 10, step: 1, label: 'Enchères actives visées', desc: 'Nombre d’enchères en cours que l’assistant complète (vos ventes manuelles comptent).', help: 'L’assistant complète jusqu’à ce nombre d’enchères en cours (vos ventes manuelles comptent). Jamais plus que la limite de votre compte, lue sur le jeu : 5 enchères en compte classique, 10 en compte Pro.' },
+        { key: 'autoSellPriorityRar', type: 'rarityOrder', label: 'Raretés à vendre', desc: 'Toutes les raretés, ou seulement celles de la liste, dans leur ordre (n°1 d’abord).', help: '« Toutes les raretés » : aucune restriction. « Seulement celles-ci » : l’assistant ne vend QUE les raretés de la liste, dans leur ordre (n°1 d’abord). Les cartes étiquetées d’une autre rareté ne sont jamais mises en vente. Quand il n’en reste plus, la bulle des enchères le dit.' },
+        { key: 'autoSellStrict', type: 'toggle', label: 'Une rareté à la fois', desc: 'Activé : la rareté suivante attend qu’il ne reste plus aucune carte de la précédente.', help: 'Activé (recommandé) : la rareté n°2 n’est mise en vente que lorsqu’il ne reste plus aucune carte n°1 à vendre, y compris celles déjà en vente qui pourraient revenir invendues. Les places restent libres en attendant. Désactivé : les places libres sont complétées avec la rareté suivante. Une favorite ou une carte au-dessus du prix maximum ne retient jamais la liste.' },
+        { key: 'autoSellRelistLimit', type: 'toggle', label: 'Limiter les remises en vente', desc: 'Activé : une carte invendue n’est remise en vente qu’un nombre limité de fois par 24 h.', help: 'Activé : une carte qui revient invendue n’est remise en vente qu’un nombre limité de fois par 24 h, puis l’assistant passe aux autres cartes (elle est reprise quand la plus ancienne mise en vente a plus de 24 h). Désactivé : remise en vente sans limite tant qu’elle ne trouve pas preneur.' },
         { key: 'autoSellRelistMax', type: 'number', min: 1, max: 50, step: 1, showIf: 'autoSellRelistLimit', label: 'Mises en vente par carte (sur 24 h)', desc: 'Nombre de fois qu’une même carte peut être mise en vente par l’assistant sur 24 h, échecs compris (4 par défaut).' },
         { key: 'autoSellOrder', type: 'select', label: 'Ordre dans une même rareté', desc: 'Quelles cartes l’assistant met en vente en premier (sans liste de raretés : parmi toutes les cartes étiquetées).',
           options: [['avg', 'Meilleure moyenne d’abord'], ['avgLow', 'Moyenne la plus basse d’abord'], ['rarityHigh', 'Raretés les plus hautes d’abord'], ['rarityLow', 'Raretés les plus basses d’abord']] },
@@ -79,7 +79,7 @@
       desc: 'Bulle flottante : vos mises et vos ventes en cours, avec « Surenchérir » (mise exacte du minimum proposé).',
       items: [
         { key: 'auctionBubble', type: 'toggle', label: 'Bulle flottante des enchères', desc: 'Affichée en bas à droite sur toutes les pages du jeu ; actualisée chaque minute (toutes les 8 s quand elle est ouverte).' },
-        { key: 'auctionNotify', type: 'toggle', label: 'Alertes d’enchères', desc: 'Notification quand vous êtes surenchéri ou qu’une de vos enchères passe sous 2 minutes (le navigateur demande l’autorisation au premier clic sur la bulle).' },
+        { key: 'auctionNotify', type: 'toggle', label: 'Alertes d’enchères', desc: 'Quand vous êtes surenchéri ou qu’une de vos enchères passe sous 2 minutes.', help: 'Notification quand vous êtes surenchéri ou qu’une de vos enchères passe sous 2 minutes (le navigateur demande l’autorisation au premier clic sur la bulle).' },
       ],
     },
     {
@@ -88,12 +88,12 @@
       items: [
         { key: 'autoDefaultMode', type: 'select', label: 'Déclencheur par défaut', desc: 'Quand miser automatiquement.',
           options: [['time', 'Sous un délai avant la fin (surenchère à chaque fois)'], ['outbid', 'Dès que je suis surenchéri']] },
-        { key: 'autoDefaultSecs', type: 'number', min: 5, max: 3600, step: 5, label: 'Délai avant la fin (secondes)', desc: 'Pour « sous un délai » : tant que le compteur est en dessous, on surenchérit à chaque fois qu’un autre joueur nous dépasse. Gardez une marge : le délai de réponse du jeu dépend de votre connexion (au moins 20 s).' },
+        { key: 'autoDefaultSecs', type: 'number', min: 5, max: 3600, step: 5, label: 'Délai avant la fin (secondes)', desc: 'Pour « sous un délai » : on surenchérit tant que le compteur est sous ce délai (20 s au moins).', help: 'Pour « sous un délai » : tant que le compteur est en dessous, on surenchérit à chaque fois qu’un autre joueur nous dépasse. Gardez une marge : le délai de réponse du jeu dépend de votre connexion (au moins 20 s).' },
         { key: 'autoCapMode', type: 'select', label: 'Plafond par défaut', desc: 'Limite au-delà de laquelle l’extension ne mise plus.',
           options: [['avg', 'Selon la moyenne du marché'], ['abs', 'Valeur fixe en W'], ['none', 'Aucun plafond']] },
         { key: 'autoCapPct', type: 'number', min: -90, max: 500, step: 5, label: 'Écart à la moyenne (%)', desc: 'Pour le plafond « selon la moyenne » : +30 = jusqu’à 30 % au-dessus de la moyenne, 0 = à la moyenne, −10 = en dessous.' },
         { key: 'autoCapW', type: 'number', min: 1, max: 100000, step: 1, label: 'Plafond fixe (W)', desc: 'Pour le plafond « valeur fixe ».' },
-        { key: 'watchMax', type: 'number', min: 1, max: 50, step: 1, label: 'Surveillances en même temps (maximum)', desc: 'Nombre d’enchères que vous pouvez surveiller avec « Surveiller ». Chaque enchère surveillée est relue régulièrement auprès du jeu : plus il y en a, plus l’extension envoie de requêtes (12 par défaut, prudent).' },
+        { key: 'watchMax', type: 'number', min: 1, max: 50, step: 1, label: 'Surveillances en même temps (maximum)', desc: 'Nombre d’enchères suivies avec « Surveiller » en même temps (12 par défaut).', help: 'Nombre d’enchères que vous pouvez surveiller avec « Surveiller ». Chaque enchère surveillée est relue régulièrement auprès du jeu : plus il y en a, plus l’extension envoie de requêtes (12 par défaut, prudent).' },
         { key: 'autoDefaultOn', type: 'toggle', label: 'Appliquer aux nouvelles mises', desc: 'Programme automatiquement ces réglages sur chaque nouvelle mise que vous placez (désactivé par défaut).' },
       ],
     },
@@ -103,7 +103,7 @@
       items: [
         { key: 'cardShowDesc', type: 'toggle', label: 'Afficher la description', desc: 'Courte description Wikipédia sous le titre de la carte. Masquée, le titre peut tenir sur trois lignes.' },
         { key: 'cardShowStats', type: 'toggle', label: 'Afficher l’attaque et la défense', desc: 'Les deux valeurs en bas de chaque carte (épées et bouclier).' },
-        { key: 'cardStyle', type: 'toggle', label: 'Style de carte plein cadre', desc: 'Illustration sur toute la carte, texte sur dégradé, cadre à la couleur de la rareté, vagues fines et reflet. Désactivez pour revoir les cartes du jeu telles quelles (actualisez la page).' },
+        { key: 'cardStyle', type: 'toggle', label: 'Style de carte plein cadre', desc: 'Illustration sur toute la carte, cadre à la couleur de la rareté, reflet.', help: 'Illustration sur toute la carte, texte sur dégradé, cadre à la couleur de la rareté, vagues fines et reflet. Désactivez pour revoir les cartes du jeu telles quelles (actualisez la page).' },
       ],
     },
     {
@@ -165,9 +165,48 @@
     const visible = SECTIONS.filter((sec) => !sec.dev || devBuild());
     let group = GROUPS.find((g) => g.sections.includes(sectionTitle))?.id || lastGroup;
 
+    /**
+     * Pastille « ? » à côté d'une description courte : le texte complet s'affiche dans une infobulle stylisée, au survol, au clavier (focus)
+     * ou au clic (tactile). L'infobulle est placée par rapport à l'écran (la zone défilante des réglages la couperait), au-dessus de la pastille,
+     * ou en dessous s'il n'y a pas la place.
+     */
+    const helpTip = (text) => {
+      const b = el('button', { type: 'button', class: 'wmx-help', 'aria-label': 'Plus d’informations' }, '?');
+      let tip = null;
+      const hide = () => { tip?.remove(); tip = null; };
+      const show = () => {
+        if (tip) return;
+        tip = el('div', { class: 'wmx-tip', role: 'tooltip' }, text);
+        document.body.append(tip);
+        const r = b.getBoundingClientRect();
+        const w = Math.min(320, window.innerWidth - 16);
+        tip.style.width = `${w}px`;
+        const left = Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2));
+        tip.style.left = `${left}px`;
+        tip.style.setProperty('--ax', `${Math.round(r.left + r.width / 2 - left)}px`); // la pointe reste sous la pastille, même infobulle décalée
+        const h = tip.offsetHeight;
+        const up = r.top - h - 8 > 8;
+        tip.style.top = `${up ? r.top - h - 8 : r.bottom + 8}px`;
+        tip.classList.add(up ? 'up' : 'down');
+      };
+      b.addEventListener('mouseenter', show);
+      b.addEventListener('mouseleave', hide);
+      b.addEventListener('focus', show);
+      b.addEventListener('blur', hide);
+      b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); if (tip) hide(); else show(); });
+      b.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); hide(); } });
+      return b;
+    };
+
+    /** Description + « ? » : le dernier mot reste collé à la pastille (elle ne part jamais seule à la ligne). */
+    const withHelp = (desc, help) => {
+      const i = desc.lastIndexOf(' ');
+      return [desc.slice(0, i + 1), el('span', { class: 'wmx-help-end' }, desc.slice(i + 1), ' ', helpTip(help))];
+    };
+
     const control = (it) => {
       if (it.type === 'select') {
-        const s = el('select', { class: 'wmx-input wmx-select' }, ...it.options.map(([v, l]) => el('option', { value: String(v) }, l)));
+        const s = el('select', { class: 'wmx-input wmx-select wmx-dd' }, ...it.options.map(([v, l]) => el('option', { value: String(v) }, l)));
         s.value = String(draft[it.key]);
         s.addEventListener('change', () => { draft[it.key] = it.number ? Number(s.value) : s.value; });
         return s;
@@ -292,6 +331,7 @@
     };
 
     const render = () => {
+      document.querySelectorAll('.wmx-tip').forEach((t) => t.remove()); // infobulle restée ouverte : elle part avec la page de réglages
       lastGroup = group;
       nav.replaceChildren(...GROUPS.filter((g) => visible.some((sec) => g.sections.includes(sec.title))).map((g) => {
         const b = el('button', { type: 'button', class: 'wmx-set-navbtn', 'aria-current': g.id === group ? 'page' : 'false' }, el('b', {}, g.label), el('small', {}, g.hint));
@@ -303,14 +343,14 @@
         el('h3', {}, sec.title), el('p', {}, sec.desc),
         el('div', { class: 'wmx-rows' }, ...sec.items.map((it) => {
           const row = el('div', { class: `wmx-setrow${it.showIf ? ' wmx-setrow--sub' : ''}`, ...(it.showIf ? { 'data-show-if': it.showIf } : {}) },
-            el('div', {}, el('strong', {}, it.label), el('small', {}, it.desc)), control(it));
+            el('div', {}, el('strong', {}, it.label), el('small', {}, ...(it.help ? withHelp(it.desc, it.help) : [it.desc]))), control(it));
           if (it.showIf) row.hidden = !draft[it.showIf]; // réglage dépendant : caché tant que son interrupteur est désactivé
           return row;
         })))));
     };
     render();
 
-    const close = () => { backdrop.remove(); document.removeEventListener('keydown', onKey); };
+    const close = () => { backdrop.remove(); document.querySelectorAll('.wmx-tip').forEach((t) => t.remove()); document.removeEventListener('keydown', onKey); };
     const onKey = (e) => { if (e.key === 'Escape') close(); };
     document.addEventListener('keydown', onKey);
 

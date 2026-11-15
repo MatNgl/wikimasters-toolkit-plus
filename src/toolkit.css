@@ -1126,3 +1126,32 @@ html.wmx-opening .wmx-cover { display: block; }
 .wmx-pp-bar { width: 100%; margin: 6px 0 10px; padding: 8px 12px; border-radius: 12px; background: #0b1411; border: 1px solid #27493b; color: #d9f5ea; font: 600 13px/1.4 Outfit, system-ui, sans-serif; text-align: center; }
 .wmx-nt-price .wmx-age { width: 13px; height: 13px; font-size: 8px; vertical-align: -1px; }
 .wmx-pp-price.wmx-pp-mine { box-shadow: inset 0 0 0 1px #2dd4a0; } /* carte que vous avez aussi */
+
+/* Menus déroulants de l'extension (Paramètres, défausse) : flèche dessinée, bordure verte au survol et au focus, liste sombre */
+select.wmx-input, .wmx-tagbtn {
+  appearance: none; -webkit-appearance: none; height: 34px; padding: 0 30px 0 12px; border-radius: 10px; border: 1px solid #2a3a33;
+  background: #0d1411 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%232dd4a0' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 11px center;
+  color: #e6ece9; font: 600 12.5px/1 Outfit, system-ui, sans-serif; cursor: pointer; transition: border-color .15s, box-shadow .15s, background-color .15s;
+}
+select.wmx-input:hover, .wmx-tagbtn:hover { border-color: rgb(45 212 160 / .55); background-color: #101a16; }
+select.wmx-input:focus-visible, .wmx-tagbtn:focus-visible { outline: none; border-color: var(--acc, #2dd4a0); box-shadow: 0 0 0 3px rgb(45 212 160 / .2); }
+select.wmx-input option { background: #0f1512; color: #e6ece9; font-weight: 500; }
+.wmx-setrow select.wmx-input { width: 210px; }
+.wmx-setrow input.wmx-input[type="number"] { width: 86px; }
+.wmx-help-end { white-space: nowrap; }
+
+/* Pastille « ? » et infobulle des Paramètres (texte complet d'une description raccourcie) */
+.wmx-help {
+  display: inline-grid; place-items: center; width: 16px; height: 16px; margin-left: 2px; padding: 0; vertical-align: -3px; border-radius: 50%;
+  border: 1px solid rgb(45 212 160 / .45); background: rgb(45 212 160 / .1); color: var(--acc, #2dd4a0); font: 700 10px/1 Outfit, system-ui, sans-serif; cursor: help;
+}
+.wmx-help:hover, .wmx-help:focus-visible { background: rgb(45 212 160 / .25); outline: none; }
+.wmx-tip {
+  position: fixed; z-index: 2147483647; padding: 10px 12px; border-radius: 12px; border: 1px solid rgb(45 212 160 / .35);
+  background: linear-gradient(180deg, #13201b, #0d1512); color: #dbe7e1; font: 12px/1.5 Outfit, system-ui, sans-serif;
+  box-shadow: 0 14px 34px #000a, 0 0 0 1px #0006; pointer-events: none; animation: wmx-tip-in .12s ease-out;
+}
+.wmx-tip::after { content: ''; position: absolute; left: calc(var(--ax, 50%) - 6px); width: 10px; height: 10px; background: #0f1814; border: 1px solid rgb(45 212 160 / .35); transform: rotate(45deg); }
+.wmx-tip.up::after { bottom: -6px; border-top: 0; border-left: 0; }
+.wmx-tip.down::after { top: -6px; border-bottom: 0; border-right: 0; background: #13201b; }
+@keyframes wmx-tip-in { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
