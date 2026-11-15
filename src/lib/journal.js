@@ -3,7 +3,7 @@
 // « Copier le diagnostic » (Paramètres) met un résumé prêt à coller.
 (() => {
   const KEY = 'activityLog';
-  const MAX = 200;
+  const MAX = 1000; // assez pour suivre une carte sur plusieurs heures (l'assistant écrit beaucoup)
   let chain = Promise.resolve();
   const when = (t) => new Date(t).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const version = () => { try { return chrome.runtime.getManifest().version; } catch (_) { return '?'; } };
@@ -38,7 +38,7 @@
         : [el('p', { class: 'wmx-jempty' }, 'Rien pour l’instant : le journal se remplit au fil des actions.')];
       const back = el('div', { class: 'wmx-modal-backdrop wmx-jbackdrop', onmousedown: (ev) => { if (ev.target === back) close(); } },
         el('div', { class: 'wmx-modal', role: 'dialog', 'aria-label': 'Journal d’activité' },
-          el('header', {}, el('div', {}, el('h2', {}, 'Journal d’activité'), el('p', {}, 'Les 200 derniers événements, du plus récent au plus ancien.')), el('button', { class: 'wmx-close', title: 'Fermer', onclick: close }, '×')),
+          el('header', {}, el('div', {}, el('h2', {}, 'Journal d’activité'), el('p', {}, 'Les 1 000 derniers événements, du plus récent au plus ancien.')), el('button', { class: 'wmx-close', title: 'Fermer', onclick: close }, '×')),
           el('div', { class: 'wmx-modal-body wmx-jlist' }, ...rows),
           el('footer', {}, el('span', {}, ''), el('div', {},
             el('button', { class: 'wmx-btn wmx-btn--ghost', onclick: () => WMX.journal.copy() }, 'Copier le diagnostic'),
