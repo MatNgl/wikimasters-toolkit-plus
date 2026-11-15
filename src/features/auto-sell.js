@@ -233,13 +233,15 @@
     return false;
   }
   async function retagPass() {
-    const ids = Object.keys(retag.mem);
-    if (!ids.length || !WMX.alive()) return;
+    if (!WMX.alive() || !tags().length) return;
     const now = Date.now();
     const day14 = 14 * 24 * H;
-    for (const id of ids) if (now - retag.mem[id].at > day14) delete retag.mem[id]; // trop ancien : on oublie
-    // Rien à faire tant qu'aucune carte n'attend son essai (pas de requête au jeu pour rien).
-    if (!Object.entries(retag.mem).some(([id, m]) => (m.nextAt || 0) <= now && !retag.queued.has(id))) return;
+    for (const id of Object.keys(retag.mem)) if (now - retag.mem[id].at > day14) delete retag.mem[id]; // trop ancien : on oublie
+    // Rien à faire tant qu'aucune carte n'attend son essai (pas de requête au jeu pour rien) ; le filet de sécurité, lui, passe toutes les 2 min
+    // s'il y a eu des mises en vente de l'assistant sur 24 h.
+    const due = Object.entries(retag.mem).some(([id, m]) => (m.nextAt || 0) <= now && !retag.queued.has(id));
+    const netDue = on() && S.leader && now - (S.netAt || 0) > 2 * 60000 && Object.values(S.log).some((l) => l.some((t) => now - t < 24 * H));
+    if (!due && !netDue) return;
     let hist;
     let selling = [];
     try {
@@ -251,6 +253,7 @@
       hist = j.history || [];
       selling = j.selling || [];
     } catch (_) { return; }
+    if (netDue) { S.netAt = now; safetyNet(hist, selling); }
     const back = [];
     for (const id of Object.keys(retag.mem)) {
       const m = retag.mem[id];
@@ -271,6 +274,35 @@
     }
     saveRetag();
     if (back.length) WMX.journal?.add('Assistant de vente', `Invendue${back.length > 1 ? 's' : ''} : remise de l’étiquette de vente à ${back.join(', ')}`);
+  }
+  /**
+   * Filet de sécurité, indépendant de la mémoire des étiquettes (qui peut manquer : carte étiquetée dans le jeu juste avant sa mise en vente,
+   * mémoire écrasée par un autre onglet, étiquette « posée » qui n'a pas pris…) : toute carte mise en vente par l'assistant ces dernières 24 h,
+   * revenue invendue (le jeu la dit de nouveau à nous), qui n'est pas de nouveau en vente et ne porte aucune étiquette de vente, reçoit la
+   * première étiquette de vente des Paramètres (par le circuit normal : 30 s après la fin, essais, journal). 3 rattrapages par carte et par jour au plus.
+   */
+  function safetyNet(hist, selling) {
+    const now = Date.now();
+    const wanted = new Set(tags().map((t) => t.toLowerCase()));
+    S.netTries = Object.fromEntries(Object.entries(S.netTries || {}).filter(([, v]) => now - v.t < 24 * H));
+    const seen = new Set();
+    for (const a of hist) { // du plus récent au plus ancien : seule la dernière enchère de chaque carte compte
+      const id = a.card_id;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      if (a.status !== 'settled_unsold' || a.owned !== true) continue; // vendue, en cours, ou pas (encore) revenue
+      if (retag.mem[id] || retag.queued.has(id)) continue; // déjà suivie par le circuit normal
+      if (!(S.log[id] || []).some((t) => now - t < 24 * H)) continue; // pas mise en vente par l'assistant
+      if (selling.some((b) => b.card_id === id && b.status === 'active') || WMX.quick.selling(id)) continue;
+      const it = WMX.inventory.items().find((x) => x.card_id === id);
+      if (it?.tags?.some((t) => wanted.has(String(t.name).toLowerCase()))) continue; // a déjà son étiquette
+      const n = S.netTries[id] || { n: 0, t: now };
+      if (n.n >= 3) continue;
+      S.netTries[id] = { n: n.n + 1, t: n.t };
+      const title = a.card?.wikipedia_title || it?.title || id;
+      retag.mem[id] = { tags: [tags()[0]], title, rarity: it?.rarity || WMX.normRarity(a.snapshot_rarity) || a.snapshot_rarity, at: new Date(a.end_at).getTime() - 60000, done: 0, tries: 0, nextAt: 0 };
+      WMX.journal?.add('Assistant de vente', `« ${title} » est revenue invendue sans étiquette de vente (oubliée par la mémoire de l’assistant) : rattrapage, l’étiquette ${tags()[0]} va lui être remise`, 'warn');
+    }
   }
   const retagSafely = () => (navigator.locks?.request ? navigator.locks.request('wmx-retag', { ifAvailable: true }, async (l) => { if (l) await retagPass(); }) : retagPass());
 
@@ -407,8 +439,8 @@
       })();
       // Cartes invendues : vérifiées toutes les 15 s pour tenir le rythme « 30 s après la fin, puis toutes les 30 s » (aucune requête au jeu
       // tant qu'aucune carte n'attend son essai).
-      setInterval(() => { if (WMX.alive() && Object.keys(retag.mem).length) retagSafely().catch(() => {}); }, 15000);
+      setInterval(() => { if (WMX.alive()) retagSafely().catch(() => {}); }, 15000);
     },
   });
-  WMX.autoSell = { tick, skipCard, runNow, resetSkips, footer, openPanel, line, retag: { remember: rememberSaleTags, pass: retagPass, memory: () => retag.mem } };
+  WMX.autoSell = { tick, skipCard, runNow, resetSkips, footer, openPanel, line, retag: { remember: rememberSaleTags, pass: retagPass, memory: () => retag.mem }, state: () => S };
 })();

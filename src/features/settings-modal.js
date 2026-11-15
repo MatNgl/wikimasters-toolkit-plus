@@ -166,7 +166,7 @@
     let group = GROUPS.find((g) => g.sections.includes(sectionTitle))?.id || lastGroup;
 
     /**
-     * Pastille « ? » à côté d'une description courte : le texte complet s'affiche dans une infobulle stylisée, au survol, au clavier (focus)
+     * Pastille « ? » à côté du titre d'un réglage : le texte complet s'affiche dans une infobulle stylisée, au survol, au clavier (focus)
      * ou au clic (tactile). L'infobulle est placée par rapport à l'écran (la zone défilante des réglages la couperait), au-dessus de la pastille,
      * ou en dessous s'il n'y a pas la place.
      */
@@ -196,12 +196,6 @@
       b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); if (tip) hide(); else show(); });
       b.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); hide(); } });
       return b;
-    };
-
-    /** Description + « ? » : le dernier mot reste collé à la pastille (elle ne part jamais seule à la ligne). */
-    const withHelp = (desc, help) => {
-      const i = desc.lastIndexOf(' ');
-      return [desc.slice(0, i + 1), el('span', { class: 'wmx-help-end' }, desc.slice(i + 1), ' ', helpTip(help))];
     };
 
     const control = (it) => {
@@ -343,7 +337,7 @@
         el('h3', {}, sec.title), el('p', {}, sec.desc),
         el('div', { class: 'wmx-rows' }, ...sec.items.map((it) => {
           const row = el('div', { class: `wmx-setrow${it.showIf ? ' wmx-setrow--sub' : ''}`, ...(it.showIf ? { 'data-show-if': it.showIf } : {}) },
-            el('div', {}, el('strong', {}, it.label), el('small', {}, ...(it.help ? withHelp(it.desc, it.help) : [it.desc]))), control(it));
+            el('div', {}, el('strong', {}, it.label, ...(it.help ? [' ', helpTip(it.help)] : [])), el('small', {}, it.desc)), control(it));
           if (it.showIf) row.hidden = !draft[it.showIf]; // réglage dépendant : caché tant que son interrupteur est désactivé
           return row;
         })))));

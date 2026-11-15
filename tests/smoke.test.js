@@ -829,6 +829,44 @@ test('inventaire : une carte partie en vente puis revenue invendue revient dans 
   env.close();
 });
 
+test('assistant de vente : filet de sécurité — une carte mise en vente par l’assistant, revenue invendue sans étiquette et oubliée par la mémoire, est rattrapée', async () => {
+  const now = Date.now();
+  const end = (ms) => new Date(Date.now() - ms).toISOString();
+  const market = { selling: [], history: [
+    { card_id: 'o1', status: 'settled_unsold', owned: true, end_at: end(20 * 60000), snapshot_rarity: 'L', card: { wikipedia_title: 'Otto Abetz' } },
+    { card_id: 'o2', status: 'settled_unsold', owned: true, end_at: end(20 * 60000), snapshot_rarity: 'L', card: { wikipedia_title: 'Déjà étiquetée' } },
+    { card_id: 'o3', status: 'settled_unsold', owned: true, end_at: end(20 * 60000), snapshot_rarity: 'L', card: { wikipedia_title: 'Vendue à la main' } },
+    { card_id: 'o4', status: 'settled_unsold', owned: false, end_at: end(20 * 60000), snapshot_rarity: 'L', card: { wikipedia_title: 'Pas revenue' } },
+    { card_id: 'o5', status: 'settled_sold', owned: false, end_at: end(60000), snapshot_rarity: 'L', card: { wikipedia_title: 'Revendue ensuite' } },
+    { card_id: 'o5', status: 'settled_unsold', owned: true, end_at: end(20 * 60000), snapshot_rarity: 'L', card: { wikipedia_title: 'Revendue ensuite' } },
+  ] };
+  const env = createEnv({ fetchImpl: async () => json({ selling: market.selling, bidding: [], won: [], history: market.history }) });
+  const { WMX } = env;
+  env.mem.invCacheV2 = { t: now, complete: true, items: [
+    { id: 'i1', card_id: 'o1', title: 'Otto Abetz', rarity: 'L', count: 1, starred: false, tags: [] },
+    { id: 'i2', card_id: 'o2', title: 'Déjà étiquetée', rarity: 'L', count: 1, starred: false, tags: [{ name: 'VENTE' }] },
+    { id: 'i3', card_id: 'o3', title: 'Vendue à la main', rarity: 'L', count: 1, starred: false, tags: [] },
+  ] };
+  await WMX.inventory.ensure();
+  Object.assign(WMX.settings, { autoSell: true, autoSellTags: 'VENTE' });
+  const S = WMX.autoSell.state();
+  S.leader = true;
+  for (const id of ['o1', 'o2', 'o4', 'o5']) S.log[id] = [now - 30 * 60000]; // mises en vente par l'assistant il y a 30 min (pas o3)
+  const calls = [];
+  const log = [];
+  WMX.quick.bulk = (type, items, extra) => calls.push([type, items[0].card_id, extra.tag]);
+  WMX.journal.add = (cat, text, level) => log.push([level || 'info', text]);
+  const R = WMX.autoSell.retag;
+  assert.deepEqual(Object.keys(R.memory()), [], 'la mémoire des étiquettes ne connaît aucune de ces cartes');
+  await R.pass();
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [['tag', 'o1', 'VENTE']], 'seule la carte de l’assistant, revenue, sans étiquette et pas revendue ensuite est rattrapée');
+  assert.ok(log.some(([lv, t]) => lv === 'warn' && /Otto Abetz.*rattrapage/.test(t)), 'le rattrapage est noté au journal');
+  calls.length = 0;
+  await R.pass();
+  assert.deepEqual(calls, [], 'pas de nouvelle requête avant 2 min (et la demande en cours n’est pas doublée)');
+  env.close();
+});
+
 test('assistant de vente : une carte invendue retrouve l’étiquette de vente 30 s après la fin ; pas revenue : 5 essais espacés de 30 s puis erreur au journal ; vendue ou remise en vente : on n’y touche pas', async () => {
   const now = Date.now();
   const market = { history: [], selling: [] };
