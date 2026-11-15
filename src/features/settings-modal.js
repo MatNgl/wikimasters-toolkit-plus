@@ -337,7 +337,7 @@
         el('h3', {}, sec.title), el('p', {}, sec.desc),
         el('div', { class: 'wmx-rows' }, ...sec.items.map((it) => {
           const row = el('div', { class: `wmx-setrow${it.showIf ? ' wmx-setrow--sub' : ''}`, ...(it.showIf ? { 'data-show-if': it.showIf } : {}) },
-            el('div', {}, el('strong', {}, it.label, ...(it.help ? [' ', helpTip(it.help)] : [])), el('small', {}, it.desc)), control(it));
+            el('div', {}, (it.help ? el('div', { class: 'wmx-set-head' }, el('strong', {}, it.label), helpTip(it.help)) : el('strong', {}, it.label)), el('small', {}, it.desc)), control(it));
           if (it.showIf) row.hidden = !draft[it.showIf]; // réglage dépendant : caché tant que son interrupteur est désactivé
           return row;
         })))));

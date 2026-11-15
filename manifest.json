@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WikiMasters Toolkit+",
-  "version": "1.0.69",
+  "version": "1.0.70",
   "description": "Prix du marché, ouverture de paquets en un clic, enchères automatiques et style de cartes pour WikiMasters.",
   "permissions": [
     "storage",
@@ -82,7 +82,7 @@
       "world": "MAIN"
     }
   ],
-  "version_name": "1.0.69 · infobulles à côté du titre ; filet de sécurité des étiquettes de vente",
+  "version_name": "1.0.70 · infobulles à côté du titre ; filet de sécurité des étiquettes de vente",
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",
