@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WikiMasters Toolkit+",
-  "version": "1.0.72",
+  "version": "1.0.73",
   "description": "Prix du marché, ouverture de paquets en un clic, enchères automatiques et style de cartes pour WikiMasters.",
   "permissions": [
     "storage",
@@ -82,7 +82,7 @@
       "world": "MAIN"
     }
   ],
-  "version_name": "1.0.72 · journal détaillé du parcours d’une carte de l’assistant de vente (1 000 lignes)",
+  "version_name": "1.0.73 · assistant de vente : plus de double étiquetage, carte revenue vue tout de suite, exemplaires multiples",
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",
