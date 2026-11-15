@@ -618,6 +618,60 @@ test('marché : « Miser le minimum » pose le minimum de la page d\'enchère, s
   env.close();
 });
 
+test('échanges : la réponse allégée du jeu (/api/trades?active=1, sans titres) n’efface plus les cartes d’une offre ; « Annuler l’offre » encadré de rouge', async () => {
+  const env = createEnv({ fetchImpl: async () => json({ summary: { PC: { average: 26, count: 9, latest: 1 } } }) });
+  const { w, mem, WMX } = env;
+  mem.myUserId = 'u1';
+  w.history.pushState({}, '', '/trades');
+  w.document.body.innerHTML = `<main><div class="card-frame">À bob · En attente<span title="Gl">Gl</span><button>Annuler l'offre</button>
+    <button aria-label="Voir le détail de l'échange">+</button></div></main>`;
+  for (const f of WMX.features) if (f.name === 'trades') await f.init();
+  const send = (items) => w.dispatchEvent(new w.CustomEvent('wmx:api', { detail: { url: '/api/trades', method: 'GET', status: 200, data: { trades: [{
+    id: 't1', initiator_id: 'u1', recipient_id: 'u2', initiator_wikibidous: 15, recipient_wikibidous: 0, initiator: { username: 'moi' }, recipient: { username: 'bob' }, items }] } } }));
+  send([{ offered_by: 'u2', card_id: 'g1', snapshot_rarity: 'PC', card: { wikipedia_title: 'Gl' } }]);
+  const sum = () => w.document.querySelector('.wmx-tv-sum')?.textContent || '';
+  for (let i = 0; i < 60 && !/Vous recevez\s*26 W/.test(sum()); i++) await sleep(100);
+  assert.match(sum(), /Vous recevez\s*26 W/);
+  send([{ offered_by: 'u2', card_id: 'g1' }]); // réponse allégée : identifiants seulement
+  await sleep(500);
+  assert.match(sum(), /Vous recevez\s*26 W/, 'la carte reçue reste comptée');
+  assert.ok(w.document.querySelector('button.wmx-tc-cancel'), '« Annuler l’offre » repéré et encadré');
+  env.close();
+});
+
+test('échanges : fenêtre « Échanger avec » — moyenne sur chaque carte, cartes cochées suivies des deux côtés, bilan avant l’envoi', async () => {
+  const avg = { a1: 100, b1: 300 };
+  const env = createEnv({ fetchImpl: async (u) => {
+    const id = String(u).match(/cards\/([^/]+)\//)?.[1];
+    return json({ summary: { R: { average: avg[id] || 10, count: 9, latest: 1 } } });
+  } });
+  const { w, WMX } = env;
+  w.history.pushState({}, '', '/trades');
+  const card = (title, sel) => `<button class="relative border-2 ${sel ? 'border-[var(--color-accent)]' : 'border-transparent'}"><div class="relative"><div class="absolute top-2 left-2">R</div><h3>${title}</h3></div></button>`;
+  const modal = (tab, cards, mine, theirs) => `<div class="w-full max-w-5xl"><div>Échanger avec bob</div><div>Moi : ${mine} carte ⇆ bob : ${theirs} carte</div>
+    <button class="${tab === 'mine' ? 'border-b-2' : ''}">Mes cartes</button><button class="${tab === 'theirs' ? 'border-b-2' : ''}">Cartes de bob</button>
+    <div>${cards}</div><div><button>Annuler</button><button>Envoyer l'offre</button></div></div>`;
+  for (const f of WMX.features) if (f.name === 'trade-composer') await f.init();
+  w.dispatchEvent(new w.CustomEvent('wmx:api', { detail: { url: '/api/my-collection?owned_by=bob', method: 'GET', status: 200, data: { collection: [
+    { card_id: 'a1', snapshot_rarity: 'R', card: { wikipedia_title: 'Alpha' } }, { card_id: 'a2', snapshot_rarity: 'R', card: { wikipedia_title: 'Autre' } }] } } }));
+  w.dispatchEvent(new w.CustomEvent('wmx:api', { detail: { url: '/api/profile/bob/collection?page=0', method: 'GET', status: 200, data: { collection: [
+    { card_id: 'b1', snapshot_rarity: 'R', card: { wikipedia_title: 'Beta' } }] } } }));
+  w.document.body.innerHTML = modal('mine', card('Alpha', true) + card('Autre', false), 1, 0);
+  const bar = () => w.document.querySelector('.wmx-tc-bar')?.textContent || '';
+  for (let i = 0; i < 60 && !/Vous donnez\s*100 W/.test(bar()); i++) await sleep(100);
+  assert.match(bar(), /Vous donnez\s*100 W/, 'ma carte cochée est comptée');
+  assert.equal(w.document.querySelectorAll('.wmx-tc-price').length, 2, 'une moyenne sur chaque carte');
+  w.document.body.innerHTML = modal('theirs', card('Beta', true), 1, 1); // autre onglet : ma carte cochée n'est plus affichée mais reste comptée
+  for (let i = 0; i < 60 && !/Vous recevez\s*300 W/.test(bar()); i++) await sleep(100);
+  assert.match(bar(), /Vous donnez\s*100 W/);
+  assert.match(bar(), /Vous recevez\s*300 W/);
+  assert.match(bar(), /Avantageux : vous gagnez 200 W/);
+  w.document.body.innerHTML = modal('theirs', card('Beta', false), 0, 0); // tout décoché
+  for (let i = 0; i < 30 && !/Cochez des cartes/.test(bar()); i++) await sleep(100);
+  assert.match(bar(), /Cochez des cartes/, 'plus rien de coché : invitation à cocher');
+  env.close();
+});
+
 test('échanges : bilan visible tout de suite, vu de mon côté (je donne / je reçois, verdict), détail des cartes avec « nouvelle / déjà »', async () => {
   const env = createEnv({ fetchImpl: async (u) => {
     const id = String(u).match(/cards\/([^/]+)\//)?.[1];

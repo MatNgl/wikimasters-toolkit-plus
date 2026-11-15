@@ -193,11 +193,12 @@
      * redemandée plus d'une fois toutes les 10 minutes (si le jeu ne répond pas, on ne boucle pas).
      * opts.front : la carte est À L'ÉCRAN (liste du Marché, page d'une enchère) : elle passe devant toutes les autres demandes (bulle des enchères,
      * collection…), et une carte déjà en file remonte en tête quand on la regarde.
+     * opts.maxAge : âge au-delà duquel la moyenne est relue (24 h par défaut).
      */
     keepFresh(cardId, order = Infinity, opts = {}) {
       if (!cardId) return;
       const age = WMX.prices.age(cardId);
-      if (age != null && age < L.MARKET_TTL) return;
+      if (age != null && age < (opts.maxAge ?? L.MARKET_TTL)) return; // opts.maxAge : plus exigeant (cartes cochées d'une offre d'échange : 1 h)
       if (sched.pending.has(cardId)) { if (opts.front) schedule(cardId, true, true); return; }
       if (Date.now() - (fresh.asked.get(cardId) || 0) < 10 * 60000) return;
       const prev = fresh.want.get(cardId);

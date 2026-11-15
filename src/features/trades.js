@@ -156,6 +156,7 @@
 
   function scan() {
     if (!/^\/trades/.test(location.pathname)) return;
+    markCancel();
     const used = new Set();
     for (const elm of cardEls()) {
       const t = matchTrade(elm, used);
@@ -167,6 +168,89 @@
   }
   const schedule = () => { clearTimeout(timer); timer = setTimeout(scan, 250); };
 
+  // ---- Fenêtre « Échanger avec X » (composition d'une offre) ----------------------------------------------------------------------
+  // Sur chaque carte : sa moyenne du marché (même pastille que la collection), affichée même si elle date (icône de fraîcheur), puis relue :
+  // d'abord les cartes COCHÉES (relues si elles ont plus d'1 h, pour un bilan au plus juste), puis les cartes visibles (plus de 24 h).
+  // Au-dessus de « Envoyer l'offre » : le bilan de l'offre en cours (je donne / je reçois / verdict), avant de l'envoyer.
+  // Les cartes cochées sont suivies par onglet (« Mes cartes » / « Cartes de X ») : celles de l'onglet masqué restent comptées.
+  const comp = { key: '', mine: new Map(), theirs: new Map(), ids: new Map(), timer: null };
+  const COMP_SELECTED = 'border-[var(--color-accent)]'; // classe posée par le jeu sur une carte cochée (sinon : border-transparent)
+  const compKey = (title, rarity) => `${norm(title)}|${rarity}`;
+  function compLearn(rows) {
+    for (const r of rows || []) {
+      const c = r?.card || r;
+      const id = r?.card_id || c?.id;
+      const rarity = WMX.normRarity(r?.snapshot_rarity || r?.rarity || c?.rarity);
+      if (id && c?.wikipedia_title && rarity) comp.ids.set(compKey(c.wikipedia_title, rarity), id);
+    }
+  }
+  const compModal = () => [...document.querySelectorAll('[class*="max-w-5xl"]')].find((m) => /^\s*Échanger avec/i.test(m.firstElementChild?.textContent || ''));
+  function compCards(modal) {
+    return [...modal.querySelectorAll('button')].filter((b) => b.querySelector('h3') && b.querySelector('[class*="top-2"][class*="left-2"]')).map((b) => {
+      const title = (b.querySelector('h3').textContent || '').replace(/\s+/g, ' ').trim();
+      const rarity = WMX.normRarity((b.querySelector('[class*="top-2"][class*="left-2"]').textContent || '').trim()) || 'C';
+      const id = comp.ids.get(compKey(title, rarity)) || WMX.inventory?.find?.(title, rarity)?.card_id || null;
+      return { b, title, rarity, id, selected: b.classList.contains(COMP_SELECTED) };
+    });
+  }
+  function compChip(c) {
+    const host = c.b.firstElementChild || c.b;
+    let chip = host.querySelector(':scope > .wmx-tc-price');
+    if (!c.id) { chip?.remove(); return; }
+    if (!chip) { chip = el('span', { class: 'wmx-nt-price wmx-tc-price' }); host.append(chip); }
+    const v = cardValue({ id: c.id, rarity: c.rarity });
+    const text = v.avg ? `Moy. ${fmt(v.avg)} W` : v.priced ? 'Sans vente' : 'Moy. …';
+    const sig = `${text}|${v.fresh?.state || ''}`;
+    if (chip.dataset.sig === sig) return;
+    chip.dataset.sig = sig;
+    chip.replaceChildren(text, ...(WMX.prices.has(c.id) ? [' ', WMX.prices.icon(c.id)] : []));
+    chip.title = v.fresh?.line || '';
+  }
+  function compScan() {
+    const modal = compModal();
+    if (!modal) { comp.key = ''; comp.mine.clear(); comp.theirs.clear(); return; }
+    const head = modal.firstElementChild.textContent.replace(/\s+/g, ' ').trim();
+    const partner = (/^Échanger avec\s*(.+?)\s*×?$/i.exec(head)?.[1] || '').trim();
+    if (comp.key !== partner) { comp.key = partner; comp.mine.clear(); comp.theirs.clear(); } // autre ami : nouvelle offre
+    const tab = [...modal.querySelectorAll('button')].find((x) => /^(Mes cartes|Cartes de )/.test(x.textContent.trim()) && x.className.includes('border-b-2'));
+    const side = tab && /^Mes cartes/.test(tab.textContent.trim()) ? comp.mine : comp.theirs;
+    const cards = compCards(modal);
+    cards.forEach((c, k) => {
+      compChip(c);
+      if (!c.id) return;
+      if (c.selected) side.set(c.id, { id: c.id, title: c.title, rarity: c.rarity }); else side.delete(c.id);
+      WMX.prices.keepFresh(c.id, c.selected ? -1 : k, { front: true, ...(c.selected ? { maxAge: 60 * 60000 } : {}) });
+    });
+    // Compteurs du jeu (« Moi : N cartes ⇆ X : N cartes ») : un côté à 0 n'a plus rien de coché (offre vidée, onglet rechargé…).
+    const counts = /Moi\s*:\s*(\d+)\s*cartes?.*?:\s*(\d+)\s*cartes?/i.exec(modal.textContent.replace(/\s+/g, ' '));
+    if (counts && counts[1] === '0') comp.mine.clear();
+    if (counts && counts[2] === '0') comp.theirs.clear();
+    for (const i of [...comp.mine.values(), ...comp.theirs.values()]) WMX.prices.keepFresh(i.id, -1, { front: true, maxAge: 60 * 60000 }); // cochées hors de l'onglet affiché
+    compBar(modal, partner);
+  }
+  function compBar(modal, partner) {
+    const send = [...modal.querySelectorAll('button')].find((b) => /Envoyer l.offre/i.test(b.textContent));
+    const foot = send?.parentElement;
+    if (!foot) return;
+    let bar = modal.querySelector('.wmx-tc-bar');
+    if (!bar) { bar = el('div', { class: 'wmx-tc-bar' }); foot.before(bar); }
+    const items = [...[...comp.mine.values()].map((i) => ({ ...i, by: 'me' })), ...[...comp.theirs.values()].map((i) => ({ ...i, by: 'them' }))];
+    const loading = items.filter((i) => WMX.prices.loading(i.id)).length;
+    const sig = `${loading}|${items.map((i) => { const v = cardValue(i); return `${i.by}${i.id}${v.avg ?? ''}${v.fresh?.state || ''}`; }).join(',')}`;
+    if (bar.dataset.sig === sig && bar.firstChild) return;
+    bar.dataset.sig = sig;
+    if (!items.length) { bar.replaceChildren(el('p', { class: 'wmx-tc-empty' }, 'Cochez des cartes : le bilan de l’offre (valeur donnée / reçue, d’après les moyennes du marché) s’affiche ici avant l’envoi.')); return; }
+    const t = { id: 'compose', items, sides: [{ uid: 'me', name: 'Vous', w: 0 }, { uid: 'them', name: partner || 'votre ami', w: 0 }] };
+    bar.replaceChildren(summary(t, 0),
+      el('small', { class: 'wmx-tc-note' }, `${loading ? `↻ ${loading} moyenne${loading > 1 ? 's' : ''} en cours d’actualisation : le bilan s’affine tout seul · ` : ''}wikibidous ajoutés non comptés`));
+  }
+  const compSchedule = () => { clearTimeout(comp.timer); comp.timer = setTimeout(compScan, 200); };
+
+  /** Bouton « Annuler l'offre » (offres envoyées) : discret dans le jeu, encadré de rouge pour être trouvé du premier coup. */
+  function markCancel() {
+    for (const b of document.querySelectorAll('main button:not(.wmx-tc-cancel)')) if (/^Annuler l.offre$/i.test(b.textContent.trim())) b.classList.add('wmx-tc-cancel');
+  }
+
   WMX.register({
     name: 'trades',
     match: /^\/trades/,
@@ -174,7 +258,15 @@
       me = await WMX.store.get('myUserId', null);
       WMX.onApi(({ path, data }) => {
         if (path !== '/api/trades') return;
-        for (const raw of data?.trades || []) { const t = mapTrade(raw); if (t) trades.set(t.id, t); }
+        for (const raw of data?.trades || []) {
+          const t = mapTrade(raw);
+          if (!t) continue;
+          // « /api/trades?active=1 » (compteur du menu) ne donne que les identifiants des cartes, sans titre ni rareté : on garde alors les cartes
+          // déjà connues de cette offre (sinon le bilan tombait à « Rien · 0 W »).
+          const old = trades.get(t.id);
+          if ((raw.items || []).length > t.items.length && old) t.items = old.items;
+          trades.set(t.id, t);
+        }
         schedule();
       });
       new MutationObserver((muts) => { if (WMX.dom.foreign(muts)) schedule(); }).observe(document.body, { childList: true, subtree: true });
@@ -182,5 +274,14 @@
       schedule();
     },
   });
-  WMX.tradeValues = { mapTrade, scan };
+  WMX.register({
+    name: 'trade-composer',
+    match: /./, // la fenêtre « Échanger avec » s'ouvre aussi depuis la page Amis ou un profil
+    init() {
+      WMX.onApi(({ path, data }) => { if (/^\/api\/(my-collection|profile\/[^/]+\/collection)\/?$/.test(path)) { compLearn(data?.collection); compSchedule(); } });
+      new MutationObserver((muts) => { if (WMX.dom.foreign(muts)) compSchedule(); }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+      WMX.prices.onProgress(() => { if (compModal()) compSchedule(); });
+    },
+  });
+  WMX.tradeValues = { mapTrade, scan, compScan, composer: () => comp };
 })();
