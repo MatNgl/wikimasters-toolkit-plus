@@ -889,7 +889,7 @@
     S.bubblePanel.style.maxWidth = S.pos ? 'calc(100vw - 16px)' : `calc(100vw - ${x + 16}px)`;
   };
   function buildBubble() {
-    const svg = (html) => { const n = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); n.setAttribute('viewBox', '0 0 72 72'); n.setAttribute('class', 'wmx-dial-svg'); n.innerHTML = html; return n; };
+    const svg = (html) => { const n = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); n.setAttribute('viewBox', '0 0 72 72'); n.setAttribute('class', 'wmx-dial-svg'); WMX.dom.svg(n, html); return n; };
     const ring = svg(`<circle cx="36" cy="36" r="30" class="wmx-dial-bg"/><circle cx="36" cy="36" r="30" class="wmx-dial-ring" stroke-dasharray="${RING}" stroke-dashoffset="0"/>`);
     S.dialRing = ring.querySelector('.wmx-dial-ring');
     S.dialBids = el('b'); S.dialSales = el('small');

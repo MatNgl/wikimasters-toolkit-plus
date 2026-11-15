@@ -253,7 +253,7 @@
       if (s.sel || (i % every === 0 && (selI < 0 || Math.abs(i - selI) >= Math.max(2, Math.ceil(every / 2))))) html += `<text class="tx${s.sel ? ' on' : ''}" x="${cx.toFixed(1)}" y="${H - 10}">${axisLabel(s.start)}</text>`;
       html += `<rect class="hit" data-i="${i}" x="${x.toFixed(1)}" y="${T}" width="${slot.toFixed(1)}" height="${H - T - B + 20}"/>`;
     });
-    svg.innerHTML = html;
+    WMX.dom.svg(svg, html);
     svg.addEventListener('click', (e) => { const i = e.target?.getAttribute?.('data-i'); if (i != null) onPick(series[Number(i)].start); });
     // Infobulle : suit la souris au-dessus des barres.
     const tip = el('div', { class: 'wmx-lg-tip', hidden: '' });

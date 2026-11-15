@@ -1,6 +1,7 @@
 // Version publiable : copie l'extension dans dist/ (le dossier à charger dans chrome://extensions : manifest.json à sa racine), sans les
 // outils de développement (rechargement automatique, permission « alarms », version_name), et crée release/wikimasters-toolkit-plus-<version>.zip
-// pour le Chrome Web Store.
+// pour le Chrome Web Store, et release/wikimasters-toolkit-plus-<version>-firefox.zip pour addons.mozilla.org (même contenu, avec
+// l'identifiant Firefox de l'extension et la déclaration de collecte de données exigés par Mozilla).
 // Usage : node scripts/build.js [version]
 // UN SEUL numéro de version : celui de manifest.json. La version de développement et celle du store portent le même numéro (le ZIP construit
 // s'appelle comme la version chargée en développement). Chaque modification monte ce numéro d'un cran dans manifest.json (le rechargement
@@ -60,35 +61,44 @@ const missing = cited.filter((f) => !fs.existsSync(path.join(pkg, f)));
 if (missing.length) { console.error('Fichiers manquants :', missing); process.exit(1); }
 
 // --- ZIP minimal (méthode « deflate »), sans dépendance ---
+// Firefox : identifiant fixe (ne JAMAIS le changer : c'est lui qui relie les versions entre elles sur addons.mozilla.org), Firefox 140 au
+// minimum (scripts dans la page « world: MAIN » et déclaration de collecte de données), aucune donnée collectée.
+const FIREFOX = { gecko: { id: 'wikimasters-toolkit-plus@matngl', strict_min_version: '140.0', data_collection_permissions: { required: ['none'] } } };
 const entries = [...files, 'manifest.json', ...(fs.existsSync(path.join(pkg, 'LICENSE')) ? ['LICENSE'] : [])].sort();
-const chunks = [];
-const central = [];
-let offset = 0;
-const DOS_TIME = 0, DOS_DATE = ((2026 - 1980) << 9) | (1 << 5) | 1;
-for (const name of entries) {
-  const data = fs.readFileSync(path.join(pkg, name));
-  const comp = zlib.deflateRawSync(data, { level: 9 });
-  const nameBuf = Buffer.from(name, 'utf8');
-  const crc = zlib.crc32(data);
-  const local = Buffer.alloc(30);
-  local.writeUInt32LE(0x04034b50, 0); local.writeUInt16LE(20, 4); local.writeUInt16LE(0x0800, 6); local.writeUInt16LE(8, 8);
-  local.writeUInt16LE(DOS_TIME, 10); local.writeUInt16LE(DOS_DATE, 12); local.writeUInt32LE(crc, 14);
-  local.writeUInt32LE(comp.length, 18); local.writeUInt32LE(data.length, 22); local.writeUInt16LE(nameBuf.length, 26);
-  chunks.push(local, nameBuf, comp);
-  const c = Buffer.alloc(46);
-  c.writeUInt32LE(0x02014b50, 0); c.writeUInt16LE(20, 4); c.writeUInt16LE(20, 6); c.writeUInt16LE(0x0800, 8); c.writeUInt16LE(8, 10);
-  c.writeUInt16LE(DOS_TIME, 12); c.writeUInt16LE(DOS_DATE, 14); c.writeUInt32LE(crc, 16);
-  c.writeUInt32LE(comp.length, 20); c.writeUInt32LE(data.length, 24); c.writeUInt16LE(nameBuf.length, 28); c.writeUInt32LE(offset, 42);
-  central.push(c, nameBuf);
-  offset += local.length + nameBuf.length + comp.length;
+function writeZip(zip, manifest) {
+  const chunks = [];
+  const central = [];
+  let offset = 0;
+  const DOS_TIME = 0, DOS_DATE = ((2026 - 1980) << 9) | (1 << 5) | 1;
+  for (const name of entries) {
+    const data = name === 'manifest.json' ? Buffer.from(JSON.stringify(manifest, null, 2) + '\n', 'utf8') : fs.readFileSync(path.join(pkg, name));
+    const comp = zlib.deflateRawSync(data, { level: 9 });
+    const nameBuf = Buffer.from(name, 'utf8');
+    const crc = zlib.crc32(data);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0); local.writeUInt16LE(20, 4); local.writeUInt16LE(0x0800, 6); local.writeUInt16LE(8, 8);
+    local.writeUInt16LE(DOS_TIME, 10); local.writeUInt16LE(DOS_DATE, 12); local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(comp.length, 18); local.writeUInt32LE(data.length, 22); local.writeUInt16LE(nameBuf.length, 26);
+    chunks.push(local, nameBuf, comp);
+    const c = Buffer.alloc(46);
+    c.writeUInt32LE(0x02014b50, 0); c.writeUInt16LE(20, 4); c.writeUInt16LE(20, 6); c.writeUInt16LE(0x0800, 8); c.writeUInt16LE(8, 10);
+    c.writeUInt16LE(DOS_TIME, 12); c.writeUInt16LE(DOS_DATE, 14); c.writeUInt32LE(crc, 16);
+    c.writeUInt32LE(comp.length, 20); c.writeUInt32LE(data.length, 24); c.writeUInt16LE(nameBuf.length, 28); c.writeUInt32LE(offset, 42);
+    central.push(c, nameBuf);
+    offset += local.length + nameBuf.length + comp.length;
+  }
+  const cdSize = central.reduce((n, x) => n + x.length, 0);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(entries.length, 8); end.writeUInt16LE(entries.length, 10);
+  end.writeUInt32LE(cdSize, 12); end.writeUInt32LE(offset, 16);
+  fs.writeFileSync(zip, Buffer.concat([...chunks, ...central, end]));
+  console.log(`${entries.length} fichiers, ${(fs.statSync(zip).size / 1024).toFixed(0)} Ko -> ${path.relative(root, zip)}`);
 }
-const cdSize = central.reduce((n, b) => n + b.length, 0);
-const end = Buffer.alloc(22);
-end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(entries.length, 8); end.writeUInt16LE(entries.length, 10);
-end.writeUInt32LE(cdSize, 12); end.writeUInt32LE(offset, 16);
 const zip = path.join(out, `wikimasters-toolkit-plus-${version}.zip`);
-fs.writeFileSync(zip, Buffer.concat([...chunks, ...central, end]));
-console.log(`${entries.length} fichiers, ${(fs.statSync(zip).size / 1024).toFixed(0)} Ko -> ${path.relative(root, zip)}`);
-if (removed.filter((f) => !f.endsWith(`-${version}.zip`)).length) console.log(`Anciens ZIP supprimés : ${removed.filter((f) => !f.endsWith(`-${version}.zip`)).join(', ')}`);
-const left = fs.readdirSync(out).filter((f) => /^wikimasters-toolkit-plus-.*\.zip$/.test(f) && f !== path.basename(zip));
+const zipFx = path.join(out, `wikimasters-toolkit-plus-${version}-firefox.zip`);
+writeZip(zip, m);
+writeZip(zipFx, { ...m, browser_specific_settings: FIREFOX });
+const built = new Set([path.basename(zip), path.basename(zipFx)]);
+if (removed.filter((f) => !built.has(f)).length) console.log(`Anciens ZIP supprimés : ${removed.filter((f) => !built.has(f)).join(', ')}`);
+const left = fs.readdirSync(out).filter((f) => /^wikimasters-toolkit-plus-.*\.zip$/.test(f) && !built.has(f));
 if (left.length) { console.error(`Anciens ZIP encore présents : ${left.join(', ')}`); process.exit(1); }

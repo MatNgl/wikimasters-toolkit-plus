@@ -398,7 +398,7 @@
     const ringSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     ringSvg.setAttribute('viewBox', '0 0 72 72');
     ringSvg.setAttribute('class', 'wmx-fab-ring');
-    ringSvg.innerHTML = `<circle cx="36" cy="36" r="30" class="wmx-dial-bg"/><circle cx="36" cy="36" r="30" class="wmx-dial-ring" stroke-dasharray="${RING}" stroke-dashoffset="${RING}"/>`;
+    WMX.dom.svg(ringSvg, `<circle cx="36" cy="36" r="30" class="wmx-dial-bg"/><circle cx="36" cy="36" r="30" class="wmx-dial-ring" stroke-dasharray="${RING}" stroke-dashoffset="${RING}"/>`);
     ui.fabRing = ringSvg;
     ui.fabTxt = el('span', { class: 'wmx-fab-txt' }, el('b', {}, '–'), el('small', {}, 'paquets'));
     let dialEl = null; // le cadran, défini plus bas

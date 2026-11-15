@@ -10,6 +10,19 @@ setInterval(() => {
 // Pas de sélecteur « classe commençant par wmx- » : <html> en porte plusieurs et correspondrait à tout.
 const OWN = '.wmx-mk, .wmx-mk-acts, .wmx-nt-price, .wmx-nt-bolt, .wmx-notes, .wmx-bubble, .wmx-qchip, .wmx-panel, .wmx-cplus, .wmx-dk, .wmx-dw, .wmx-sty-shiny, .wmx-sty-waves, .wmx-sty-sheen, .wmx-modal-backdrop, .wmx-sheet-frame, .wmx-pre-back, .wmx-pdial, .wmx-cover, .wmx-toast, .wmx-dlg-back, .wmx-dc-run, .wmx-pp-bar, .wmx-tv-wrap, .wmx-tc-bar';
 WMX.dom = {
+  /**
+   * Dessin SVG fait par l'extension (graphiques, cadrans, icônes), sans innerHTML (signalé par la validation de Firefox) : le texte est lu
+   * comme du XML puis ses éléments sont copiés. Sur un <svg> : remplace son contenu ; sur un autre élément : y met le <svg> complet donné.
+   */
+  svg(node, markup) {
+    const NS = 'http://www.w3.org/2000/svg';
+    const inSvg = node.namespaceURI === NS;
+    const doc = new DOMParser().parseFromString(inSvg ? `<svg xmlns="${NS}">${markup}</svg>` : markup.replace(/^<svg(?![^>]*xmlns=)/, `<svg xmlns="${NS}"`), 'image/svg+xml');
+    const root = doc.documentElement;
+    if (root.nodeName !== 'svg' || root.getElementsByTagName('parsererror').length) return node;
+    node.replaceChildren(...(inSvg ? [...root.childNodes] : [root]).map((n) => document.importNode(n, true)));
+    return node;
+  },
   /** Vrai si au moins une des modifications observées vient de la page du jeu (et non d'un élément de l'extension). */
   foreign(muts) {
     for (const m of muts) {

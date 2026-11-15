@@ -69,7 +69,7 @@
   const bars = (buckets) => {
     const max = Math.max(1, ...buckets);
     const svg = el('div', { class: 'wmx-act-spark', title: 'Requêtes envoyées au jeu par tranche de 10 s, sur les 5 dernières minutes (la plus récente à droite)' });
-    svg.innerHTML = `<svg viewBox="0 0 300 40" width="100%" height="40" role="img" aria-label="Requêtes sur 5 minutes">${buckets.map((v, i) => `<rect x="${i * 10 + 1}" y="${(40 - (v / max) * 36).toFixed(1)}" width="8" height="${((v / max) * 36).toFixed(1)}" rx="1.5"/>`).join('')}</svg>`;
+    WMX.dom.svg(svg, `<svg viewBox="0 0 300 40" width="100%" height="40" role="img" aria-label="Requêtes sur 5 minutes">${buckets.map((v, i) => `<rect x="${i * 10 + 1}" y="${(40 - (v / max) * 36).toFixed(1)}" width="8" height="${((v / max) * 36).toFixed(1)}" rx="1.5"/>`).join('')}</svg>`);
     return svg;
   };
 

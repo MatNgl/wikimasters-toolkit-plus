@@ -98,7 +98,7 @@
     const svg = document.createElementNS(svgNS, 'svg');
     svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.setAttribute('class', 'wmx-vchart'); svg.setAttribute('role', 'img');
     svg.setAttribute('aria-label', 'Valeur de la collection dans le temps, en W');
-    svg.innerHTML = `<text class="unit" x="${Lm}" y="10">W</text>${g}<line class="axis" x1="${Lm}" x2="${Lm}" y1="${T}" y2="${H - B}"/><line class="axis" x1="${Lm}" x2="${W - Rm}" y1="${H - B}" y2="${H - B}"/>${area}${estLine}${recLine}${dots}<line class="cursor" x1="0" x2="0" y1="${T}" y2="${H - B}" visibility="hidden"/>${hits}`;
+    WMX.dom.svg(svg, `<text class="unit" x="${Lm}" y="10">W</text>${g}<line class="axis" x1="${Lm}" x2="${Lm}" y1="${T}" y2="${H - B}"/><line class="axis" x1="${Lm}" x2="${W - Rm}" y1="${H - B}" y2="${H - B}"/>${area}${estLine}${recLine}${dots}<line class="cursor" x1="0" x2="0" y1="${T}" y2="${H - B}" visibility="hidden"/>${hits}`);
     const tip = el('div', { class: 'wmx-lg-tip', hidden: '' });
     const wrap = el('div', { class: 'wmx-vwrap wmx-lg-chartwrap' }, svg, tip);
     const cursor = svg.querySelector('.cursor');
@@ -213,7 +213,7 @@
       acc += pct;
     }
     html += `<text class="tot" x="${c}" y="${c - 2}">${fmtAxis(total)} W</text><text class="sub" x="${c}" y="${c + 18}">valeur estimée</text>`;
-    svg.innerHTML = html;
+    WMX.dom.svg(svg, html);
     const legend = el('div', { class: 'wmx-rdonut-legend' }, ...parts.map((x) => el('div', { class: `wmx-rdonut-row${x.v ? '' : ' zero'}`, 'data-r': x.r, style: `--rgb:${WMX.RARITY_RGB[x.r]}` },
       el('i', {}), el('b', {}, x.r), el('span', {}, RNAME[x.r]),
       el('small', {}, total ? `${(x.v / total * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %` : '—'),
@@ -319,7 +319,7 @@
     a.classList.add('wmx-nav-item');
     a.dataset.wmxNav = 'dash';
     const svg = a.querySelector('svg');
-    if (svg) svg.innerHTML = ICON;
+    if (svg) WMX.dom.svg(svg, ICON);
     const iconWrap = a.querySelector('span');
     a.replaceChildren(...(iconWrap ? [iconWrap] : []), 'Tableau de bord', el('i', { class: 'wmx-nav-tag' }, 'ext'));
     const go = (e) => { e.preventDefault(); e.stopPropagation(); open(); };
@@ -347,7 +347,7 @@
     a.classList.add('wmx-nav-item');
     a.dataset.wmxNav = 'settings';
     const svg = a.querySelector('svg');
-    if (svg) svg.innerHTML = SET_ICON;
+    if (svg) WMX.dom.svg(svg, SET_ICON);
     const iconWrap = a.querySelector('span');
     a.replaceChildren(...(iconWrap ? [iconWrap] : []), 'WikiMasters+', el('i', { class: 'wmx-nav-tag' }, 'ext'));
     const go = (e) => { e.preventDefault(); e.stopPropagation(); WMX.openSettings(); };
