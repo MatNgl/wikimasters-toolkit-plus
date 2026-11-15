@@ -942,7 +942,7 @@ test('assistant de vente : une carte invendue retrouve l’étiquette de vente 3
   const R = WMX.autoSell.retag;
   for (const id of ['c1', 'c2', 'c3', 'c4', 'c5']) R.remember(id);
   assert.deepEqual(Object.keys(R.memory()).sort(), ['c1', 'c2', 'c4', 'c5'], 'seules les cartes portant l’étiquette de vente sont mémorisées');
-  assert.deepEqual(R.memory().c1.tags, ['VENTE'], 'uniquement l’étiquette de vente, pas les autres');
+  assert.deepEqual(Array.from(R.memory().c1.tags), ['VENTE'], 'uniquement l’étiquette de vente, pas les autres');
   for (const m of Object.values(R.memory())) m.at = now - 3600000; // mises en vente il y a 1 h
   const end = (ms) => new Date(Date.now() - ms).toISOString();
   const due = () => { for (const m of Object.values(R.memory())) m.nextAt = 0; }; // on avance le temps : tous les essais sont dus

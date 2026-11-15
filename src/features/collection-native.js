@@ -128,7 +128,7 @@
       schedule();
       // Détection d'une page du jeu qui aurait changé : des cartes sont là mais aucune n'a pu recevoir prix et ⚡.
       setTimeout(() => {
-        if (!isPage() || !WMX.alive()) return;
+        if (!isPage() || !WMX.alive() || window.top !== window) return; // cadre invisible de travail : pas de pastilles, ce n'est pas une panne
         const cards = document.querySelectorAll('main h3').length;
         if (cards > 3 && !document.querySelector('.wmx-nt-price')) {
           WMX.journal?.add('Page', `${cards} titres de cartes trouvés mais aucun prix ni ⚡ posé : le jeu a probablement changé sa page.`, 'error');

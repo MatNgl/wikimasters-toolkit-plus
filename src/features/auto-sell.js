@@ -14,7 +14,7 @@
   const H = WMX.logic.HOUR;
   const EVERY = 45000;
   const PAUSE = 3 * 60000; // pause après une mise en vente que le jeu n'a pas enregistrée
-  const S = { skip: {}, log: {}, fails: {}, follow: {}, leader: !navigator.locks?.request, busy: false, wanted: false, purged: new Set(), release: null, shared: null, painters: new Set() };
+  const S = { skip: {}, log: {}, fails: {}, follow: {}, retagDone: {}, leader: !navigator.locks?.request, busy: false, wanted: false, purged: new Set(), release: null, shared: null, painters: new Set() };
   const on = () => !!WMX.settings?.autoSell;
   const tags = () => String(WMX.settings?.autoSellTags || '').split(',').map((t) => t.trim()).filter(Boolean);
   const cap = () => Math.max(1, Number(WMX.settings?.autoSellCap) || 500);
@@ -145,6 +145,7 @@
     const now = Date.now();
     for (const [id, f] of Object.entries(S.follow)) {
       if (now - f.t > 6 * H) { delete S.follow[id]; continue; }
+      if (WMX.quick.stateOf(id) !== 'idle') { WMX.journal?.add('Assistant de vente', `« ${f.title} » de nouveau en vente (ou en file)`); delete S.follow[id]; continue; }
       const ex = plan.excluded.find((e) => e.card_id === id);
       const k = plan.eligible.findIndex((it) => it.card_id === id);
       let why;
@@ -230,10 +231,11 @@
   function rememberSaleTags(cardId, title = '') {
     const wanted = new Set(tags().map((t) => t.toLowerCase()));
     if (!wanted.size) return;
-    const it = WMX.inventory.items().find((x) => x.card_id === cardId);
-    const mine = (it?.tags || []).map((t) => t.name).filter((n) => wanted.has(String(n).toLowerCase()));
+    const rows = WMX.inventory.items().filter((x) => x.card_id === cardId);
+    const it = rows[0];
+    const mine = [...new Set(rows.flatMap((x) => x.tags || []).map((t) => t.name).filter((n) => wanted.has(String(n).toLowerCase())))];
     if (!mine.length) {
-      WMX.journal?.add('Assistant de vente', `« ${it?.title || title || cardId} » mise en vente SANS étiquette de vente connue (${it ? `étiquettes vues : ${(it.tags || []).map((t) => t.name).join(', ') || 'aucune'}` : 'carte absente de la copie de la collection'}) : si elle revient invendue, seul le rattrapage (toutes les 2 min) pourra lui remettre ${tags()[0]}`, 'warn');
+      WMX.journal?.add('Assistant de vente', `« ${it?.title || title || cardId} » mise en vente SANS étiquette de vente connue (${it ? `étiquettes vues : ${[...new Set(rows.flatMap((x) => x.tags || []).map((t) => t.name))].join(', ') || 'aucune'}` : 'carte absente de la copie de la collection'}) : si elle revient invendue, seul le rattrapage (toutes les 2 min) pourra lui remettre ${tags()[0]}`, 'warn');
       return;
     }
     retag.mem[cardId] = { tags: mine, title: it.title, rarity: it.rarity, at: Date.now(), done: 0, tries: 0, nextAt: 0 };
@@ -281,6 +283,7 @@
     for (const id of Object.keys(retag.mem)) {
       const m = retag.mem[id];
       if (retag.queued.has(id) || (m.nextAt || 0) > Date.now()) continue; // demande en cours, ou essai pas encore dû
+      if (Date.now() - (m.queuedAt || 0) < 90000) continue; // demandée par un autre onglet il y a moins de 90 s : on ne double pas
       const list = hist.filter((a) => a.card_id === id && new Date(a.end_at).getTime() > m.at - 60000);
       const sold = list.find((a) => a.status === 'settled_sold');
       if (sold) { // vendue : plus rien à remettre
@@ -299,7 +302,9 @@
       if (m.ended !== ended.end_at) { m.ended = ended.end_at; m.relistedSeen = false; WMX.journal?.add('Assistant de vente', `« ${m.title} » : enchère terminée SANS acheteur à ${hhmm(endT)} ; étiquette ${m.tags.join(', ')} remise 30 s après la fin (le jeu dit la carte ${ended.owned === true ? 'déjà revenue' : ended.owned === false ? 'pas encore revenue' : 'revenue ou non : inconnu'})`); }
       if (Date.now() - endT < RETAG_WAIT) { m.nextAt = endT + RETAG_WAIT; continue; } // finie il y a moins de 30 s : le jeu n'a peut-être pas rendu la carte
       if (ended.owned === false) { nextTry(id, m, 'la carte n’est pas encore revenue dans la collection'); continue; } // le jeu dit qu'elle n'est pas (encore) à nous
+      if (WMX.quick.stateOf(id) !== 'idle') { m.nextAt = Date.now() + 30000; continue; } // déjà en file (remise en vente…) : on repasse plus tard
       retag.queued.set(id, Date.now());
+      m.queuedAt = Date.now();
       for (const tag of m.tags) WMX.quick.bulk('tag', [{ card_id: id, title: m.title, rarity: m.rarity }], { tag, add: true });
       back.push(m.title);
     }
@@ -323,10 +328,14 @@
       seen.add(id);
       if (a.status !== 'settled_unsold' || a.owned !== true) continue; // vendue, en cours, ou pas (encore) revenue
       if (retag.mem[id] || retag.queued.has(id)) continue; // déjà suivie par le circuit normal
+      if ((S.retagDone[id] || 0) > new Date(a.end_at).getTime()) continue; // étiquette déjà remise après cette enchère
+      if (WMX.quick.stateOf(id) !== 'idle') continue; // en file (mise en vente, étiquette…) : on ne s'en mêle pas
       if (!(S.log[id] || []).some((t) => now - t < 24 * H)) continue; // pas mise en vente par l'assistant
       if (selling.some((b) => b.card_id === id && b.status === 'active') || WMX.quick.selling(id)) continue;
-      const it = WMX.inventory.items().find((x) => x.card_id === id);
-      if (it?.tags?.some((t) => wanted.has(String(t.name).toLowerCase()))) continue; // a déjà son étiquette
+      const rows = WMX.inventory.items().filter((x) => x.card_id === id);
+      const it = rows[0];
+      if (!it) continue; // pas (encore) dans la copie de la collection : étiquettes inconnues, on attend sa relecture
+      if (rows.some((x) => x.tags?.some((t) => wanted.has(String(t.name).toLowerCase())))) continue; // a déjà son étiquette
       const n = S.netTries[id] || { n: 0, t: now };
       if (n.n >= 3) continue;
       S.netTries[id] = { n: n.n + 1, t: n.t };
@@ -412,6 +421,7 @@
       S.log = await WMX.store.get('autoSellLog', {});
       retag.mem = await WMX.store.get('autoSellRetag', {});
       S.follow = await WMX.store.get('autoSellFollow', {});
+      S.retagDone = await WMX.store.get('autoSellRetagDone', {});
       S.shared = await WMX.store.get('autoSellStatus', null);
       WMX.store.get('wmxSettings', {}).then(async (s) => {
         // Ancienne valeur par défaut (3 enchères) : passée une fois à la nouvelle (5), comme demandé ; un autre choix de l'utilisateur est gardé.
@@ -426,6 +436,8 @@
         if (c.autoSellSkip) S.skip = c.autoSellSkip.newValue || {};
         if (c.autoSellRetag) retag.mem = c.autoSellRetag.newValue || {};
         if (c.autoSellFollow) S.follow = c.autoSellFollow.newValue || {};
+        // Étiquette remise dans un autre onglet : les cartes étiquetées sont relues à la prochaine passe (la carte revenue est vue tout de suite).
+        if (c.autoSellRetagDone) { S.retagDone = c.autoSellRetagDone.newValue || {}; S.taggedAt = 0; S.forceTagged = true; }
         if (c.gameBlockedUntil) { WMX.gameBlockedUntil = c.gameBlockedUntil.newValue || 0; paintAll(); }
         if (c.autoSellForce && S.leader && on()) { S.pauseUntil = 0; S.taggedAt = 0; S.forceTagged = true; (async () => { for (let i = 0; S.busy && i < 100; i++) await sleep(200); S.forceTagged = true; tick(); })(); } // « Lancer » d'un autre onglet : même relecture
       });
@@ -439,6 +451,10 @@
             if (m.done >= m.tags.length) {
               WMX.journal?.add('Assistant de vente', `« ${m.title} » invendue : étiquette ${m.tags.join(', ')} remise${m.tries ? ` (essai ${m.tries + 1})` : ''} ; l’assistant la remettra en vente à une prochaine passe (suivi au journal)`);
               S.follow[op.item.card_id] = { title: m.title, t: Date.now(), said: '' };
+              S.retagDone = Object.fromEntries(Object.entries(S.retagDone).filter(([, t]) => Date.now() - t < 24 * H));
+              S.retagDone[op.item.card_id] = Date.now();
+              WMX.store.set('autoSellRetagDone', S.retagDone);
+              S.taggedAt = 0; S.forceTagged = true;
               WMX.store.set('autoSellFollow', S.follow); // partagé : c'est l'onglet qui pilote l'assistant qui dira la suite
               delete retag.mem[op.item.card_id]; retag.queued.delete(op.item.card_id);
             }
