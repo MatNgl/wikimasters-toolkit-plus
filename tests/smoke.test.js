@@ -2117,3 +2117,80 @@ test('« Toutes les cartes » chargée directement (page déjà rendue, aucune r
 });
 
 test.done();
+
+test('paquets : « Tout ouvrir » ne reste plus figé sur une erreur du jeu (502 : nouvel essai) ; « Passer » arrête l’ouverture, garde les paquets restants et montre aussitôt les cartes tirées', async () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  const { w, WMX } = env;
+  Object.defineProperty(w.HTMLElement.prototype, 'innerText', { configurable: true, get() { return this.textContent; } });
+  w.history.pushState({}, '', '/pulls');
+  let stock = 15;
+  let calls = 0;
+  const page = w.document.createElement('main');
+  page.innerHTML = '<h1>Ouvrir un paquet</h1><button id="open">Ouvrir</button><div id="cnt"></div>';
+  w.document.body.append(page);
+  const paint = () => { w.document.getElementById('cnt').textContent = `${stock} / 20 paquets disponibles`; };
+  paint();
+  const api = (detail) => w.dispatchEvent(new w.CustomEvent('wmx:api', { detail: { url: '/api/packs/open', method: 'POST', ...detail } }));
+  w.document.getElementById('open').addEventListener('click', () => {
+    calls += 1;
+    const n = calls;
+    w.dispatchEvent(new w.CustomEvent('wmx:start', { detail: { url: '/api/packs/open' } }));
+    setTimeout(() => {
+      if (n === 3) return api({ status: 502, data: null }); // le serveur du jeu tombe une fois (page d'erreur, sans JSON)
+      stock -= 1; paint();
+      api({ status: 200, data: { cards: Array.from({ length: 5 }, (_, i) => ({ id: `p${n}-${i}`, wikipedia_title: `Carte ${n}-${i}`, rarity: 'commun' })) } });
+    }, 40);
+  });
+  await WMX.features.find((x) => x.name === 'boosters').init();
+  WMX.settings.speed = 'instant';
+  WMX.settings.images = false;
+  [...w.document.querySelectorAll('button')].find((b) => b.textContent === 'Tout ouvrir').click();
+  for (let i = 0; i < 100 && stock > 11; i++) await sleep(100);
+  assert.equal(stock, 11, '4 paquets ouverts malgré l’erreur 502 (nouvel essai)');
+  const overlay = w.document.querySelector('.wmx-overlay');
+  const skip = [...overlay.querySelectorAll('button')].find((b) => b.textContent === 'Passer');
+  skip.click();
+  for (let i = 0; i < 50 && !overlay.querySelector('.wmx-tile.flip'); i++) await sleep(100);
+  const opened = 15 - stock;
+  assert.ok(opened >= 4 && opened <= 5, `arrêt aussitôt (au plus le paquet déjà demandé) : ${opened}`);
+  await sleep(1500);
+  assert.equal(15 - stock, opened, 'plus aucun paquet ouvert après « Passer »');
+  assert.equal(overlay.querySelectorAll('.wmx-tile.flip').length, opened * 5, 'toutes les cartes tirées sont révélées d’un coup');
+  assert.match(overlay.querySelector('.wmx-remaining').textContent, new RegExp(`Ouverture arrêtée : ${15 - opened} paquets gardés pour plus tard`));
+  assert.ok(!overlay.querySelector('.wmx-actions button[disabled]'), '« Continuer » disponible');
+  env.close();
+});
+
+test('paquets : une ouverture restée sans réponse du jeu est signalée puis relancée (plus d’attente muette de 3 min)', async () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  const { w, WMX } = env;
+  Object.defineProperty(w.HTMLElement.prototype, 'innerText', { configurable: true, get() { return this.textContent; } });
+  w.history.pushState({}, '', '/pulls');
+  let stock = 3;
+  let calls = 0;
+  const page = w.document.createElement('main');
+  page.innerHTML = '<h1>Ouvrir un paquet</h1><button id="open">Ouvrir</button><div id="cnt"></div>';
+  w.document.body.append(page);
+  const paint = () => { w.document.getElementById('cnt').textContent = `${stock} / 20 paquets disponibles`; };
+  paint();
+  w.document.getElementById('open').addEventListener('click', () => {
+    calls += 1;
+    const n = calls;
+    w.dispatchEvent(new w.CustomEvent('wmx:start', { detail: { url: '/api/packs/open' } }));
+    if (n === 2) return; // cette demande ne reçoit jamais de réponse
+    setTimeout(() => {
+      stock -= 1; paint();
+      w.dispatchEvent(new w.CustomEvent('wmx:api', { detail: { url: '/api/packs/open', method: 'POST', status: 200, data: { cards: Array.from({ length: 5 }, (_, i) => ({ id: `q${n}-${i}`, wikipedia_title: `Q ${n}-${i}`, rarity: 'commun' })) } } }));
+    }, 40);
+  });
+  await WMX.features.find((x) => x.name === 'boosters').init();
+  WMX.settings.speed = 'instant';
+  WMX.settings.images = false;
+  WMX.packNoAnswerMs = 1500;
+  [...w.document.querySelectorAll('button')].find((b) => b.textContent === 'Tout ouvrir').click();
+  for (let i = 0; i < 100 && !w.document.querySelector('.wmx-tile.flip'); i++) await sleep(100);
+  assert.equal(stock, 0, 'les 3 paquets sont ouverts : la demande perdue a été relancée');
+  assert.equal(calls, 4);
+  assert.equal(w.document.querySelectorAll('.wmx-tile.flip').length, 15);
+  env.close();
+});

@@ -119,8 +119,9 @@
   }
 
   WMX.loadCardInfo = (c) => loadInfo(c); // image + description Wikipédia (cache partagé avec la collection)
-  WMX.revealSession = function revealSession() {
+  WMX.revealSession = function revealSession({ stoppable = false } = {}) {
     let skip = false;
+    let stopped = false; // « Passer » pendant l'ouverture (stoppable) : plus aucun paquet ouvert, les cartes déjà tirées sont montrées d'un coup
     const all = [];
     const title = el('h2', {}, 'Ouverture en cours…');
     const remaining = el('div', { class: 'wmx-remaining' });
@@ -131,7 +132,16 @@
     const grid = el('div', { class: 'wmx-grid' });
     // Cartes tirées mais pas encore vues : conservées si la page du jeu se recharge en cours de route.
     const cont = el('button', { class: 'wmx-btn', disabled: '', onclick: () => { WMX.store.set('pendingCards', []); unsub(); overlay.remove(); } }, 'Continuer');
-    const skipBtn = el('button', { class: 'wmx-btn wmx-btn--ghost', onclick: () => { skip = true; } }, 'Passer');
+    const skipBtn = el('button', { class: 'wmx-btn wmx-btn--ghost', onclick: () => {
+      skip = true;
+      if (!stoppable || finishing || stopped) return;
+      stopped = true;
+      skipBtn.textContent = 'Arrêt…';
+      skipBtn.disabled = true;
+      title.textContent = `${all.length} cartes tirées — arrêt de l’ouverture…`;
+    } }, 'Passer');
+    if (stoppable) skipBtn.title = 'Arrête l’ouverture (les paquets restants sont gardés) et montre tout de suite les cartes déjà tirées';
+    let finishing = false;
     const overlay = el('div', { class: 'wmx-overlay' }, title, remaining, lot, grid, el('div', { class: 'wmx-actions' }, skipBtn, cont));
     document.body.append(overlay);
 
@@ -183,13 +193,14 @@
     WMX.prepareCardSheets?.(); // précharge la fiche du jeu pendant que les cartes se tirent
 
     return {
+      get stopped() { return stopped; },
       addPack(cards) {
         all.push(...cards);
         WMX.store.set('pendingCards', all);
         WMX.prices.prefetch?.(cards); // sans effet si déjà demandés par l'ouverture du paquet
         for (let i = 0; i < cards.length; i++) grid.append(el('div', { class: 'wmx-tile wmx-neutral' },
           el('div', { class: 'wmx-inner' }, el('div', { class: 'wmx-back' }, 'W'))));
-        title.textContent = `${all.length} cartes tirées…`;
+        title.textContent = stopped ? `${all.length} cartes tirées — arrêt de l’ouverture…` : `${all.length} cartes tirées…`;
       },
       setRemaining(n, total) {
         // Numéro du paquet ouvert sur le total (1/9, 2/9…) : lisible d'un coup d'œil.
@@ -204,6 +215,9 @@
       yield(b) { overlay.classList.toggle('wmx-yield', b); },
       close() { unsub(); overlay.remove(); },
       async finish() {
+        finishing = true;
+        skipBtn.disabled = false;
+        skipBtn.textContent = 'Passer';
         if (!all.length) { unsub(); overlay.remove(); return; }
         const cfg = WMX.settings || {};
         const f = cfg.speed === 'fast' ? 0.4 : 1; // facteur de durée des animations
@@ -211,7 +225,7 @@
         const byRarity = cfg.order !== 'draw';
         const sorted = byRarity ? WMX.sortCards(all) : all;
         title.textContent = `${sorted.length} cartes — ${byRarity ? 'des plus communes aux plus rares' : 'dans l’ordre du tirage'}`;
-        remaining.textContent = '';
+        remaining.textContent = stopped ? remNote.replace(/^ · /, 'Ouverture ') : '';
         const tiles = sorted.map(realTile);
         grid.replaceChildren(...tiles);
         for (const t of tiles) {
@@ -229,7 +243,7 @@
         tiles.forEach((t) => t.classList.add('flip'));
         skipBtn.remove();
         cont.removeAttribute('disabled');
-        remaining.textContent = 'Cliquez sur une carte pour ouvrir sa fiche (étiquette, enchère…)';
+        remaining.textContent = (stopped && remNote ? `${remNote.replace(/^ · a/, 'Ouverture a')} · ` : '') + 'Cliquez sur une carte pour ouvrir sa fiche (étiquette, enchère…)';
         updateLot();
         finished = true;
         markCrowns();

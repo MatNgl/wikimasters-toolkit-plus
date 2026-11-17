@@ -17,7 +17,9 @@
   WMX.onApi(({ path, method, status, data }) => {
     if (method !== 'POST' || path !== '/api/packs/open') return;
     if (data?.cards) { lastCards = data.cards; WMX.prices.prefetch?.(data.cards); } // prix récupérés pendant la pause entre paquets
-    else if (status === 429 || data?.rate_limited) openError = { t: Date.now(), data };
+    // Toute autre réponse est un refus ou une panne : limite de débit (429), blocage « automatisation » (403 automation_limit), erreur du serveur (5xx),
+    // page d'erreur illisible ou réseau coupé (statut 0). Avant, seuls les 429 étaient vus : les autres laissaient l'ouverture attendre 3 min sans rien dire.
+    else openError = { t: Date.now(), status, data: data || {} };
   });
 
   // Pause entre deux paquets : 0,3 s (un humain enchaîne ses paquets au moins aussi vite ; la vérification humaine arrive de toute façon).
@@ -132,6 +134,11 @@
     if (leaf) leaf.textContent = String(Math.max(0, snap.packs - 1));
   }
 
+  /** Délai sans réponse du jeu à une ouverture partie (hors vérification humaine) avant de la considérer perdue et de réessayer. */
+  const noAnswerMs = () => WMX.packNoAnswerMs || 20000; // réglable pour les tests
+  /** Ouverture en cours arrêtée par l'utilisateur (« Passer » de l'écran de révélation). */
+  const stopped = (session) => !!session?.stopped;
+
   async function openOne(session) {
     const btn = [...document.querySelectorAll('button')]
       .find((b) => !b.disabled && !b.closest('.wmx-cover, .wmx-panel') && b.textContent.trim().toLowerCase() === 'ouvrir');
@@ -142,15 +149,26 @@
     btn.click();
     let clickedAt = Date.now();
     openError = null;
+    const sent = () => (WMX.apiStarts || []).some((a) => a.t >= clickedAt && /packs\/open/.test(a.path)); // la demande d'ouverture est partie
     const end = Date.now() + 180000; // laisse le temps à la vérification humaine, faite par l'utilisateur
+    let stopAt = 0;
     while (!lastCards && Date.now() < end) {
+      // « Passer » : on n'ouvre plus rien. Une ouverture déjà partie a encore quelques secondes pour répondre (ses cartes ne sont pas perdues).
+      if (stopped(session)) {
+        stopAt ||= Date.now();
+        if (!sent() || openError || Date.now() - stopAt > 8000) break;
+        await sleep(100);
+        continue;
+      }
       // Le jeu refuse l'ouverture (limite de débit) : on attend le délai indiqué puis on réessaie, ou on s'arrête.
+      // Réponse qui demande la vérification humaine du jeu : ce n'est pas une panne, on attend que l'utilisateur la fasse (jamais de nouveau clic).
+      if (openError && (humanCheck() || /human|v[ée]rif|captcha|challenge|turnstile/i.test(JSON.stringify(openError.data || {})))) openError = null;
       if (openError && openError.t >= clickedAt) {
-        const d = openError.data || {};
+        const d = { ...(openError.data || {}), _status: openError.status };
         openError = null;
         // Réponse exacte du serveur gardée dans le journal (la première de chaque ouverture) : c'est elle qui dit s'il s'agit d'un refus « trop rapide »
         // ou d'une vraie limite du jour (le code de la page du jeu, lui, ne connaît aucune limite quotidienne des paquets).
-        if (!blocks || d.rate_limit_daily) WMX.journal?.add('Paquets', `le jeu refuse l’ouverture : ${JSON.stringify(d).slice(0, 300)}`, 'warn');
+        if (!blocks || d.rate_limit_daily) WMX.journal?.add('Paquets', `le jeu refuse l’ouverture (${errLabel(d)}) : ${JSON.stringify(d).slice(0, 300)}`, 'warn');
         if (d.rate_limit_daily) {
           dailyLimit = true;
           const msg = String(d.error || d.message || '').trim();
@@ -163,13 +181,17 @@
           WMX.journal?.add('Paquets', `ouverture trop rapide selon le jeu : pause entre paquets portée à ${String(cooldownS).replace('.', ',')} s`);
         }
         if (blocks > 15) { setStatus('Le jeu refuse l’ouverture : arrêt'); break; }
-        // Attente = pause de base + 1 s par refus consécutif (4, 5, 6… s), au moins ce que demande le jeu.
-        const waitS = Math.min(120, Math.max(cooldownS + blocks, retryHint(d.retry_after) ?? 0));
-        for (let s = Math.ceil(waitS); s > 0 && !lastCards; s--) {
-          setStatus(`Ouverture trop rapide : nouvel essai dans ${s} s`);
-          session?.setNote(`attente ${s} s`);
+        // Attente = pause de base + 1 s par refus consécutif (4, 5, 6… s), au moins ce que demande le jeu. Blocage « automatisation » : 30 s.
+        const auto = d.code === 'automation_limit' || /automatis/i.test(String(d.error || d.message || ''));
+        const rate = status429(d);
+        const waitS = auto ? 30 : Math.min(120, Math.max(cooldownS + blocks, retryHint(d.retry_after) ?? 0));
+        const why = auto ? 'Le jeu bloque les actions automatisées' : rate ? 'Ouverture trop rapide' : `Le jeu ne répond pas (${errLabel(d)})`;
+        for (let s = Math.ceil(waitS); s > 0 && !lastCards && !stopped(session); s--) {
+          setStatus(`${why} : nouvel essai dans ${s} s`);
+          session?.setNote(`${auto ? 'blocage du jeu' : rate ? 'attente' : 'erreur du jeu'}, nouvel essai dans ${s} s`);
           await sleep(1000);
         }
+        if (stopped(session)) break;
         session?.setNote('');
         const retry = [...document.querySelectorAll('button')]
           .find((b) => !b.disabled && !b.closest('.wmx-cover, .wmx-panel') && b.textContent.trim().toLowerCase() === 'ouvrir');
@@ -188,6 +210,19 @@
         if (again) again.click();
         clickedAt = Date.now();
       }
+      // Demande partie mais restée sans réponse (serveur qui ne répond plus) : on le dit, puis on réessaie au lieu d'attendre 3 min en silence.
+      if (!hc && sent()) {
+        const waited = Date.now() - clickedAt;
+        if (waited > 5000) session?.setNote(`le jeu ne répond pas depuis ${Math.round(waited / 1000)} s`);
+        if (waited > noAnswerMs()) {
+          WMX.journal?.add('Paquets', `aucune réponse du jeu ${Math.round(waited / 1000)} s après l’ouverture : nouvel essai`, 'warn');
+          session?.setNote('');
+          const again = [...document.querySelectorAll('button')]
+            .find((b) => !b.disabled && !b.closest('.wmx-cover, .wmx-panel') && b.textContent.trim().toLowerCase() === 'ouvrir');
+          if (again) again.click();
+          clickedAt = Date.now();
+        }
+      }
       await sleep(100);
     }
     session?.yield(false);
@@ -201,10 +236,15 @@
     return cards;
   }
 
+  /** Réponse de limite de débit (« trop rapide ») ? */
+  function status429(d) { return d._status === 429 || !!d.rate_limited; }
+  /** Libellé court d'une réponse d'erreur du jeu, pour le journal et l'écran : « 429 », « 403 automation_limit », « 502 », « réseau ». */
+  function errLabel(d) { return d._status ? `${d._status}${d.code ? ` ${d.code}` : ''}` : 'réseau'; }
+
   /** Pause obligatoire entre deux paquets, visible dans le panneau et sur l'écran de révélation. */
   async function cooldown(session) {
     const end = Date.now() + cooldownS * 1000;
-    for (let left = end - Date.now(); left > 0 && (state.busy || state.auto); left = end - Date.now()) {
+    for (let left = end - Date.now(); left > 0 && (state.busy || state.auto) && !stopped(session); left = end - Date.now()) {
       const s = String(Math.round(left / 100) / 10).replace('.', ','); // « 1,5 s », « 0,5 s »
       session?.setNote(`pause ${s} s`);
       setStatus(`Pause de ${s} s avant le paquet suivant`);
@@ -221,17 +261,25 @@
     if (!total) { setStatus('Aucun paquet disponible'); return; }
     state.busy = true;
     cooldownS = BASE_COOLDOWN_S; // chaque « Tout ouvrir » repart de la pause courte
-    const session = WMX.revealSession();
+    const session = WMX.revealSession({ stoppable: true });
     session.setRemaining(total, total);
+    let opened = 0;
     try {
-      for (let done = 0; done < total && state.busy; done++) {
+      for (let done = 0; done < total && state.busy && !session.stopped; done++) {
         const cards = await openOne(session);
         if (!cards) break;
+        opened += 1;
         session.addPack(cards);
         session.setRemaining(total - done - 1, total);
         if (done < total - 1) await cooldown(session);
       }
     } finally { state.busy = false; setStatus(''); }
+    // « Passer » pendant l'ouverture : les paquets restants ne sont pas ouverts, ils restent dans le stock du jeu.
+    if (session.stopped && opened < total) {
+      const left = total - opened;
+      WMX.journal?.add('Paquets', `ouverture arrêtée par « Passer » : ${opened} paquet${opened > 1 ? 's' : ''} ouvert${opened > 1 ? 's' : ''}, ${left} gardé${left > 1 ? 's' : ''} pour plus tard`);
+      session.setNote(`arrêtée : ${left} paquet${left > 1 ? 's' : ''} gardé${left > 1 ? 's' : ''} pour plus tard`);
+    }
     await session.finish();
   }
 

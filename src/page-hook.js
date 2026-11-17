@@ -26,7 +26,12 @@
       // Début d'appel : permet à l'extension de savoir si un clic a bien déclenché une requête.
       if (url && url.includes('/api/')) window.dispatchEvent(new CustomEvent('wmx:start', { detail: { url } }));
     } catch (_) {}
-    const res = await origFetch.apply(this, args);
+    let res;
+    try { res = await origFetch.apply(this, args); } catch (err) {
+      // Requête échouée (réseau coupé, serveur injoignable) : signalée avec le statut 0, puis l'erreur suit son cours normal.
+      try { if (url && url.includes('/api/')) window.dispatchEvent(new CustomEvent('wmx:api', { detail: { url, method: (args[1]?.method || args[0]?.method || 'GET').toUpperCase(), status: 0, data: null, req: null } })); } catch (_) {}
+      throw err;
+    }
     try {
       if (url && url.includes('/api/')) {
         const method = (args[1]?.method || args[0]?.method || 'GET').toUpperCase();
@@ -38,7 +43,9 @@
           const detail = { url, method, status: res.status, data, req };
           if (method === 'GET' && res.ok) { recent.push({ t: Date.now(), detail }); if (recent.length > 15) recent.shift(); }
           window.dispatchEvent(new CustomEvent('wmx:api', { detail }));
-        }).catch(() => {});
+        }).catch(() => { // réponse non JSON (page d'erreur du serveur) : signalée sans données
+          if (!res.ok) window.dispatchEvent(new CustomEvent('wmx:api', { detail: { url, method, status: res.status, data: null, req } }));
+        });
       }
     } catch (_) {}
     return res;
