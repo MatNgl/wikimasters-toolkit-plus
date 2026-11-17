@@ -39,6 +39,16 @@
       image: card.hide_image || card.nsfw_image ? '' : (card.image_url || ''),
     };
   }
+  /**
+   * Opération toute récente (moins de 6 h) : on garde la moyenne que l'extension connaissait à ce moment-là (cache des prix, relevée à 48 h
+   * près), c'est-à-dire celle que vous voyiez en achetant. Elle passe avant toute moyenne recalculée.
+   */
+  function noteSeen(e) {
+    if (!e || Date.now() - e.t > 6 * 3600000) return e;
+    const p = WMX.prices?.get?.(e.card_id, e.rarity);
+    if (p?.avg > 0 && Math.abs((p.t || 0) - e.t) < 48 * 3600000) e.avgSeen = { v: p.avg, t: p.t };
+    return e;
+  }
   const mostCommon = (list) => { const m = new Map(); for (const x of list) if (x) m.set(x, (m.get(x) || 0) + 1); return [...m].sort((a, b) => b[1] - a[1])[0]?.[0] || null; };
 
   /**
@@ -55,12 +65,12 @@
     for (const a of hist) {
       if (!a?.id || a.status !== 'settled_sold' || reg.sells[a.id] || (me && a.seller_id && a.seller_id !== me)) continue;
       const e = entry(a);
-      if (e.price > 0 && e.t) { reg.sells[a.id] = e; added += 1; }
+      if (e.price > 0 && e.t) { reg.sells[a.id] = noteSeen(e); added += 1; }
     }
     for (const a of won) {
       if (!a?.id || reg.buys[a.id] || (me && a.winner_id && a.winner_id !== me) || (a.status && a.status !== 'settled_sold')) continue;
       const e = entry(a);
-      if (e.price > 0 && e.t) { reg.buys[a.id] = e; added += 1; }
+      if (e.price > 0 && e.t) { reg.buys[a.id] = noteSeen(e); added += 1; }
     }
     if (!reg.since) { reg.since = Date.now(); added += 0; save(); }
     if (added) { save(); emit(); }
@@ -143,7 +153,7 @@
             const store = kind === 'buy' ? reg.buys : reg.sells;
             if (!a?.id || store[a.id] || (kind === 'buy' ? a.winner_id !== me : a.seller_id !== me)) continue;
             const e = entry(a);
-            if (e.price > 0 && e.t) { store[a.id] = e; added += 1; }
+            if (e.price > 0 && e.t) { store[a.id] = noteSeen(e); added += 1; }
           }
           if (rows.length < 1000) break;
           await new Promise((res) => setTimeout(res, 300));
@@ -162,7 +172,8 @@
   // conclues de la carte dans les 30 jours qui la précèdent (base du jeu, lecture seule, 20 cartes par requête), et on garde leur moyenne
   // (logic.avgBefore) dans la ligne : `avgAt` = { v, n, w } ou null (aucune vente), calculée une seule fois. Si la base ne montre pas les
   // ventes des autres joueurs, on passe par l'historique des ventes du jeu (/api/marketplace/cards/{id}/sales), carte par carte.
-  const AVG = { busy: null, done: 0, todo: 0, mode: 'db', failed: null };
+  const AVG = { busy: null, done: 0, todo: 0, mode: 'db', failed: null, tried: new Set(), lastRun: 0, apiFails: 0 };
+  const avgWhy = (why) => { if (AVG.failed !== why) { AVG.failed = why; WMX.journal?.add('Plus-values', `moyennes du jour de l’achat : ${why}`, 'warn'); } };
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const saleRow = (a) => ({ id: a.id, price: Number(a.final_price ?? a.price ?? 0) || 0, t: Date.parse(a.settled_at || a.sold_at || a.created_at) || 0,
     rarity: WMX.normRarity?.(a.snapshot_rarity || a.rarity) || a.snapshot_rarity || a.rarity || '', shiny: !!a.is_shiny });
@@ -172,7 +183,7 @@
       let r;
       try { r = await fetch(new URL(`/api/marketplace/cards/${cardId}/sales`, location.origin)); } catch (_) { return null; }
       if (r.status === 403 || r.status === 429) { await sleep(30000); continue; } // le jeu freine : pause, puis on reprend
-      if (!r.ok) return null;
+      if (!r.ok) { AVG.apiStatus = r.status; return null; }
       const j = await r.json().catch(() => null);
       const arr = Array.isArray(j) ? j : j && (j.sales || j.items || j.history || Object.values(j).find((v) => Array.isArray(v) && v.some((x) => x && 'final_price' in x)));
       return Array.isArray(arr) ? arr.filter((a) => a && (a.status == null || a.status === 'settled_sold')).map(saleRow) : null;
@@ -182,8 +193,11 @@
   async function fillAverages(onProgress) {
     await load();
     if (AVG.busy) return AVG.busy;
-    const entries = [...Object.values(reg.buys), ...Object.values(reg.sells)].filter((e) => e.avgAt === undefined && e.card_id && e.t);
+    // Une carte déjà essayée sur cette page n'est pas relue (sinon, en cas d'échec, chaque affichage relançait toute la lecture).
+    const entries = [...Object.values(reg.buys), ...Object.values(reg.sells)].filter((e) => e.avgAt === undefined && !e.avgSeen && e.card_id && e.t && !AVG.tried.has(e.card_id));
     if (!entries.length) return { ok: true, added: 0 };
+    AVG.lastRun = Date.now();
+    entries.forEach((e) => AVG.tried.add(e.card_id));
     AVG.busy = (async () => {
       const byCard = new Map();
       for (const e of entries) { if (!byCard.has(e.card_id)) byCard.set(e.card_id, []); byCard.get(e.card_id).push(e); }
@@ -205,7 +219,7 @@
         if (AVG.mode === 'db') {
           const cfg = await sbConfig();
           const s = sbSession();
-          if (!cfg || !s) { AVG.mode = 'api'; continue; }
+          if (!cfg || !s) { avgWhy(!cfg ? 'adresse de la base du jeu introuvable, lecture par l’historique des ventes du jeu' : 'session introuvable, lecture par l’historique des ventes du jeu'); AVG.mode = 'api'; continue; }
           const cond = chunk.map((id) => { const ts = byCard.get(id).map((e) => e.t); return `and(card_id.eq.${id},settled_at.gte.${iso(Math.min(...ts) - 30 * DAY)},settled_at.lte.${iso(Math.max(...ts))})`; }).join(',');
           const rows = [];
           let bad = null;
@@ -222,13 +236,15 @@
             await sleep(300);
           }
           // Base injoignable, ou qui ne montre que MES enchères (ventes des autres joueurs non lisibles) : historique des ventes du jeu, carte par carte.
-          if (bad || (chunk.length >= 5 && rows.length && rows.every((a) => own.has(a.id)))) { AVG.mode = 'api'; if (bad) AVG.failed = bad; continue; }
+          if (bad || (chunk.length >= 5 && rows.length && rows.every((a) => own.has(a.id)))) { avgWhy(bad ? `base du jeu illisible (${bad}), lecture par l’historique des ventes du jeu` : 'la base du jeu ne montre pas les ventes des autres joueurs, lecture par l’historique des ventes du jeu'); AVG.mode = 'api'; continue; }
           for (const a of rows) { if (!sales.has(a.card_id)) sales.set(a.card_id, []); sales.get(a.card_id).push(saleRow(a)); }
           apply(chunk, sales);
           await sleep(400);
         } else {
           const list = await gameSales(chunk[0]);
-          if (list) { sales.set(chunk[0], list); apply(chunk, sales); } else { AVG.done += 1; onProgress?.(); } // illisible : réessayée à la prochaine ouverture
+          if (list) { AVG.apiFails = 0; sales.set(chunk[0], list); apply(chunk, sales); } else { AVG.done += 1; AVG.apiFails += 1; onProgress?.(); } // illisible : réessayée à la prochaine ouverture du tableau de bord
+          // L'historique des ventes du jeu ne répond pas (réservé au compte Pro, ou point d'accès changé) : on arrête, la moyenne actuelle sera montrée.
+          if (AVG.apiFails >= 5) { avgWhy(`historique des ventes du jeu illisible (${AVG.apiStatus ? `réponse ${AVG.apiStatus}` : 'réponse sans ventes'}) : moyenne actuelle affichée à la place`); break; }
           await sleep(700);
         }
         i += chunk.length;
@@ -355,6 +371,46 @@
     return wrap;
   }
 
+  /**
+   * Tableau des opérations : un clic sur une carte déplie, sous sa ligne, les enchères concernées (achat, vente) : date, prix et identifiant de
+   * l'enchère, avec « Copier » et « Ouvrir l'enchère » (page de l'enchère dans le jeu, nouvel onglet). Un second clic replie.
+   */
+  function attachDetails(table, items, auctionsOf) {
+    const rows = [...table.querySelectorAll('tbody > tr')];
+    rows.forEach((tr, i) => {
+      const it = items[i];
+      const card = tr.querySelector('.wmx-lg-card');
+      if (!it || !card) return;
+      card.classList.add('wmx-lg-card--click');
+      card.setAttribute('role', 'button');
+      card.setAttribute('tabindex', '0');
+      card.title = 'Voir l’enchère d’achat ou de vente (identifiant, lien)';
+      const toggle = () => {
+        const open = tr.nextElementSibling?.classList.contains('wmx-lg-detail');
+        if (open) { tr.nextElementSibling.remove(); tr.classList.remove('wmx-lg-open'); openRows.delete(it.id); return; }
+        tr.classList.add('wmx-lg-open');
+        openRows.add(it.id);
+        const td = el('td', { colspan: String(tr.children.length) }, ...auctionsOf(it).map((a) => {
+          const copy = el('button', { type: 'button', class: 'wmx-btn wmx-btn--ghost wmx-lg-copy' }, 'Copier');
+          copy.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            try { await navigator.clipboard.writeText(a.id); copy.textContent = 'Copié'; } catch (_) { copy.textContent = 'Copie impossible'; }
+            setTimeout(() => { copy.textContent = 'Copier'; }, 1500);
+          });
+          return el('div', { class: 'wmx-lg-auction' },
+            el('span', { class: `wmx-lg-op ${a.label === 'Achat' ? 'buy' : 'sell'}` }, a.label),
+            el('span', { class: 'when' }, `${dayShort(a.t)}, ${hm(a.t)}`), el('b', {}, `${fmt(a.price)} W`),
+            el('span', { class: 'wmx-lg-aid' }, 'Enchère ', el('code', { title: a.id }, a.id)), copy,
+            el('a', { class: 'wmx-btn wmx-btn--ghost', href: `/marketplace/${a.id}`, target: '_blank', rel: 'noopener' }, 'Ouvrir l’enchère ↗'));
+        }));
+        tr.after(el('tr', { class: 'wmx-lg-detail' }, td));
+      };
+      if (openRows.has(it.id)) toggle(); // déjà dépliée avant ce nouvel affichage
+      card.addEventListener('click', toggle);
+      card.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+    });
+  }
+
   const rarityBadge = (r) => el('span', { class: 'wmx-lg-rar', style: `--rgb:${WMX.RARITY_RGB?.[r] || '160 175 168'}` }, r || '?');
   function cardCell(e) {
     const thumb = e.image ? el('img', { src: e.image, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' }) : el('span', { class: 'wmx-lg-noimg' }, 'W');
@@ -379,6 +435,10 @@
   };
   const kpi = (label, value, sub, cls = '') => el('div', { class: 'wmx-metric wmx-lg-kpi', title: KPI_HELP[label] || '' }, el('small', {}, label), el('b', { class: cls }, value), sub ? el('small', {}, sub) : '');
 
+  let curBox = null;   // onglet affiché (redessiné quand des moyennes arrivent)
+  let priceSub = null; // abonnement unique aux moyennes chargées
+  const missing = new Set(); // cartes affichées sans moyenne dans le cache
+  const openRows = new Set(); // lignes dépliées (enchères), gardées d'un affichage à l'autre
   /** Onglet « Plus-values » dans `box` (redessiné à chaque choix). */
   async function render(box) {
     await load();
@@ -387,7 +447,14 @@
     if (!SB.busy && (!reg.full || Date.now() - reg.full.t > 3600000) && !(SB.last && !SB.last.ok && Date.now() - (SB.lastAt || 0) < 60000)) {
       importAll().then((r) => { SB.last = r; SB.lastAt = Date.now(); if (!r.ok && box.isConnected) redraw(); });
     }
-    if (!AVG.busy) {
+    await WMX.prices?.load?.();
+    curBox = box;
+    if (!priceSub && WMX.prices?.onProgress) {
+      let t = 0;
+      // Redessin seulement quand une moyenne qui MANQUAIT à l'écran est arrivée (pas à chaque prix chargé ailleurs dans l'extension).
+      priceSub = WMX.prices.onProgress(() => { if (curBox?.isConnected && Date.now() - t > 3000 && [...missing].some((id) => WMX.prices.has(id))) { t = Date.now(); setTimeout(() => curBox?.isConnected && render(curBox), 300); } });
+    }
+    if (!AVG.busy && Date.now() - AVG.lastRun > 10 * 60000) {
       let lastPaint = Date.now();
       fillAverages(() => { if (box.isConnected && Date.now() - lastPaint > 4000) { lastPaint = Date.now(); redraw(); } })
         .then((r) => { if (r?.added && box.isConnected) redraw(); });
@@ -434,6 +501,7 @@
         : 'Lecture de l’historique complet en cours…');
 
     if (AVG.busy && AVG.todo) note.append(` Moyennes au jour de chaque opération : ${fmt(AVG.done)} / ${fmt(AVG.todo)} cartes lues…`);
+    else if (AVG.failed && /actuelle affichée/.test(AVG.failed)) note.append(` Moyennes du jour de l’achat indisponibles : la moyenne actuelle est affichée (≈) quand elle est connue.`);
 
     const nav = el('div', { class: 'wmx-lg-nav' },
       el('button', { type: 'button', class: 'wmx-lg-arrow', title: `${unitWord} précédent${V.unit === 'week' ? 'e' : ''}`, 'aria-label': 'Période précédente', onclick: () => { V.cursor = L.periodShift(V.cursor, V.unit, -1); redraw(); } }, '←'),
@@ -473,19 +541,39 @@
         seg([['recent', 'Récentes'], ['gain', 'Plus-value']], V.sort, (v) => { V.sort = v; redraw(); })));
     const opKind = { buy: 'Achat', sell: 'Vente', resale: 'Revente' };
     // Moyenne au jour de l'achat (pour une vente de carte non achetée : au jour de la vente).
-    const avgOf = (e) => (e ? (reg.buys[e.id] || reg.sells[e.id] || e).avgAt : undefined);
+    const regOf = (e) => (e ? reg.buys[e.id] || reg.sells[e.id] || e : null);
+    /**
+     * Moyenne à montrer pour l'opération e (achat, ou vente d'une carte non achetée) : celle que l'extension affichait au moment de l'opération,
+     * sinon celle recalculée d'après les ventes de ce jour-là, sinon la moyenne actuelle du cache (« ≈ … actuelle »). { pending } : en cours de lecture.
+     */
+    const avgFor = (e, at) => {
+      const r = regOf(e);
+      if (!r) return null;
+      if (r.avgSeen?.v) return { v: r.avgSeen.v, kind: 'seen', title: `Moyenne affichée par l’extension au moment de ${at}` };
+      if (r.avgAt?.v) return { v: r.avgAt.v, kind: 'day', title: `Moyenne de ${r.avgAt.n} vente${r.avgAt.n > 1 ? 's' : ''} de la carte (même rareté) ${r.avgAt.w === 7 ? 'dans les 7 jours' : 'les plus récentes, sur 30 jours au plus,'} avant ${at}` };
+      const p = WMX.prices?.get?.(r.card_id, r.rarity);
+      const waiting = r.avgAt === undefined && !!AVG.busy;
+      if (p?.avg > 0) return { v: p.avg, kind: 'now', title: `Moyenne ACTUELLE de la carte (cache de l’extension) : celle du jour de ${at} ${waiting ? 'est en cours de lecture' : r.avgAt === null ? 'est inconnue (aucune vente dans les 30 jours précédents)' : 'n’a pas pu être retrouvée'}` };
+      if (waiting || WMX.prices?.loading?.(r.card_id)) return { pending: true };
+      return null;
+    };
     const avgCell = (e, at) => {
-      const a = avgOf(e);
-      if (a === undefined) return el('td', { class: 'n muted', title: 'Moyenne en cours de lecture' }, '…');
-      if (!a) return el('td', { class: 'n muted', title: 'Aucune vente de cette carte (même rareté) dans les 30 jours précédents' }, '—');
-      return el('td', { class: 'n', title: `Moyenne de ${a.n} vente${a.n > 1 ? 's' : ''} de la carte (même rareté) ${a.w === 7 ? 'dans les 7 jours' : 'les plus récentes, sur 30 jours au plus,'} avant ${at}` }, `${fmt(a.v)} W`);
+      const a = avgFor(e, at);
+      if (!a) return el('td', { class: 'n muted', title: 'Moyenne inconnue : aucune vente retrouvée et pas de moyenne dans le cache' }, '—');
+      if (a.pending) return el('td', { class: 'n muted', title: 'Moyenne en cours de lecture' }, '…');
+      return a.kind === 'now'
+        ? el('td', { class: 'n wmx-lg-avgnow', title: a.title }, `≈ ${fmt(a.v)} W`, el('small', {}, 'actuelle'))
+        : el('td', { class: 'n', title: a.title }, `${fmt(a.v)} W`);
     };
-    // Prix d'achat, avec l'écart à la moyenne du jour (vert : acheté sous la moyenne).
+    // Prix d'achat, avec l'écart à la moyenne montrée (vert : acheté sous la moyenne).
     const buyCell = (e, price) => {
-      const a = avgOf(e);
+      const a = avgFor(e, 'l’achat');
       const d = a?.v ? ((price - a.v) / a.v) * 100 : null;
-      return el('td', { class: 'n' }, `${fmt(price)} W`, d == null ? '' : el('small', { class: tone(-d), title: 'Écart à la moyenne du jour de l’achat' }, `${pctText(d)} / moy.`));
+      return el('td', { class: 'n' }, `${fmt(price)} W`, d == null ? '' : el('small', { class: tone(-d), title: a.kind === 'now' ? 'Écart à la moyenne actuelle (celle du jour de l’achat est inconnue)' : 'Écart à la moyenne du jour de l’achat' }, `${pctText(d)} / moy.${a.kind === 'now' ? ' act.' : ''}`));
     };
+    // Moyennes jamais chargées des cartes de la période (et du stock) : demandées en arrière-plan, la page se redessine à leur arrivée.
+    missing.clear();
+    const askPrices = (items) => items.slice(0, 300).forEach((x, i) => { if (x.card_id && !WMX.prices?.has?.(x.card_id)) { missing.add(x.card_id); WMX.prices?.keepFresh?.(x.card_id, 1e6 + i, { maxAge: Infinity }); } });
     const gainCell = (o) => (o.kind === 'resale'
       ? el('td', { class: `n ${tone(o.gain)}` }, `${signed(o.gain)} W`, el('small', {}, pctText(o.buy.price ? (o.gain / o.buy.price) * 100 : 0)))
       : el('td', { class: 'n muted' }, '—'));
@@ -503,6 +591,10 @@
           o.kind === 'buy' ? buyCell(o, o.price) : o.kind === 'resale' ? buyCell(o.buy, o.buy.price) : el('td', { class: 'n muted' }, 'non achetée'),
           o.kind === 'buy' ? el('td', { class: 'n' }) : el('td', { class: 'n' }, `${fmt(o.price)} W`),
           gainCell(o), el('td', { class: 'n muted' }, o.kind === 'resale' ? L.holdText(o.hold) : '—')))));
+    askPrices(list.map((o) => o));
+    attachDetails(table, list, (o) => (o.kind === 'resale'
+      ? [{ label: 'Achat', id: o.buy.id, t: o.buy.t, price: o.buy.price }, { label: 'Revente', id: o.id, t: o.t, price: o.price }]
+      : [{ label: o.kind === 'buy' ? 'Achat' : 'Vente', id: o.id, t: o.t, price: o.price }]));
     const opsBox = el('div', { class: 'wmx-panelbox wmx-lg-ops' }, opsHead,
       list.length ? el('div', { class: 'wmx-lg-tablewrap' }, table) : el('p', { class: 'wmx-cp-empty' }, V.mode === 'resale' ? 'Aucune revente sur cette période.' : 'Aucune opération sur cette période.'));
 
@@ -528,6 +620,9 @@
         }))))
         : el('p', { class: 'wmx-cp-empty' }, 'Aucune carte achetée en attente de revente.'));
 
+    askPrices(stockList);
+    const stockTable = stockBox.querySelector('table');
+    if (stockTable) attachDetails(stockTable, stockList.slice(0, 200), (b) => [{ label: 'Achat', id: b.id, t: b.t, price: b.price }]);
     box.replaceChildren(el('div', { class: 'wmx-lg' }, head, since, note, periodBox, opsBox, V.mode === 'all' ? stockBox : ''));
   }
 

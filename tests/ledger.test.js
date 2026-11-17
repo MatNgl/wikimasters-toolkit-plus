@@ -164,3 +164,52 @@ test('plus-values : moyenne au jour de l’achat lue dans la base (ventes des au
   await sleep(700);
   env.close();
 });
+
+test('plus-values : sans moyenne du jour (historique illisible), la moyenne actuelle du cache est montrée (≈ … actuelle) au lieu de « … » ; relevée au moment de l’achat si récente ; clic sur la carte : enchères avec leur identifiant', async () => {
+  const env = createEnv({ fetchImpl: async (u) => {
+    const s = String(u);
+    if (/\/api\/marketplace\/cards\/[^/]+\/sales/.test(s)) return json({ error: 'pro_only' }, 400); // historique complet refusé
+    return json({});
+  } });
+  const { w, WMX } = env;
+  // Cache des moyennes : Tours (L) 1 300 W, relevée il y a 1 h.
+  env.mem.priceCache = { 'c-Tours': { t: Date.now() - 3600000, s: { L: { average: 1300, count: 9, latest: 1250 } } }, 'c-Louis IX': { t: Date.now() - 3600000, s: { L: { average: 3000, count: 4, latest: 3100 } } } };
+  await WMX.prices.load();
+  const payload = { won: [won('a-old', 'Tours', 'L', 1500, 24 * 20), won('a-new', 'Louis IX', 'L', 2700, 1)], history: [sold('v-old', 'Tours', 'L', 1742, 24 * 19)], selling: [], bidding: [] };
+  await WMX.ledger.ingest(payload);
+  const reg = await WMX.ledger.data();
+  assert.equal(reg.buys['a-new'].avgSeen.v, 3000, 'achat d’il y a 1 h : moyenne relevée à ce moment-là');
+  assert.equal(reg.buys['a-old'].avgSeen, undefined, 'achat ancien : pas de relevé');
+  await WMX.ledger.fillAverages(); // base introuvable, historique du jeu refusé : abandon après 5 échecs au plus (ici 1 carte)
+  const box = w.document.createElement('div');
+  w.document.body.append(box);
+  await WMX.ledger.render(box);
+  [...box.querySelectorAll('.wmx-seg-btn')].find((b) => b.textContent === 'Achat-revente').click();
+  await sleep(50);
+  [...box.querySelectorAll('.wmx-seg-btn')].find((b) => b.textContent === 'Mois').click();
+  await sleep(50);
+  // Revente ancienne : remonter jusqu'à son mois si besoin.
+  for (let i = 0; i < 3 && !box.querySelector('.wmx-lg-ops tbody tr'); i++) { box.querySelector('.wmx-lg-arrow').click(); await sleep(50); }
+  const tr = box.querySelector('.wmx-lg-ops tbody tr');
+  assert.ok(tr, 'la revente est listée');
+  const td = [...tr.querySelectorAll('td')];
+  assert.match(td[3].textContent, /≈ 1\s?300 W\s*actuelle/, 'moyenne actuelle, signalée');
+  assert.doesNotMatch(box.querySelector('.wmx-lg-ops').textContent, /…/, 'plus de « … » qui ne partent jamais');
+  assert.match(td[4].textContent, /\+15,4 % \/ moy\. act\./);
+  // Clic sur la carte : l'enchère d'achat et celle de revente, identifiants et liens.
+  tr.querySelector('.wmx-lg-card').click();
+  const det = tr.nextElementSibling;
+  assert.ok(det.classList.contains('wmx-lg-detail'));
+  assert.match(det.textContent, /Achat.*1\s?500 W.*Enchère a-old/s);
+  assert.match(det.textContent, /Revente.*1\s?742 W.*Enchère v-old/s);
+  assert.deepEqual([...det.querySelectorAll('a')].map((a) => a.getAttribute('href')), ['/marketplace/a-old', '/marketplace/v-old']);
+  tr.querySelector('.wmx-lg-card').click();
+  assert.ok(!tr.nextElementSibling?.classList.contains('wmx-lg-detail'), 'second clic : repliée');
+  // Cartes en stock : Louis IX, moyenne relevée à l'achat (3 000), sans « ≈ ».
+  [...box.querySelectorAll('.wmx-seg-btn')].find((b) => b.textContent === 'Tout').click();
+  await sleep(50);
+  const stockRow = [...box.querySelectorAll('.wmx-lg-stock tbody tr')].find((r) => r.textContent.includes('Louis IX'));
+  assert.match(stockRow.querySelectorAll('td')[2].textContent, /^3\s?000 W$/);
+  await sleep(700);
+  env.close();
+});

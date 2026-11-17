@@ -1170,3 +1170,16 @@ button.wmx-tc-cancel:hover { background: rgb(239 68 68 / .18) !important; color:
 .wmx-lg-chartwrap { overflow-y: hidden; }
 .wmx-floattip .up { color: #2dd4a0; } .wmx-floattip .down { color: #f87171; } .wmx-floattip b.muted { color: #b9cbc2; }
 .wmx-floattip { font-family: Outfit, system-ui, sans-serif; }
+
+/* Plus-values : moyenne actuelle en secours, détail des enchères au clic sur une carte (1.0.77) */
+.wmx-lg-table td.wmx-lg-avgnow { color: #9db5a8; }
+.wmx-lg-card--click { cursor: pointer; border-radius: 8px; }
+.wmx-lg-card--click:hover b, .wmx-lg-card--click:focus-visible b { color: #2dd4a0; }
+.wmx-lg-card--click:focus-visible { outline: 2px solid #2dd4a0; outline-offset: 2px; }
+.wmx-lg-table tr.wmx-lg-open td { background: #2dd4a00a; }
+.wmx-lg-table tr.wmx-lg-detail td { background: #0b1210; padding: 8px 12px 10px 58px; border-bottom: 1px solid #1d2a25; }
+.wmx-lg-auction { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; padding: 3px 0; font-size: 12.5px; }
+.wmx-lg-auction b { color: #e6efe9; font-variant-numeric: tabular-nums; }
+.wmx-lg-aid { color: #9db5a8; }
+.wmx-lg-aid code { font: 12px ui-monospace, Consolas, monospace; color: #cfe0d7; background: #ffffff0d; padding: 2px 6px; border-radius: 5px; user-select: all; }
+.wmx-lg-auction .wmx-btn { padding: 4px 10px; font-size: 12px; text-decoration: none; }
