@@ -140,7 +140,7 @@ test('plus-values : moyenne au jour de l’achat lue dans la base (ventes des au
   await WMX.ledger.render(box);
   [...box.querySelectorAll('.wmx-seg-btn')].find((b) => b.textContent === 'Mois').click(); // opérations de l'heure passée : visibles dans le mois
   await sleep(50);
-  const heads = [...box.querySelectorAll('.wmx-lg-ops th')].map((th) => th.textContent);
+  const heads = [...box.querySelectorAll('.wmx-lg-ops th')].map((th) => th.textContent.replace(/[▲▼↕]/g, '').trim());
   assert.deepEqual(heads.slice(3), ['Moyenne', 'Prix d’achat', 'Prix de vente', 'Plus-value', 'Détention']);
   const rowOf = (t) => [...box.querySelectorAll('.wmx-lg-ops tbody tr')].find((tr) => tr.textContent.includes(t));
   const cells = (tr) => [...tr.querySelectorAll('td')].map((td) => td.textContent.replace(/\s/g, ' '));
@@ -193,9 +193,11 @@ test('plus-values : sans moyenne du jour (historique illisible), la moyenne actu
   const tr = box.querySelector('.wmx-lg-ops tbody tr');
   assert.ok(tr, 'la revente est listée');
   const td = [...tr.querySelectorAll('td')];
-  assert.match(td[3].textContent, /≈ 1\s?300 W\s*actuelle/, 'moyenne actuelle, signalée');
+  assert.match(td[3].textContent, /^≈ 1\s?300 W$/, 'moyenne actuelle (≈), sans mention « actuelle »');
+  assert.match(td[3].title, /moyenne actuelle/, 'expliquée au survol');
   assert.doesNotMatch(box.querySelector('.wmx-lg-ops').textContent, /…/, 'plus de « … » qui ne partent jamais');
-  assert.match(td[4].textContent, /\+15,4 % \/ moy\. act\./);
+  assert.match(td[4].textContent, /\+15,4 % \/ moy\.$/);
+  assert.match(box.querySelector('.wmx-lg-ops th[aria-sort] .wmx-lg-sort[title*="AU JOUR DE L’ACHAT"]')?.closest('th').textContent || '', /Moyenne/, 'survol du titre « Moyenne » : au jour de l’achat');
   // Clic sur la carte : l'enchère d'achat et celle de revente, identifiants et liens.
   tr.querySelector('.wmx-lg-card').click();
   const det = tr.nextElementSibling;
@@ -210,6 +212,48 @@ test('plus-values : sans moyenne du jour (historique illisible), la moyenne actu
   await sleep(50);
   const stockRow = [...box.querySelectorAll('.wmx-lg-stock tbody tr')].find((r) => r.textContent.includes('Louis IX'));
   assert.match(stockRow.querySelectorAll('td')[2].textContent, /^3\s?000 W$/);
+  await sleep(700);
+  env.close();
+});
+
+test('plus-values : tri par clic sur les colonnes (décroissant puis croissant, cases vides toujours en bas), dans les opérations et dans le stock', async () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  const { w, WMX } = env;
+  const payload = {
+    won: [won('b1', 'Alpha', 'R', 100, 3), won('b2', 'Bravo', 'R', 900, 2.5), won('b3', 'Charlie', 'R', 400, 2)],
+    history: [sold('s1', 'Alpha', 'R', 300, 1), sold('s2', 'Zoulou', 'C', 50, 0.5)],
+    selling: [], bidding: [],
+  };
+  await WMX.ledger.ingest(payload);
+  const box = w.document.createElement('div');
+  w.document.body.append(box);
+  await WMX.ledger.render(box);
+  [...box.querySelectorAll('.wmx-seg-btn')].find((b) => b.textContent === 'Mois').click();
+  await sleep(50);
+  const names = (sel) => [...box.querySelectorAll(`${sel} tbody tr .wmx-lg-name b`)].map((b) => b.textContent);
+  const sortBy = (sel, label) => [...box.querySelectorAll(`${sel} th .wmx-lg-sort`)].find((b) => b.textContent.replace(/[▲▼↕]/g, '').trim() === label).click();
+  assert.deepEqual(names('.wmx-lg-ops'), ['Zoulou', 'Alpha', 'Charlie', 'Bravo', 'Alpha'], 'par défaut : les plus récentes d’abord');
+  sortBy('.wmx-lg-ops', 'Prix d’achat');
+  await sleep(50);
+  assert.deepEqual(names('.wmx-lg-ops'), ['Bravo', 'Charlie', 'Alpha', 'Alpha', 'Zoulou'], 'plus gros prix d’achat d’abord ; la vente non achetée (vide) en bas');
+  assert.equal(box.querySelector('.wmx-lg-ops th.on').getAttribute('aria-sort'), 'descending');
+  sortBy('.wmx-lg-ops', 'Prix d’achat');
+  await sleep(50);
+  assert.deepEqual(names('.wmx-lg-ops').slice(0, 3), ['Alpha', 'Alpha', 'Charlie'], 'second clic : croissant');
+  assert.equal(names('.wmx-lg-ops').at(-1), 'Zoulou', 'case vide toujours en bas');
+  sortBy('.wmx-lg-ops', 'Prix de vente');
+  await sleep(50);
+  assert.deepEqual(names('.wmx-lg-ops').slice(0, 2), ['Alpha', 'Zoulou'], 'plus grosses ventes d’abord (achats sans vente en bas)');
+  sortBy('.wmx-lg-ops', 'Carte');
+  await sleep(50);
+  assert.deepEqual(names('.wmx-lg-ops'), ['Alpha', 'Alpha', 'Bravo', 'Charlie', 'Zoulou'], 'carte : de A à Z');
+  // Stock : Bravo et Charlie, triables aussi.
+  sortBy('.wmx-lg-stock', 'Prix d’achat');
+  await sleep(50);
+  assert.deepEqual(names('.wmx-lg-stock'), ['Bravo', 'Charlie']);
+  sortBy('.wmx-lg-stock', 'Prix d’achat');
+  await sleep(50);
+  assert.deepEqual(names('.wmx-lg-stock'), ['Charlie', 'Bravo']);
   await sleep(700);
   env.close();
 });

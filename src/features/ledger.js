@@ -255,7 +255,7 @@
   }
 
   // --- Affichage -------------------------------------------------------------------------------
-  const V = { mode: 'all', unit: 'day', cursor: null, chart: 'gain', ops: 'all', sort: 'recent', stockSort: 'recent' };
+  const V = { mode: 'all', unit: 'day', cursor: null, chart: 'gain', ops: 'all', opsSort: { key: 'date', dir: 'desc' }, stockSort: { key: 'date', dir: 'desc' } };
   const PERIODS = { day: 30, week: 12, month: 12 };
   const MONTHS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
   const dayLong = (t) => new Date(t).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }).replace(/^./, (c) => c.toUpperCase());
@@ -411,6 +411,35 @@
     });
   }
 
+  /**
+   * Tri d'un tableau selon une colonne : st = { key, dir: 'asc' | 'desc' }. Les cases vides (pas de prix de vente pour un achat, moyenne
+   * inconnue…) restent toujours en bas ; à égalité, la plus récente d'abord.
+   */
+  function sortRows(rows, cols, st) {
+    const col = cols.find((c) => c[0] === st.key && c[3]) || cols[0];
+    const get = col[3];
+    const sign = st.dir === 'asc' ? 1 : -1;
+    rows.sort((x, y) => {
+      const a = get(x), b = get(y);
+      const ea = a == null || a === '', eb = b == null || b === '';
+      if (ea || eb) return ea === eb ? y.t - x.t : ea ? 1 : -1;
+      const c = typeof a === 'string' ? a.localeCompare(b, 'fr', { sensitivity: 'base' }) : a - b;
+      return c ? sign * c : y.t - x.t;
+    });
+  }
+  /** En-tête cliquable : un clic trie par cette colonne (les plus grands d'abord ; la carte : de A à Z), un second inverse l'ordre. */
+  function sortHead(cols, st, onPick) {
+    return el('thead', {}, el('tr', {}, ...cols.map(([key, label, cls, get, help]) => {
+      if (!get) return el('th', { class: cls }, label);
+      const on = st.key === key;
+      const th = el('th', { class: `${cls} wmx-lg-sortable${on ? ' on' : ''}`, 'aria-sort': on ? (st.dir === 'asc' ? 'ascending' : 'descending') : 'none' },
+        el('button', { type: 'button', class: 'wmx-lg-sort', title: `${help ? `${help}\n` : ''}Cliquer pour trier${on ? ` (ordre ${st.dir === 'asc' ? 'croissant' : 'décroissant'})` : ''}` },
+          label, el('i', { 'aria-hidden': 'true' }, on ? (st.dir === 'asc' ? '▲' : '▼') : '↕')));
+      th.querySelector('button').addEventListener('click', () => onPick(on ? { key, dir: st.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: key === 'card' ? 'asc' : 'desc' }));
+      return th;
+    })));
+  }
+
   const rarityBadge = (r) => el('span', { class: 'wmx-lg-rar', style: `--rgb:${WMX.RARITY_RGB?.[r] || '160 175 168'}` }, r || '?');
   function cardCell(e) {
     const thumb = e.image ? el('img', { src: e.image, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' }) : el('span', { class: 'wmx-lg-noimg' }, 'W');
@@ -533,27 +562,26 @@
 
     // Opérations de la période
     const list = (V.mode === 'all' && V.ops !== 'all' ? inPeriod.filter((o) => (V.ops === 'buy' ? o.kind === 'buy' : o.kind !== 'buy')) : inPeriod).slice();
-    if (V.sort === 'gain') list.sort((a, b) => (b.gain ?? -Infinity) - (a.gain ?? -Infinity) || b.t - a.t);
     const nb = inPeriod.filter((o) => o.kind === 'buy').length;
     const opsHead = el('div', { class: 'wmx-lg-tablehead' }, el('h4', {}, V.mode === 'resale' ? 'Reventes' : 'Opérations'),
       el('div', { class: 'wmx-lg-tools' },
         V.mode === 'all' ? seg([['all', `Tout ${inPeriod.length}`], ['buy', `Achats ${nb}`], ['sell', `Ventes ${inPeriod.length - nb}`]], V.ops, (v) => { V.ops = v; redraw(); }) : '',
-        seg([['recent', 'Récentes'], ['gain', 'Plus-value']], V.sort, (v) => { V.sort = v; redraw(); })));
+        el('small', { class: 'wmx-lg-sorthint' }, 'Cliquez sur un titre de colonne pour trier')));
     const opKind = { buy: 'Achat', sell: 'Vente', resale: 'Revente' };
     // Moyenne au jour de l'achat (pour une vente de carte non achetée : au jour de la vente).
     const regOf = (e) => (e ? reg.buys[e.id] || reg.sells[e.id] || e : null);
     /**
      * Moyenne à montrer pour l'opération e (achat, ou vente d'une carte non achetée) : celle que l'extension affichait au moment de l'opération,
-     * sinon celle recalculée d'après les ventes de ce jour-là, sinon la moyenne actuelle du cache (« ≈ … actuelle »). { pending } : en cours de lecture.
+     * sinon celle recalculée d'après les ventes de ce jour-là, sinon la moyenne actuelle du cache (précédée de « ≈ »). { pending } : en cours de lecture.
      */
     const avgFor = (e, at) => {
       const r = regOf(e);
       if (!r) return null;
-      if (r.avgSeen?.v) return { v: r.avgSeen.v, kind: 'seen', title: `Moyenne affichée par l’extension au moment de ${at}` };
-      if (r.avgAt?.v) return { v: r.avgAt.v, kind: 'day', title: `Moyenne de ${r.avgAt.n} vente${r.avgAt.n > 1 ? 's' : ''} de la carte (même rareté) ${r.avgAt.w === 7 ? 'dans les 7 jours' : 'les plus récentes, sur 30 jours au plus,'} avant ${at}` };
+      if (r.avgSeen?.v) return { v: r.avgSeen.v, kind: 'seen', title: `Moyenne au jour de ${at} (celle qu’affichait l’extension à ce moment-là)` };
+      if (r.avgAt?.v) return { v: r.avgAt.v, kind: 'day', title: `Moyenne au jour de ${at} : ${r.avgAt.n} vente${r.avgAt.n > 1 ? 's' : ''} de la carte (même rareté) ${r.avgAt.w === 7 ? 'dans les 7 jours' : 'les plus récentes, sur 30 jours au plus,'} avant ${at}` };
       const p = WMX.prices?.get?.(r.card_id, r.rarity);
       const waiting = r.avgAt === undefined && !!AVG.busy;
-      if (p?.avg > 0) return { v: p.avg, kind: 'now', title: `Moyenne ACTUELLE de la carte (cache de l’extension) : celle du jour de ${at} ${waiting ? 'est en cours de lecture' : r.avgAt === null ? 'est inconnue (aucune vente dans les 30 jours précédents)' : 'n’a pas pu être retrouvée'}` };
+      if (p?.avg > 0) return { v: p.avg, kind: 'now', title: `≈ : moyenne actuelle de la carte, celle du jour de ${at} ${waiting ? 'est en cours de lecture' : r.avgAt === null ? 'est inconnue (aucune vente dans les 30 jours précédents)' : 'n’a pas pu être retrouvée'}` };
       if (waiting || WMX.prices?.loading?.(r.card_id)) return { pending: true };
       return null;
     };
@@ -561,15 +589,13 @@
       const a = avgFor(e, at);
       if (!a) return el('td', { class: 'n muted', title: 'Moyenne inconnue : aucune vente retrouvée et pas de moyenne dans le cache' }, '—');
       if (a.pending) return el('td', { class: 'n muted', title: 'Moyenne en cours de lecture' }, '…');
-      return a.kind === 'now'
-        ? el('td', { class: 'n wmx-lg-avgnow', title: a.title }, `≈ ${fmt(a.v)} W`, el('small', {}, 'actuelle'))
-        : el('td', { class: 'n', title: a.title }, `${fmt(a.v)} W`);
+      return el('td', { class: `n${a.kind === 'now' ? ' wmx-lg-avgnow' : ''}`, title: a.title }, `${a.kind === 'now' ? '≈ ' : ''}${fmt(a.v)} W`);
     };
     // Prix d'achat, avec l'écart à la moyenne montrée (vert : acheté sous la moyenne).
     const buyCell = (e, price) => {
       const a = avgFor(e, 'l’achat');
       const d = a?.v ? ((price - a.v) / a.v) * 100 : null;
-      return el('td', { class: 'n' }, `${fmt(price)} W`, d == null ? '' : el('small', { class: tone(-d), title: a.kind === 'now' ? 'Écart à la moyenne actuelle (celle du jour de l’achat est inconnue)' : 'Écart à la moyenne du jour de l’achat' }, `${pctText(d)} / moy.${a.kind === 'now' ? ' act.' : ''}`));
+      return el('td', { class: 'n' }, `${fmt(price)} W`, d == null ? '' : el('small', { class: tone(-d), title: a.kind === 'now' ? 'Écart à la moyenne actuelle (celle du jour de l’achat est inconnue)' : 'Écart à la moyenne du jour de l’achat' }, `${pctText(d)} / moy.`));
     };
     // Moyennes jamais chargées des cartes de la période (et du stock) : demandées en arrière-plan, la page se redessine à leur arrivée.
     missing.clear();
@@ -577,15 +603,35 @@
     const gainCell = (o) => (o.kind === 'resale'
       ? el('td', { class: `n ${tone(o.gain)}` }, `${signed(o.gain)} W`, el('small', {}, pctText(o.buy.price ? (o.gain / o.buy.price) * 100 : 0)))
       : el('td', { class: 'n muted' }, '—'));
+    // Colonnes : [clé de tri, titre, classe, valeur pour le tri (null : colonne non triable), aide au survol du titre].
+    const AVG_HELP = 'Moyenne du marché de la carte AU JOUR DE L’ACHAT (pour une vente d’une carte non achetée : au jour de la vente). Précédée de « ≈ » : moyenne actuelle, celle du jour de l’achat n’ayant pas pu être retrouvée.';
+    const opAvg = (o) => (o.kind === 'resale' ? avgFor(o.buy, 'l’achat') : avgFor(o, 'l’achat'))?.v ?? null;
+    const opsCols = V.mode === 'resale' ? [
+      ['date', V.unit === 'day' ? 'Vendue à' : 'Vendue le', '', (o) => o.t],
+      ['card', 'Carte', '', (o) => o.title],
+      ['bought', 'Achetée le', '', (o) => o.buy.t],
+      ['avg', 'Moyenne', 'n', opAvg, AVG_HELP],
+      ['buy', 'Prix d’achat', 'n', (o) => o.buy.price],
+      ['sell', 'Prix de vente', 'n', (o) => o.price],
+      ['gain', 'Plus-value', 'n', (o) => o.gain],
+      ['hold', 'Détention', 'n', (o) => o.hold],
+    ] : [
+      ['date', V.unit === 'day' ? 'Heure' : 'Date', '', (o) => o.t],
+      ['card', 'Carte', '', (o) => o.title],
+      ['op', 'Opération', '', null],
+      ['avg', 'Moyenne', 'n', opAvg, AVG_HELP],
+      ['buy', 'Prix d’achat', 'n', (o) => (o.kind === 'buy' ? o.price : o.kind === 'resale' ? o.buy.price : null)],
+      ['sell', 'Prix de vente', 'n', (o) => (o.kind === 'buy' ? null : o.price)],
+      ['gain', 'Plus-value', 'n', (o) => (o.kind === 'resale' ? o.gain : null)],
+      ['hold', 'Détention', 'n', (o) => (o.kind === 'resale' ? o.hold : null)],
+    ];
+    sortRows(list, opsCols, V.opsSort);
+    const opsThead = sortHead(opsCols, V.opsSort, (st) => { V.opsSort = st; redraw(); });
     const table = V.mode === 'resale'
-      ? el('table', { class: 'wmx-lg-table' },
-        el('thead', {}, el('tr', {}, el('th', {}, V.unit === 'day' ? 'Vendue à' : 'Vendue le'), el('th', {}, 'Carte'), el('th', {}, 'Achetée le'), el('th', { class: 'n', title: 'Moyenne du marché de la carte le jour de l’achat' }, 'Moyenne'), el('th', { class: 'n' }, 'Prix d’achat'), el('th', { class: 'n' }, 'Prix de vente'), el('th', { class: 'n' }, 'Plus-value'), el('th', { class: 'n' }, 'Détention'))),
+      ? el('table', { class: 'wmx-lg-table' }, opsThead,
         el('tbody', {}, ...list.map((o) => el('tr', {}, el('td', { class: 'when' }, when(o.t)), el('td', {}, cardCell(o)), el('td', { class: 'when' }, `${dayShort(o.buy.t)}, ${hm(o.buy.t)}`),
           avgCell(o.buy, 'l’achat'), buyCell(o.buy, o.buy.price), el('td', { class: 'n' }, `${fmt(o.price)} W`), gainCell(o), el('td', { class: 'n' }, L.holdText(o.hold))))))
-      : el('table', { class: 'wmx-lg-table' },
-        el('thead', {}, el('tr', {}, el('th', {}, V.unit === 'day' ? 'Heure' : 'Date'), el('th', {}, 'Carte'), el('th', {}, 'Opération'),
-          el('th', { class: 'n', title: 'Moyenne du marché de la carte le jour de l’achat (vente d’une carte non achetée : le jour de la vente)' }, 'Moyenne'),
-          el('th', { class: 'n' }, 'Prix d’achat'), el('th', { class: 'n' }, 'Prix de vente'), el('th', { class: 'n' }, 'Plus-value'), el('th', { class: 'n' }, 'Détention'))),
+      : el('table', { class: 'wmx-lg-table' }, opsThead,
         el('tbody', {}, ...list.map((o) => el('tr', {}, el('td', { class: 'when' }, when(o.t)), el('td', {}, cardCell(o)), el('td', {}, el('span', { class: `wmx-lg-op ${o.kind}` }, opKind[o.kind])),
           o.kind === 'resale' ? avgCell(o.buy, 'l’achat') : avgCell(o, o.kind === 'buy' ? 'l’achat' : 'la vente'),
           o.kind === 'buy' ? buyCell(o, o.price) : o.kind === 'resale' ? buyCell(o.buy, o.buy.price) : el('td', { class: 'n muted' }, 'non achetée'),
@@ -604,14 +650,22 @@
     const latent = owned.reduce((n, b) => (market(b) != null ? n + (market(b) - b.price) : n), 0);
     const unknown = owned.filter((b) => market(b) == null).length;
     const stockList = owned.slice();
-    if (V.stockSort === 'gain') stockList.sort((a, b) => ((market(b) ?? b.price) - b.price) - ((market(a) ?? a.price) - a.price));
+    const stockCols = [
+      ['date', 'Achetée', '', (b) => b.t],
+      ['card', 'Carte', '', (b) => b.title],
+      ['avg', 'Moyenne à l’achat', 'n', (b) => avgFor(b, 'l’achat')?.v ?? null, AVG_HELP],
+      ['buy', 'Prix d’achat', 'n', (b) => b.price],
+      ['market', 'Prix du marché', 'n', (b) => market(b), 'Moyenne du marché aujourd’hui'],
+      ['latent', 'Plus-value latente', 'n', (b) => (market(b) == null ? null : market(b) - b.price), 'Prix du marché aujourd’hui moins prix d’achat'],
+      ['since', 'Depuis', 'n', (b) => Date.now() - b.t],
+    ];
+    sortRows(stockList, stockCols, V.stockSort);
     const stockBox = el('div', { class: 'wmx-panelbox wmx-lg-stock' },
       el('div', { class: 'wmx-lg-tablehead' }, el('h4', {}, 'Cartes achetées en stock'),
         el('div', { class: 'wmx-lg-tools' },
-          el('small', {}, `${fmt(owned.length)} carte${owned.length > 1 ? 's' : ''} · payées ${fmt(owned.reduce((n, b) => n + b.price, 0))} W · plus-value latente `, el('b', { class: tone(latent) }, `${signed(latent)} W`), unknown ? ` (${unknown} sans prix du marché)` : ''),
-          seg([['recent', 'Récentes'], ['gain', 'Plus-value']], V.stockSort, (v) => { V.stockSort = v; redraw(); }))),
+          el('small', {}, `${fmt(owned.length)} carte${owned.length > 1 ? 's' : ''} · payées ${fmt(owned.reduce((n, b) => n + b.price, 0))} W · plus-value latente `, el('b', { class: tone(latent) }, `${signed(latent)} W`), unknown ? ` (${unknown} sans prix du marché)` : ''))),
       stockList.length ? el('div', { class: 'wmx-lg-tablewrap' }, el('table', { class: 'wmx-lg-table' },
-        el('thead', {}, el('tr', {}, el('th', {}, 'Achetée'), el('th', {}, 'Carte'), el('th', { class: 'n', title: 'Moyenne du marché de la carte le jour de l’achat' }, 'Moyenne à l’achat'), el('th', { class: 'n' }, 'Prix d’achat'), el('th', { class: 'n' }, 'Prix du marché'), el('th', { class: 'n' }, 'Plus-value latente'), el('th', { class: 'n' }, 'Depuis'))),
+        sortHead(stockCols, V.stockSort, (st) => { V.stockSort = st; redraw(); }),
         el('tbody', {}, ...stockList.slice(0, 200).map((b) => {
           const m = market(b);
           return el('tr', {}, el('td', { class: 'when' }, `${dayShort(b.t)}, ${hm(b.t)}`), el('td', {}, cardCell(b)), avgCell(b, 'l’achat'), buyCell(b, b.price),

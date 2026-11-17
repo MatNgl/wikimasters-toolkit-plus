@@ -1183,3 +1183,14 @@ button.wmx-tc-cancel:hover { background: rgb(239 68 68 / .18) !important; color:
 .wmx-lg-aid { color: #9db5a8; }
 .wmx-lg-aid code { font: 12px ui-monospace, Consolas, monospace; color: #cfe0d7; background: #ffffff0d; padding: 2px 6px; border-radius: 5px; user-select: all; }
 .wmx-lg-auction .wmx-btn { padding: 4px 10px; font-size: 12px; text-decoration: none; }
+
+/* Plus-values : tri par clic sur les titres de colonnes (1.0.78) */
+.wmx-lg-sort { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; border-radius: 5px; }
+.wmx-lg-sort i { font-style: normal; font-size: 9px; opacity: .45; }
+.wmx-lg-sort:hover { color: #cfe0d7; }
+.wmx-lg-sort:hover i { opacity: .9; }
+.wmx-lg-sort:focus-visible { outline: 2px solid #2dd4a0; outline-offset: 2px; }
+.wmx-lg-table th.n .wmx-lg-sort { flex-direction: row-reverse; }
+.wmx-lg-table th.on { color: #2dd4a0; }
+.wmx-lg-table th.on .wmx-lg-sort i { opacity: 1; }
+.wmx-lg-sorthint { color: #6f9486; font-size: 11.5px; }
