@@ -255,7 +255,7 @@
   }
 
   // --- Affichage -------------------------------------------------------------------------------
-  const V = { mode: 'all', unit: 'day', cursor: null, chart: 'gain', ops: 'all', opsSort: { key: 'date', dir: 'desc' }, stockSort: { key: 'date', dir: 'desc' } };
+  const V = { mode: 'all', unit: 'day', cursor: null, chart: 'gain', ops: 'all', opsSort: { key: null, dir: 'desc' }, stockSort: { key: null, dir: 'desc' } };
   const PERIODS = { day: 30, week: 12, month: 12 };
   const MONTHS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
   const dayLong = (t) => new Date(t).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }).replace(/^./, (c) => c.toUpperCase());
@@ -416,7 +416,7 @@
    * inconnue…) restent toujours en bas ; à égalité, la plus récente d'abord.
    */
   function sortRows(rows, cols, st) {
-    const col = cols.find((c) => c[0] === st.key && c[3]) || cols[0];
+    const col = cols.find((c) => c[0] === st.key && c[3]) || cols[0]; // aucune colonne choisie (key null) : ordre normal, les plus récentes d'abord
     const get = col[3];
     const sign = st.dir === 'asc' ? 1 : -1;
     rows.sort((x, y) => {
@@ -427,15 +427,27 @@
       return c ? sign * c : y.t - x.t;
     });
   }
-  /** En-tête cliquable : un clic trie par cette colonne (les plus grands d'abord ; la carte : de A à Z), un second inverse l'ordre. */
+  /** Icône de tri : décroissant (barre puis triangle vers le bas), croissant (triangle vers le haut), ou neutre (deux petits triangles). */
+  const SORT_ICONS = {
+    desc: '<svg viewBox="0 0 10 12" width="10" height="12"><rect x="0" y="0" width="10" height="2.2" rx="1.1"/><path d="M0 4.4h10L5 11.6z"/></svg>',
+    asc: '<svg viewBox="0 0 10 12" width="10" height="12"><path d="M0 9.6h10L5 2.4z"/></svg>',
+    none: '<svg viewBox="0 0 10 12" width="10" height="12"><path d="M1.5 5h7L5 1.2zM1.5 7h7L5 10.8z"/></svg>',
+  };
+  const sortIcon = (dir) => WMX.dom.svg(el('i', { class: `wmx-lg-sorti ${dir}`, 'aria-hidden': 'true' }), SORT_ICONS[dir]);
+  /**
+   * En-tête cliquable. Sur une même colonne : 1er clic décroissant (▼, les plus grands d'abord), 2e clic croissant (▲), 3e clic retour à
+   * l'ordre normal (les plus récentes d'abord). Cliquer une autre colonne repart du décroissant.
+   */
   function sortHead(cols, st, onPick) {
     return el('thead', {}, el('tr', {}, ...cols.map(([key, label, cls, get, help]) => {
       if (!get) return el('th', { class: cls }, label);
       const on = st.key === key;
+      const dir = on ? st.dir : 'none';
+      const next = !on ? 'décroissant' : st.dir === 'desc' ? 'croissant' : 'ordre normal (les plus récentes d’abord)';
       const th = el('th', { class: `${cls} wmx-lg-sortable${on ? ' on' : ''}`, 'aria-sort': on ? (st.dir === 'asc' ? 'ascending' : 'descending') : 'none' },
-        el('button', { type: 'button', class: 'wmx-lg-sort', title: `${help ? `${help}\n` : ''}Cliquer pour trier${on ? ` (ordre ${st.dir === 'asc' ? 'croissant' : 'décroissant'})` : ''}` },
-          label, el('i', { 'aria-hidden': 'true' }, on ? (st.dir === 'asc' ? '▲' : '▼') : '↕')));
-      th.querySelector('button').addEventListener('click', () => onPick(on ? { key, dir: st.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: key === 'card' ? 'asc' : 'desc' }));
+        el('button', { type: 'button', class: 'wmx-lg-sort', title: `${help ? `${help}\n` : ''}${on ? `Trié : ordre ${st.dir === 'asc' ? 'croissant' : 'décroissant'}. ` : ''}Cliquer : ${next}` },
+          label, sortIcon(dir)));
+      th.querySelector('button').addEventListener('click', () => onPick(!on ? { key, dir: 'desc' } : st.dir === 'desc' ? { key, dir: 'asc' } : { key: null, dir: 'desc' }));
       return th;
     })));
   }

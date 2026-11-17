@@ -241,12 +241,21 @@ test('plus-values : tri par clic sur les colonnes (décroissant puis croissant, 
   await sleep(50);
   assert.deepEqual(names('.wmx-lg-ops').slice(0, 3), ['Alpha', 'Alpha', 'Charlie'], 'second clic : croissant');
   assert.equal(names('.wmx-lg-ops').at(-1), 'Zoulou', 'case vide toujours en bas');
+  assert.ok(box.querySelector('.wmx-lg-ops th.on .wmx-lg-sorti.asc svg'), 'icône « croissant »');
+  sortBy('.wmx-lg-ops', 'Prix d’achat');
+  await sleep(50);
+  assert.deepEqual(names('.wmx-lg-ops'), ['Zoulou', 'Alpha', 'Charlie', 'Bravo', 'Alpha'], 'troisième clic : retour à l’ordre normal');
+  assert.ok(!box.querySelector('.wmx-lg-ops th.on'), 'plus aucune colonne triée');
+  assert.ok(box.querySelector('.wmx-lg-ops .wmx-lg-sorti.none svg'), 'icône neutre');
   sortBy('.wmx-lg-ops', 'Prix de vente');
   await sleep(50);
   assert.deepEqual(names('.wmx-lg-ops').slice(0, 2), ['Alpha', 'Zoulou'], 'plus grosses ventes d’abord (achats sans vente en bas)');
   sortBy('.wmx-lg-ops', 'Carte');
   await sleep(50);
-  assert.deepEqual(names('.wmx-lg-ops'), ['Alpha', 'Alpha', 'Bravo', 'Charlie', 'Zoulou'], 'carte : de A à Z');
+  assert.deepEqual(names('.wmx-lg-ops'), ['Zoulou', 'Charlie', 'Bravo', 'Alpha', 'Alpha'], 'carte, 1er clic : décroissant (Z à A)');
+  sortBy('.wmx-lg-ops', 'Carte');
+  await sleep(50);
+  assert.deepEqual(names('.wmx-lg-ops'), ['Alpha', 'Alpha', 'Bravo', 'Charlie', 'Zoulou'], '2e clic : de A à Z');
   // Stock : Bravo et Charlie, triables aussi.
   sortBy('.wmx-lg-stock', 'Prix d’achat');
   await sleep(50);
