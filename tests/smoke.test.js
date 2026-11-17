@@ -1936,7 +1936,7 @@ test('tableau de bord : courbe de la collection estimée jour par jour (date d�
   const hits = [...box2.querySelectorAll('.wmx-vchart .hit')];
   assert.equal(hits.length, 30, 'un repère par jour');
   hits[hits.length - 6].dispatchEvent(new w.MouseEvent('mousemove', { bubbles: true, clientX: 30, clientY: 30 })); // il y a 5 jours
-  const tip = box2.querySelector('.wmx-lg-tip');
+  const tip = w.document.querySelector('.wmx-lg-tip');
   assert.ok(!tip.hidden);
   assert.match(tip.textContent, /≈ 1\s?200 W/, 'A (1 000) + 2 × B (100) ce jour-là');
   assert.match(tip.textContent, /2 cartes obtenues ce jour-là · ≈ 200 W/);

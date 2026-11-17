@@ -99,12 +99,13 @@
     svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.setAttribute('class', 'wmx-vchart'); svg.setAttribute('role', 'img');
     svg.setAttribute('aria-label', 'Valeur de la collection dans le temps, en W');
     WMX.dom.svg(svg, `<text class="unit" x="${Lm}" y="10">W</text>${g}<line class="axis" x1="${Lm}" x2="${Lm}" y1="${T}" y2="${H - B}"/><line class="axis" x1="${Lm}" x2="${W - Rm}" y1="${H - B}" y2="${H - B}"/>${area}${estLine}${recLine}${dots}<line class="cursor" x1="0" x2="0" y1="${T}" y2="${H - B}" visibility="hidden"/>${hits}`);
-    const tip = el('div', { class: 'wmx-lg-tip', hidden: '' });
-    const wrap = el('div', { class: 'wmx-vwrap wmx-lg-chartwrap' }, svg, tip);
+    const ft = WMX.dom.floatTip('wmx-lg-tip');
+    const tip = ft.el;
+    const wrap = el('div', { class: 'wmx-vwrap wmx-lg-chartwrap' }, svg);
     const cursor = svg.querySelector('.cursor');
     svg.addEventListener('mousemove', (e) => {
       const i = e.target?.getAttribute?.('data-i');
-      if (i == null) { tip.hidden = true; cursor.setAttribute('visibility', 'hidden'); return; }
+      if (i == null) { ft.hide(); cursor.setAttribute('visibility', 'hidden'); return; }
       const k = Number(i);
       const d = days[k];
       const got = gained[d];
@@ -113,14 +114,10 @@
         recVals[k] != null ? el('b', {}, `${fmt(recVals[k])} W`) : el('b', { class: 'muted' }, `≈ ${fmt(est[k])} W`),
         el('small', {}, recVals[k] != null ? `Valeur notée ce jour-là · estimation ${fmt(est[k])} W` : 'Estimation (pas de valeur notée ce jour-là)'),
         el('small', {}, got ? `${fmt(got.n)} carte${got.n > 1 ? 's' : ''} obtenue${got.n > 1 ? 's' : ''} ce jour-là · ≈ ${fmt(got.value)} W` : 'Aucune carte gardée obtenue ce jour-là'));
-      tip.hidden = false;
       cursor.setAttribute('x1', x(k).toFixed(1)); cursor.setAttribute('x2', x(k).toFixed(1)); cursor.setAttribute('visibility', 'visible');
-      const r = wrap.getBoundingClientRect();
-      const px = e.clientX - r.left, py = e.clientY - r.top;
-      tip.style.left = `${Math.max(4, px + 14 + 270 > r.width ? px - 14 - 270 : px + 14)}px`;
-      tip.style.top = `${Math.max(4, py - 30)}px`;
+      ft.show(e);
     });
-    svg.addEventListener('mouseleave', () => { tip.hidden = true; cursor.setAttribute('visibility', 'hidden'); });
+    svg.addEventListener('mouseleave', () => { ft.hide(); cursor.setAttribute('visibility', 'hidden'); });
     return wrap;
   }
 

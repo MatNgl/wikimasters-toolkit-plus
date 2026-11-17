@@ -40,7 +40,7 @@ test('plus-values : achats et ventes notés une seule fois (jamais ceux d’un a
   assert.match(box.querySelector('.wmx-lg-info').getAttribute('title'), /rapproché/, 'l’explication est au survol du ⓘ');
   const hits = [...box.querySelectorAll('.wmx-lg-chart .hit')];
   hits.at(-1).dispatchEvent(new w.MouseEvent('mousemove', { bubbles: true, clientX: 50, clientY: 50 }));
-  const tip = box.querySelector('.wmx-lg-tip');
+  const tip = w.document.querySelector('.wmx-lg-tip');
   assert.ok(!tip.hidden, 'infobulle affichée');
   assert.match(tip.textContent, /\d+ ventes? · \d+ achats? · \d+ reventes?/);
   assert.match(tip.textContent, /plus-value réalisée/, 'le montant est nommé');
@@ -99,6 +99,68 @@ test('plus-values : historique complet lu dans la base du jeu (clé publique du 
   assert.match(box.textContent, /Historique complet lu dans la base du jeu \(3 enchères conclues/);
   assert.match(box.textContent, /plus-value réalisée\s*\+400 W sur 1 revente/, 'Ancienne : achetée 1 000 il y a 20 jours, revendue 1 400');
   assert.ok(!JSON.stringify(env.mem).includes('jeton-de-session'), 'la session n’est jamais enregistrée');
+  await sleep(700);
+  env.close();
+});
+
+test('plus-values : moyenne au jour de l’achat lue dans la base (ventes des autres joueurs), colonnes Moyenne / Prix d’achat / Prix de vente ; infobulle par-dessus la page', async () => {
+  const ANON = 'eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiIsInJlZiI6ImFiYyJ9.signatureABC';
+  const D = 24 * 3600000;
+  const at = (days) => new Date(Date.now() - days * D).toISOString();
+  const row = (id, title, rarity, price, days, role) => ({ id, card_id: `c-${title}`, seller_id: role === 'sell' ? ME : 'autre', winner_id: role === 'buy' ? ME : 'autre', status: 'settled_sold',
+    final_price: price, settled_at: at(days), snapshot_rarity: rarity, is_shiny: false, card: { wikipedia_title: title, rarity, image_url: '', hide_image: false } });
+  const mine = { buy: [row('b-Tours', 'Tours', 'L', 1500, 0.05, 'buy'), row('b-Gard', 'Gard', 'UR', 400, 0.04, 'buy')], sell: [row('s-Tours', 'Tours', 'L', 1900, 0.01, 'sell'), row('s-Tam', 'Tam', 'SR', 30, 0.01, 'sell')] };
+  // Ventes d'autres joueurs avant les opérations : Tours (L) ~1 200 la semaine avant l'achat, Tam (SR) 25.
+  const others = [row('o1', 'Tours', 'L', 1100, 1, 'x'), row('o2', 'Tours', 'L', 1200, 2, 'x'), row('o3', 'Tours', 'L', 1300, 3, 'x'), row('o4', 'Tam', 'SR', 25, 1, 'x')];
+  const asked = [];
+  const env = createEnv({ fetchImpl: async (u) => {
+    const url = String(u);
+    if (url.includes('/_next/')) return { ok: true, status: 200, text: async () => `var a="https://abcproj.supabase.co",b="${ANON}";` };
+    if (url.includes('/rest/v1/auctions')) {
+      if (url.includes(`winner_id=eq.${ME}`)) return json(mine.buy);
+      if (url.includes(`seller_id=eq.${ME}`)) return json(mine.sell);
+      asked.push(decodeURIComponent(url));
+      return json([...others, ...mine.buy, ...mine.sell]);
+    }
+    return json({});
+  } });
+  const { w, WMX } = env;
+  w.document.head.insertAdjacentHTML('beforeend', '<script src="https://www.wiki-masters.com/_next/static/chunks/app.js"></script>');
+  w.document.cookie = 'sb-abcproj-auth-token=base64-' + Buffer.from(JSON.stringify({ access_token: 'jeton', user: { id: ME } })).toString('base64');
+  await WMX.ledger.importAll(true);
+  const r = await WMX.ledger.fillAverages();
+  assert.equal(r.ok, true);
+  assert.ok(asked.length >= 1 && asked.every((u) => /status=eq\.settled_sold/.test(u) && /or=\(and\(card_id\.eq\./.test(u)), 'ventes conclues des cartes concernées, sur une fenêtre de dates');
+  const reg = await WMX.ledger.data();
+  assert.deepEqual({ ...reg.buys['b-Tours'].avgAt }, { v: 1200, n: 3, w: 7 }, 'moyenne de la semaine avant l’achat (pas celle d’aujourd’hui)');
+  assert.equal(reg.buys['b-Gard'].avgAt, null, 'aucune vente avant : pas de moyenne');
+  assert.equal(reg.sells['s-Tam'].avgAt.v, 25);
+  const box = w.document.createElement('div');
+  w.document.body.append(box);
+  await WMX.ledger.render(box);
+  [...box.querySelectorAll('.wmx-seg-btn')].find((b) => b.textContent === 'Mois').click(); // opérations de l'heure passée : visibles dans le mois
+  await sleep(50);
+  const heads = [...box.querySelectorAll('.wmx-lg-ops th')].map((th) => th.textContent);
+  assert.deepEqual(heads.slice(3), ['Moyenne', 'Prix d’achat', 'Prix de vente', 'Plus-value', 'Détention']);
+  const rowOf = (t) => [...box.querySelectorAll('.wmx-lg-ops tbody tr')].find((tr) => tr.textContent.includes(t));
+  const cells = (tr) => [...tr.querySelectorAll('td')].map((td) => td.textContent.replace(/\s/g, ' '));
+  const resale = cells(rowOf('Tours'));
+  assert.match(resale[3], /1 200 W/, 'Revente : moyenne au jour de l’achat');
+  assert.match(resale[4], /1 500 W\s*\+25 % \/ moy\./, 'prix d’achat et écart à la moyenne');
+  assert.match(resale[5], /1 900 W/);
+  const buy = cells(rowOf('Gard'));
+  assert.equal(buy[3], '—');
+  assert.equal(buy[5], '', 'achat : prix de vente vide');
+  const sell = cells(rowOf('Tam'));
+  assert.match(sell[3], /25 W/);
+  assert.equal(sell[4], 'non achetée');
+  // Infobulle du graphique : dans <body>, en position fixe, jamais dans le bloc du graphique (pas de défilement créé).
+  box.querySelectorAll('.wmx-lg-chart .hit')[0].dispatchEvent(new w.MouseEvent('mousemove', { bubbles: true, clientX: 50, clientY: 790 }));
+  const tip = w.document.querySelector('.wmx-lg-tip');
+  assert.equal(tip.parentElement, w.document.body);
+  assert.ok(tip.classList.contains('wmx-floattip'));
+  assert.ok(!box.querySelector('.wmx-lg-tip'));
+  assert.ok(parseInt(tip.style.top, 10) < 790, 'près du bas de l’écran : au-dessus du curseur');
   await sleep(700);
   env.close();
 });

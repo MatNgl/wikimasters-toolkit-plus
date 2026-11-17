@@ -1164,3 +1164,9 @@ select.wmx-input option { background: #0f1512; color: #e6ece9; font-weight: 500;
 .wmx-tc-note { color: #8fa097; font: 11px/1.3 Outfit, system-ui, sans-serif; padding-left: 2px; }
 button.wmx-tc-cancel { border: 1.5px solid #ef4444 !important; color: #fca5a5 !important; background: rgb(239 68 68 / .08) !important; font-weight: 600; }
 button.wmx-tc-cancel:hover { background: rgb(239 68 68 / .18) !important; color: #fee2e2 !important; }
+
+/* Infobulle des graphiques : par-dessus la page (fixe, dans <body>), jamais de défilement créé dans le bloc du graphique (1.0.76) */
+.wmx-lg-tip.wmx-floattip { position: fixed; z-index: 2147483600; }
+.wmx-lg-chartwrap { overflow-y: hidden; }
+.wmx-floattip .up { color: #2dd4a0; } .wmx-floattip .down { color: #f87171; } .wmx-floattip b.muted { color: #b9cbc2; }
+.wmx-floattip { font-family: Outfit, system-ui, sans-serif; }

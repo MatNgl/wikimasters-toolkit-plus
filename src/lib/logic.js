@@ -371,6 +371,20 @@
       const stock = (buys || []).filter((b) => !used.has(b.id)).sort((x, y) => y.t - x.t);
       return { ops, stock };
     },
+    /**
+     * Moyenne du marché d'une carte au moment d'une opération e = { id, t, rarity, shiny }, d'après les ventes conclues de cette carte
+     * sales = [{ id, price, t, rarity, shiny }] : ventes de la même rareté (et même version) AVANT l'opération (elle-même exclue), dans les 7 jours
+     * qui la précèdent ; s'il y en a moins de 3, les 5 dernières des 30 jours précédents. Rend { v, n, w: 7 | 30 } ou null (aucune vente sur 30 jours).
+     */
+    avgBefore(sales, e) {
+      const DAY = 24 * L.HOUR;
+      const same = (sales || []).filter((s) => s && s.id !== e.id && s.price > 0 && s.t < e.t && s.t >= e.t - 30 * DAY
+        && (!e.rarity || !s.rarity || s.rarity === e.rarity) && !!s.shiny === !!e.shiny).sort((a, b) => b.t - a.t);
+      if (!same.length) return null;
+      const week = same.filter((s) => s.t >= e.t - 7 * DAY);
+      const use = week.length >= 3 ? week : same.slice(0, 5);
+      return { v: Math.round(use.reduce((n, s) => n + s.price, 0) / use.length), n: use.length, w: week.length >= 3 ? 7 : 30 };
+    },
     /** Début de la période qui contient t (heure locale) : 'day' → ce jour à 0 h, 'week' → lundi 0 h, 'month' → le 1er à 0 h. */
     periodStart(t, unit) {
       const d = new Date(t);

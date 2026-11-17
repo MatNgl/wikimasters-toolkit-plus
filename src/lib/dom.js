@@ -35,6 +35,32 @@ WMX.dom = {
   keepAttached(node) { kept.add(node); return node; },
   /** Retire pour de bon un élément gardé par keepAttached (sinon il est remis dans la page aussitôt : bouton « Fermer » sans effet). */
   release(node) { if (node) { kept.delete(node); node.remove(); } },
+  /**
+   * Infobulle qui suit la souris, posée dans <body> en position fixe : elle passe PAR-DESSUS la page, sans jamais agrandir son conteneur
+   * (avant, placée dans le bloc du graphique, elle le débordait par le bas : une barre de défilement apparaissait et le graphique bougeait).
+   * Elle se retourne à gauche ou au-dessus du curseur près des bords de l'écran. Rend { el, show(event), hide() }.
+   */
+  floatTip(cls = 'wmx-lg-tip') {
+    document.querySelectorAll(`body > .wmx-floattip.${cls.split(' ')[0]}`).forEach((n) => n.remove()); // celle d'un graphique redessiné
+    const tip = WMX.dom.el('div', { class: `${cls} wmx-floattip`, role: 'tooltip' });
+    tip.hidden = true;
+    return {
+      el: tip,
+      show(e) {
+        if (!tip.isConnected) document.body.append(tip);
+        tip.hidden = false;
+        const w = tip.offsetWidth || 270, h = tip.offsetHeight || 120;
+        const vw = window.innerWidth || 1280, vh = window.innerHeight || 800;
+        let x = e.clientX + 16;
+        if (x + w > vw - 8) x = e.clientX - 16 - w;
+        let y = e.clientY - 24;
+        if (y + h > vh - 8) y = Math.min(e.clientY - 16 - h, vh - 8 - h); // trop bas : au-dessus du curseur
+        tip.style.left = `${Math.max(8, x)}px`;
+        tip.style.top = `${Math.max(8, y)}px`;
+      },
+      hide() { tip.hidden = true; },
+    };
+  },
   /** Case à cocher de l'extension (style .wmx-check, coche animée) ; variant 'danger' : rouge, pour une confirmation irréversible. */
   checkbox({ checked = false, variant = '', ...attrs } = {}) {
     const c = WMX.dom.el('input', { type: 'checkbox', class: `wmx-check${variant ? ` wmx-check--${variant}` : ''}`, ...attrs });

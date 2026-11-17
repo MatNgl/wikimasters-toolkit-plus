@@ -157,6 +157,87 @@
     try { return await SB.busy; } finally { SB.busy = null; }
   }
 
+  // --- Moyenne du marché au jour de chaque opération ---------------------------------------------------------------------
+  // La moyenne affichée aujourd'hui n'est pas celle du jour de l'achat (les prix bougent). Pour chaque opération du registre, on lit les ventes
+  // conclues de la carte dans les 30 jours qui la précèdent (base du jeu, lecture seule, 20 cartes par requête), et on garde leur moyenne
+  // (logic.avgBefore) dans la ligne : `avgAt` = { v, n, w } ou null (aucune vente), calculée une seule fois. Si la base ne montre pas les
+  // ventes des autres joueurs, on passe par l'historique des ventes du jeu (/api/marketplace/cards/{id}/sales), carte par carte.
+  const AVG = { busy: null, done: 0, todo: 0, mode: 'db', failed: null };
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const saleRow = (a) => ({ id: a.id, price: Number(a.final_price ?? a.price ?? 0) || 0, t: Date.parse(a.settled_at || a.sold_at || a.created_at) || 0,
+    rarity: WMX.normRarity?.(a.snapshot_rarity || a.rarity) || a.snapshot_rarity || a.rarity || '', shiny: !!a.is_shiny });
+  /** Ventes d'une carte selon l'historique du jeu (200 dernières) ; null si illisible. */
+  async function gameSales(cardId) {
+    for (let tryN = 0; tryN < 4; tryN++) {
+      let r;
+      try { r = await fetch(new URL(`/api/marketplace/cards/${cardId}/sales`, location.origin)); } catch (_) { return null; }
+      if (r.status === 403 || r.status === 429) { await sleep(30000); continue; } // le jeu freine : pause, puis on reprend
+      if (!r.ok) return null;
+      const j = await r.json().catch(() => null);
+      const arr = Array.isArray(j) ? j : j && (j.sales || j.items || j.history || Object.values(j).find((v) => Array.isArray(v) && v.some((x) => x && 'final_price' in x)));
+      return Array.isArray(arr) ? arr.filter((a) => a && (a.status == null || a.status === 'settled_sold')).map(saleRow) : null;
+    }
+    return null;
+  }
+  async function fillAverages(onProgress) {
+    await load();
+    if (AVG.busy) return AVG.busy;
+    const entries = [...Object.values(reg.buys), ...Object.values(reg.sells)].filter((e) => e.avgAt === undefined && e.card_id && e.t);
+    if (!entries.length) return { ok: true, added: 0 };
+    AVG.busy = (async () => {
+      const byCard = new Map();
+      for (const e of entries) { if (!byCard.has(e.card_id)) byCard.set(e.card_id, []); byCard.get(e.card_id).push(e); }
+      const cards = [...byCard.keys()];
+      AVG.todo = cards.length; AVG.done = 0; AVG.failed = null;
+      const own = new Set([...Object.keys(reg.buys), ...Object.keys(reg.sells)]);
+      const DAY = 24 * 3600000;
+      const iso = (t) => `"${new Date(t).toISOString()}"`;
+      let added = 0;
+      const apply = (ids, sales) => {
+        for (const id of ids) for (const e of byCard.get(id)) { e.avgAt = L.avgBefore(sales.get(id) || [], e); added += 1; }
+        AVG.done += ids.length;
+        save();
+        onProgress?.();
+      };
+      for (let i = 0; i < cards.length;) {
+        const chunk = AVG.mode === 'db' ? cards.slice(i, i + 20) : cards.slice(i, i + 1);
+        const sales = new Map();
+        if (AVG.mode === 'db') {
+          const cfg = await sbConfig();
+          const s = sbSession();
+          if (!cfg || !s) { AVG.mode = 'api'; continue; }
+          const cond = chunk.map((id) => { const ts = byCard.get(id).map((e) => e.t); return `and(card_id.eq.${id},settled_at.gte.${iso(Math.min(...ts) - 30 * DAY)},settled_at.lte.${iso(Math.max(...ts))})`; }).join(',');
+          const rows = [];
+          let bad = null;
+          for (let from = 0; from < 30000; from += 1000) {
+            let r;
+            try {
+              r = await fetch(`${cfg.url}/rest/v1/auctions?select=id,card_id,final_price,settled_at,snapshot_rarity,is_shiny&status=eq.settled_sold&or=${encodeURIComponent(`(${cond})`)}&order=settled_at.asc`,
+                { headers: { apikey: cfg.key, Authorization: `Bearer ${s.access_token}`, Range: `${from}-${from + 999}`, 'Range-Unit': 'items' } });
+            } catch (_) { bad = 'réseau'; break; }
+            if (!r.ok) { bad = `la base du jeu a répondu ${r.status}`; break; }
+            const page = await r.json();
+            rows.push(...page);
+            if (page.length < 1000) break;
+            await sleep(300);
+          }
+          // Base injoignable, ou qui ne montre que MES enchères (ventes des autres joueurs non lisibles) : historique des ventes du jeu, carte par carte.
+          if (bad || (chunk.length >= 5 && rows.length && rows.every((a) => own.has(a.id)))) { AVG.mode = 'api'; if (bad) AVG.failed = bad; continue; }
+          for (const a of rows) { if (!sales.has(a.card_id)) sales.set(a.card_id, []); sales.get(a.card_id).push(saleRow(a)); }
+          apply(chunk, sales);
+          await sleep(400);
+        } else {
+          const list = await gameSales(chunk[0]);
+          if (list) { sales.set(chunk[0], list); apply(chunk, sales); } else { AVG.done += 1; onProgress?.(); } // illisible : réessayée à la prochaine ouverture
+          await sleep(700);
+        }
+        i += chunk.length;
+      }
+      return { ok: true, added };
+    })();
+    try { return await AVG.busy; } finally { AVG.busy = null; }
+  }
+
   // --- Affichage -------------------------------------------------------------------------------
   const V = { mode: 'all', unit: 'day', cursor: null, chart: 'gain', ops: 'all', sort: 'recent', stockSort: 'recent' };
   const PERIODS = { day: 30, week: 12, month: 12 };
@@ -256,25 +337,21 @@
     WMX.dom.svg(svg, html);
     svg.addEventListener('click', (e) => { const i = e.target?.getAttribute?.('data-i'); if (i != null) onPick(series[Number(i)].start); });
     // Infobulle : suit la souris au-dessus des barres.
-    const tip = el('div', { class: 'wmx-lg-tip', hidden: '' });
-    const wrap = el('div', { class: 'wmx-lg-chartwrap' }, svg, tip);
+    const ft = WMX.dom.floatTip('wmx-lg-tip');
+    const tip = ft.el;
+    const wrap = el('div', { class: 'wmx-lg-chartwrap' }, svg);
     let shown = -1;
     svg.addEventListener('mousemove', (e) => {
       const i = e.target?.getAttribute?.('data-i');
-      if (i == null) { tip.hidden = true; shown = -1; return; }
+      if (i == null) { ft.hide(); shown = -1; return; }
       if (Number(i) !== shown) {
         shown = Number(i);
         const t = tipFor(series[shown]);
         tip.replaceChildren(el('span', { class: 'wmx-lg-tip-head' }, t.head), el('div', { class: 'wmx-lg-tip-main' }, el('b', { class: tone(t.value) }, `${signed(t.value)} W`), el('small', {}, t.label)), ...t.lines.map((l) => el('small', {}, l)));
       }
-      tip.hidden = false;
-      const r = wrap.getBoundingClientRect();
-      const x = e.clientX - r.left + wrap.scrollLeft, yy = e.clientY - r.top;
-      const left = x + 14 + 270 > wrap.scrollLeft + r.width ? x - 14 - 270 : x + 14;
-      tip.style.left = `${Math.max(4, left)}px`;
-      tip.style.top = `${Math.max(4, yy - 20)}px`;
+      ft.show(e);
     });
-    svg.addEventListener('mouseleave', () => { tip.hidden = true; shown = -1; });
+    svg.addEventListener('mouseleave', () => { ft.hide(); shown = -1; });
     return wrap;
   }
 
@@ -309,6 +386,11 @@
     // Historique complet : lu à la première ouverture, puis au plus une fois par heure (en arrière-plan ; la page se redessine à l'arrivée).
     if (!SB.busy && (!reg.full || Date.now() - reg.full.t > 3600000) && !(SB.last && !SB.last.ok && Date.now() - (SB.lastAt || 0) < 60000)) {
       importAll().then((r) => { SB.last = r; SB.lastAt = Date.now(); if (!r.ok && box.isConnected) redraw(); });
+    }
+    if (!AVG.busy) {
+      let lastPaint = Date.now();
+      fillAverages(() => { if (box.isConnected && Date.now() - lastPaint > 4000) { lastPaint = Date.now(); redraw(); } })
+        .then((r) => { if (r?.added && box.isConnected) redraw(); });
     }
     const { ops, stock } = L.ledgerPair(Object.values(reg.buys), Object.values(reg.sells));
     const all = V.mode === 'resale' ? ops.filter((o) => o.kind === 'resale') : ops;
@@ -351,6 +433,8 @@
         ? `Historique complet indisponible pour l’instant (${SB.last.why}) : seules vos 50 dernières ventes et vos 50 derniers achats sont connus, notés depuis le ${dateFull(reg.since || Date.now())}. « Actualiser » réessaie.`
         : 'Lecture de l’historique complet en cours…');
 
+    if (AVG.busy && AVG.todo) note.append(` Moyennes au jour de chaque opération : ${fmt(AVG.done)} / ${fmt(AVG.todo)} cartes lues…`);
+
     const nav = el('div', { class: 'wmx-lg-nav' },
       el('button', { type: 'button', class: 'wmx-lg-arrow', title: `${unitWord} précédent${V.unit === 'week' ? 'e' : ''}`, 'aria-label': 'Période précédente', onclick: () => { V.cursor = L.periodShift(V.cursor, V.unit, -1); redraw(); } }, '←'),
       el('div', {}, el('small', {}, pt.eyebrow), el('h3', {}, pt.title)),
@@ -388,19 +472,36 @@
         V.mode === 'all' ? seg([['all', `Tout ${inPeriod.length}`], ['buy', `Achats ${nb}`], ['sell', `Ventes ${inPeriod.length - nb}`]], V.ops, (v) => { V.ops = v; redraw(); }) : '',
         seg([['recent', 'Récentes'], ['gain', 'Plus-value']], V.sort, (v) => { V.sort = v; redraw(); })));
     const opKind = { buy: 'Achat', sell: 'Vente', resale: 'Revente' };
+    // Moyenne au jour de l'achat (pour une vente de carte non achetée : au jour de la vente).
+    const avgOf = (e) => (e ? (reg.buys[e.id] || reg.sells[e.id] || e).avgAt : undefined);
+    const avgCell = (e, at) => {
+      const a = avgOf(e);
+      if (a === undefined) return el('td', { class: 'n muted', title: 'Moyenne en cours de lecture' }, '…');
+      if (!a) return el('td', { class: 'n muted', title: 'Aucune vente de cette carte (même rareté) dans les 30 jours précédents' }, '—');
+      return el('td', { class: 'n', title: `Moyenne de ${a.n} vente${a.n > 1 ? 's' : ''} de la carte (même rareté) ${a.w === 7 ? 'dans les 7 jours' : 'les plus récentes, sur 30 jours au plus,'} avant ${at}` }, `${fmt(a.v)} W`);
+    };
+    // Prix d'achat, avec l'écart à la moyenne du jour (vert : acheté sous la moyenne).
+    const buyCell = (e, price) => {
+      const a = avgOf(e);
+      const d = a?.v ? ((price - a.v) / a.v) * 100 : null;
+      return el('td', { class: 'n' }, `${fmt(price)} W`, d == null ? '' : el('small', { class: tone(-d), title: 'Écart à la moyenne du jour de l’achat' }, `${pctText(d)} / moy.`));
+    };
     const gainCell = (o) => (o.kind === 'resale'
       ? el('td', { class: `n ${tone(o.gain)}` }, `${signed(o.gain)} W`, el('small', {}, pctText(o.buy.price ? (o.gain / o.buy.price) * 100 : 0)))
       : el('td', { class: 'n muted' }, '—'));
     const table = V.mode === 'resale'
       ? el('table', { class: 'wmx-lg-table' },
-        el('thead', {}, el('tr', {}, el('th', {}, V.unit === 'day' ? 'Vendue à' : 'Vendue le'), el('th', {}, 'Carte'), el('th', {}, 'Achetée le'), el('th', { class: 'n' }, 'Prix d’achat'), el('th', { class: 'n' }, 'Prix de vente'), el('th', { class: 'n' }, 'Plus-value'), el('th', { class: 'n' }, 'Détention'))),
+        el('thead', {}, el('tr', {}, el('th', {}, V.unit === 'day' ? 'Vendue à' : 'Vendue le'), el('th', {}, 'Carte'), el('th', {}, 'Achetée le'), el('th', { class: 'n', title: 'Moyenne du marché de la carte le jour de l’achat' }, 'Moyenne'), el('th', { class: 'n' }, 'Prix d’achat'), el('th', { class: 'n' }, 'Prix de vente'), el('th', { class: 'n' }, 'Plus-value'), el('th', { class: 'n' }, 'Détention'))),
         el('tbody', {}, ...list.map((o) => el('tr', {}, el('td', { class: 'when' }, when(o.t)), el('td', {}, cardCell(o)), el('td', { class: 'when' }, `${dayShort(o.buy.t)}, ${hm(o.buy.t)}`),
-          el('td', { class: 'n' }, `${fmt(o.buy.price)} W`), el('td', { class: 'n' }, `${fmt(o.price)} W`), gainCell(o), el('td', { class: 'n' }, L.holdText(o.hold))))))
+          avgCell(o.buy, 'l’achat'), buyCell(o.buy, o.buy.price), el('td', { class: 'n' }, `${fmt(o.price)} W`), gainCell(o), el('td', { class: 'n' }, L.holdText(o.hold))))))
       : el('table', { class: 'wmx-lg-table' },
-        el('thead', {}, el('tr', {}, el('th', {}, V.unit === 'day' ? 'Heure' : 'Date'), el('th', {}, 'Carte'), el('th', {}, 'Opération'), el('th', { class: 'n' }, 'Prix'), el('th', { class: 'n' }, 'Prix d’achat'), el('th', { class: 'n' }, 'Plus-value'), el('th', { class: 'n' }, 'Détention'))),
+        el('thead', {}, el('tr', {}, el('th', {}, V.unit === 'day' ? 'Heure' : 'Date'), el('th', {}, 'Carte'), el('th', {}, 'Opération'),
+          el('th', { class: 'n', title: 'Moyenne du marché de la carte le jour de l’achat (vente d’une carte non achetée : le jour de la vente)' }, 'Moyenne'),
+          el('th', { class: 'n' }, 'Prix d’achat'), el('th', { class: 'n' }, 'Prix de vente'), el('th', { class: 'n' }, 'Plus-value'), el('th', { class: 'n' }, 'Détention'))),
         el('tbody', {}, ...list.map((o) => el('tr', {}, el('td', { class: 'when' }, when(o.t)), el('td', {}, cardCell(o)), el('td', {}, el('span', { class: `wmx-lg-op ${o.kind}` }, opKind[o.kind])),
-          el('td', { class: 'n' }, `${fmt(o.price)} W`),
-          el('td', { class: 'n muted' }, o.kind === 'resale' ? `${fmt(o.buy.price)} W` : o.kind === 'sell' ? 'non achetée' : '—'),
+          o.kind === 'resale' ? avgCell(o.buy, 'l’achat') : avgCell(o, o.kind === 'buy' ? 'l’achat' : 'la vente'),
+          o.kind === 'buy' ? buyCell(o, o.price) : o.kind === 'resale' ? buyCell(o.buy, o.buy.price) : el('td', { class: 'n muted' }, 'non achetée'),
+          o.kind === 'buy' ? el('td', { class: 'n' }) : el('td', { class: 'n' }, `${fmt(o.price)} W`),
           gainCell(o), el('td', { class: 'n muted' }, o.kind === 'resale' ? L.holdText(o.hold) : '—')))));
     const opsBox = el('div', { class: 'wmx-panelbox wmx-lg-ops' }, opsHead,
       list.length ? el('div', { class: 'wmx-lg-tablewrap' }, table) : el('p', { class: 'wmx-cp-empty' }, V.mode === 'resale' ? 'Aucune revente sur cette période.' : 'Aucune opération sur cette période.'));
@@ -418,10 +519,10 @@
           el('small', {}, `${fmt(owned.length)} carte${owned.length > 1 ? 's' : ''} · payées ${fmt(owned.reduce((n, b) => n + b.price, 0))} W · plus-value latente `, el('b', { class: tone(latent) }, `${signed(latent)} W`), unknown ? ` (${unknown} sans prix du marché)` : ''),
           seg([['recent', 'Récentes'], ['gain', 'Plus-value']], V.stockSort, (v) => { V.stockSort = v; redraw(); }))),
       stockList.length ? el('div', { class: 'wmx-lg-tablewrap' }, el('table', { class: 'wmx-lg-table' },
-        el('thead', {}, el('tr', {}, el('th', {}, 'Achetée'), el('th', {}, 'Carte'), el('th', { class: 'n' }, 'Prix d’achat'), el('th', { class: 'n' }, 'Prix du marché'), el('th', { class: 'n' }, 'Plus-value latente'), el('th', { class: 'n' }, 'Depuis'))),
+        el('thead', {}, el('tr', {}, el('th', {}, 'Achetée'), el('th', {}, 'Carte'), el('th', { class: 'n', title: 'Moyenne du marché de la carte le jour de l’achat' }, 'Moyenne à l’achat'), el('th', { class: 'n' }, 'Prix d’achat'), el('th', { class: 'n' }, 'Prix du marché'), el('th', { class: 'n' }, 'Plus-value latente'), el('th', { class: 'n' }, 'Depuis'))),
         el('tbody', {}, ...stockList.slice(0, 200).map((b) => {
           const m = market(b);
-          return el('tr', {}, el('td', { class: 'when' }, `${dayShort(b.t)}, ${hm(b.t)}`), el('td', {}, cardCell(b)), el('td', { class: 'n' }, `${fmt(b.price)} W`),
+          return el('tr', {}, el('td', { class: 'when' }, `${dayShort(b.t)}, ${hm(b.t)}`), el('td', {}, cardCell(b)), avgCell(b, 'l’achat'), buyCell(b, b.price),
             el('td', { class: 'n' }, m == null ? '—' : `${fmt(m)} W`), el('td', { class: `n ${m == null ? 'muted' : tone(m - b.price)}` }, m == null ? 'prix inconnu' : `${signed(m - b.price)} W`),
             el('td', { class: 'n muted' }, L.holdText(Date.now() - b.t)));
         }))))
@@ -430,5 +531,5 @@
     box.replaceChildren(el('div', { class: 'wmx-lg' }, head, since, note, periodBox, opsBox, V.mode === 'all' ? stockBox : ''));
   }
 
-  WMX.ledger = { ingest, refresh, render, importAll, onChange: (cb) => { listeners.add(cb); return () => listeners.delete(cb); }, data: async () => (await load(), reg) };
+  WMX.ledger = { fillAverages,  ingest, refresh, render, importAll, onChange: (cb) => { listeners.add(cb); return () => listeners.delete(cb); }, data: async () => (await load(), reg) };
 })();

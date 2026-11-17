@@ -436,3 +436,12 @@ test('échanges : bilan vu de mon côté (gain, perte, équilibré, prix manquan
   b = L.tradeBalance({ w: 0, cards: [c(null, true)] }, { w: 10, cards: [] });
   assert.equal(b.noSale, 1, 'une carte sans vente compte 0 W'); assert.equal(b.kind, 'win');
 });
+
+test('plus-values : moyenne du marché au jour d’une opération (ventes de la même rareté avant, 7 jours ou 5 dernières sur 30 jours)', () => {
+  const H = 3600000, D = 24 * H, t = 100 * D;
+  const s = (id, price, ago, rarity = 'L', shiny = false) => ({ id, price, t: t - ago, rarity, shiny });
+  const e = { id: 'moi', t, rarity: 'L', shiny: false };
+  assert.deepEqual(L.avgBefore([s('a', 1000, 1 * D), s('b', 1200, 2 * D), s('c', 1400, 3 * D), s('vieille', 9000, 20 * D)], e), { v: 1200, n: 3, w: 7 }, '3 ventes dans la semaine : leur moyenne');
+  assert.deepEqual(L.avgBefore([s('a', 1000, 1 * D), s('b', 2000, 10 * D), s('c', 3000, 12 * D)], e), { v: 2000, n: 3, w: 30 }, 'moins de 3 dans la semaine : les 5 dernières sur 30 jours');
+  assert.equal(L.avgBefore([s('apres', 1000, -H), s('moi', 5000, 0), s('ur', 300, D, 'UR'), s('shiny', 8000, D, 'L', true), s('trop-vieille', 100, 40 * D)], e), null, 'jamais : après, elle-même, autre rareté, autre version, plus de 30 jours');
+});
