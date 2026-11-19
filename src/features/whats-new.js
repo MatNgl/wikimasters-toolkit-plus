@@ -7,6 +7,11 @@
   // Nouveautés, de la plus récente à la plus ancienne. Écrites pour les joueurs : ce qu'ils voient et ce que ça change pour eux.
   // kind : 'new' (nouveau), 'better' (amélioré), 'fix' (corrigé).
   const CHANGES = [
+    { v: '1.0.90', title: 'Ouvrir ses paquets sans quitter sa page', items: [
+      ['new', 'Ouverture en parallèle : « Tout ouvrir » ouvre vos paquets dans une page Paquets invisible, vous continuez à jouer pendant ce temps (Paramètres → Paquets).'],
+      ['new', 'Tiroir à cartes : les cartes tirées s’y ajoutent avec l’animation de votre style d’ouverture, puis « Révéler » les montre toutes quand vous voulez.'],
+      ['better', 'Pendant l’ouverture en plein écran, les cartes arrivent aussi selon le style : en pile, ou avec une étoile filante par paquet (Vœu).'],
+    ] },
     { v: '1.0.87', title: 'Ouverture des paquets et Collection', items: [
       ['new', 'Deux nouveaux styles d’ouverture des paquets : Pile lumineuse et Vœu (étoile filante). À choisir dans Paramètres → Paquets, avec un aperçu en direct.'],
       ['better', 'Barre de la Collection redessinée : valeur estimée bien visible, jauge de chargement des prix avec pause et arrêt.'],

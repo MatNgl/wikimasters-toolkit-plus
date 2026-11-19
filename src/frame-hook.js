@@ -6,8 +6,25 @@
 // Dans la page Collection invisible de la défausse (« #wmx-discard »), il ne répond à aucune confirmation : il note seulement le blocage
 // « automatisation » du jeu (réponse 403 automation_limit, de n'importe quelle requête) dans <html data-wmx-blocked> (date), pour que la défausse
 // se mette en pause puis réessaie (discard.js).
+// Dans la page Paquets invisible de l'ouverture en parallèle (« #wmx-pulls »), il relaie à la page principale (postMessage, texte JSON) le début
+// de chaque requête du jeu et la réponse à l'ouverture d'un paquet : l'extension y lit les cartes tirées, comme dans la page principale.
 (() => {
   const auto = location.hash.includes('wmx-auto');
+  if (window !== window.top && location.hash.includes('wmx-pulls')) {
+    const post = (msg) => { try { window.top.postMessage(JSON.stringify({ wmx: 'pulls', ...msg }), location.origin); } catch (_) { /* page principale partie */ } };
+    const fetch0 = window.fetch;
+    window.fetch = function wmxPullsFetch(input, init) {
+      let url = '';
+      try { url = typeof input === 'string' ? input : input.url; } catch (_) { /* adresse illisible */ }
+      const method = String((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+      if (url && url.includes('/api/')) post({ t: 'start', url });
+      return fetch0.apply(this, arguments).then((res) => {
+        if (url && url.includes('/api/') && method !== 'GET') res.clone().json().then((data) => post({ t: 'api', url, method, status: res.status, data })).catch(() => post({ t: 'api', url, method, status: res.status, data: null }));
+        return res;
+      }, (err) => { if (url && url.includes('/api/') && method !== 'GET') post({ t: 'api', url, method, status: 0, data: null }); throw err; });
+    };
+    return;
+  }
   if (window === window.top || (!auto && !location.hash.includes('wmx-discard'))) return;
   if (auto) {
     window.confirm = () => true;

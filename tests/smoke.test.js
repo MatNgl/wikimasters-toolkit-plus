@@ -1860,7 +1860,7 @@ test('réglages : menu de gauche (une page par thème), brouillon gardé d’une
   const navBtns = [...modal.querySelectorAll('.wmx-set-navbtn')];
   assert.deepEqual(navBtns.map((b) => b.querySelector('b').textContent), ['Paquets', 'Enchères', 'Vente', 'Aspect des cartes', 'Journal et données']);
   const titles = () => [...modal.querySelectorAll('.wmx-sec h3')].map((h) => h.textContent);
-  assert.deepEqual(titles(), ['Révélation', 'Ouverture automatique'], 'une seule page à la fois');
+  assert.deepEqual(titles(), ['Révélation', 'Ouverture des paquets', 'Ouverture automatique'], 'une seule page à la fois');
   // Un réglage changé sur une page reste en brouillon quand on passe à une autre.
   const sw = [...modal.querySelectorAll('.wmx-setrow')].find((r) => /Ouvrir quand le stock est plein/.test(r.textContent)).querySelector('.wmx-switch');
   const before = sw.getAttribute('aria-checked');

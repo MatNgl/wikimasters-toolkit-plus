@@ -1357,3 +1357,59 @@ button.wmx-tc-cancel:hover { background: rgb(239 68 68 / .18) !important; color:
 @media (max-width: 1100px) { .wmx-set-preview { display: none; } }
 @media (prefers-reduced-motion: reduce) { .wmx-rv-comet, .wmx-rv-flash, .wmx-rv-burst::before, .wmx-rv-glow .wmx-back { animation: none !important; } }
 .wmx-set-preview .wmx-rv-warn { color: #fcd34d; background: #fbbf2414; border: 1px solid #fbbf2440; border-radius: 10px; padding: 8px 10px; }
+
+/* ===== Tiroir à cartes (pack-drawer.js, 1.0.90) ===== */
+.wmx-dr { position: fixed; left: 104px; bottom: 18px; z-index: 9990; width: 318px; display: flex; flex-direction: column; gap: 9px; padding: 12px 12px 12px; border-radius: 16px;
+  border: 1px solid #22322b; background: radial-gradient(120% 90% at 0% 0%, #2dd4a01a, transparent 60%), linear-gradient(180deg, #111a16f5, #0b100ef5); color: #e6efe9;
+  font-family: Outfit, system-ui, sans-serif; box-shadow: 0 18px 50px #000b, inset 0 1px 0 #ffffff0d; animation: wmx-dr-in .25s ease-out both; }
+.wmx-dr[hidden] { display: none; }
+.wmx-dr.opening { border-color: #2dd4a066; }
+@keyframes wmx-dr-in { from { opacity: 0; transform: translateY(10px); } }
+.wmx-dr-head { display: flex; align-items: center; gap: 8px; }
+.wmx-dr-head b { font-size: 14px; }
+.wmx-dr-count { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--acc, #2dd4a0); padding: 2px 8px; border-radius: 99px; background: #2dd4a01a; border: 1px solid #2dd4a044; font-variant-numeric: tabular-nums; }
+.wmx-dr-min { all: unset; cursor: pointer; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 6px; color: #9db5a8; font-weight: 800; }
+.wmx-dr-min:hover { background: #ffffff10; color: #fff; }
+.wmx-dr-status { display: flex; flex-direction: column; gap: 5px; }
+.wmx-dr-line { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 12.5px; color: #cfe0d7; }
+.wmx-dr-line small, .wmx-dr-status > small { color: #7f9a8d; font-size: 11.5px; }
+.wmx-dr-bar { height: 6px; border-radius: 99px; background: #14201b; overflow: hidden; }
+.wmx-dr-bar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #1fae84, #2dd4a0, #8ff5d2); transition: width .35s ease; }
+.wmx-dr-stage { position: relative; height: 70px; border-radius: 12px; background: #070b09; overflow: hidden; display: flex; align-items: center; justify-content: center; gap: 14px; }
+.wmx-dr-row { display: flex; gap: 6px; }
+.wmx-dr-card { width: 36px; height: 50px; display: grid; place-items: center; border-radius: 7px; font: 900 13px Outfit, system-ui; font-style: normal; color: #3b4a44;
+  background: linear-gradient(160deg, #1a2420, #0b0f0d); border: 1px solid #2a3732; animation: wmx-dr-pop .3s ease-out var(--d, 0ms) both; }
+@keyframes wmx-dr-pop { from { opacity: 0; transform: translateY(-14px) scale(.8); } }
+.wmx-dr-card.aura { color: rgb(var(--rgb)); border-color: rgb(var(--rgb) / .85); box-shadow: 0 0 12px rgb(var(--rgb) / .55); animation-name: wmx-dr-rise; }
+@keyframes wmx-dr-rise { from { opacity: 0; transform: translateY(16px); } }
+.wmx-dr-card.to-pile { animation: wmx-dr-topile .26s ease-in forwards; }
+@keyframes wmx-dr-topile { to { transform: translateX(-120px) scale(.7) rotate(-10deg); opacity: 0; } }
+.wmx-dr-pile { position: relative; width: 36px; height: 50px; }
+.wmx-dr-pile i { position: absolute; inset: 0; border-radius: 7px; background: linear-gradient(160deg, #1a2420, #0b0f0d); border: 1px solid #2a3732; }
+.wmx-dr-pile i:first-child { transform: translate(-3px, 3px) rotate(-5deg); }
+.wmx-dr-pile b { position: absolute; inset: 0; display: grid; place-items: center; font: 800 12px Outfit, system-ui; color: var(--acc, #2dd4a0); font-variant-numeric: tabular-nums; }
+.wmx-dr-pile.bump { animation: wmx-dr-bump .22s ease-out; }
+@keyframes wmx-dr-bump { 50% { transform: scale(1.12); } }
+.wmx-dr-comet { position: absolute; left: 105%; top: 18%; width: 46%; height: 3px; border-radius: 99px; transform: rotate(-16deg);
+  background: linear-gradient(90deg, transparent, rgb(var(--rgb) / .3) 40%, rgb(var(--rgb)) 92%, #fff); box-shadow: 0 0 12px rgb(var(--rgb)); animation: wmx-dr-comet .85s cubic-bezier(.45,.05,.4,1) forwards; }
+@keyframes wmx-dr-comet { to { left: -50%; top: 70%; } }
+.wmx-dr-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.wmx-dr-actions:empty { display: none; }
+.wmx-dr-actions .wmx-btn { padding: 7px 14px; border-radius: 10px; font-weight: 700; }
+.wmx-dr.collapsed { width: auto; padding: 0; border-radius: 999px; background: none; border: 0; box-shadow: none; }
+.wmx-dr-pill { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px 7px 9px; border-radius: 999px; border: 1px solid #2dd4a066;
+  background: #0d1411f2; color: #e6efe9; font: 600 13px Outfit, system-ui, sans-serif; box-shadow: 0 10px 30px #000a; }
+.wmx-dr-pill b { color: var(--acc, #2dd4a0); font-variant-numeric: tabular-nums; }
+.wmx-dr-pill:hover { border-color: var(--acc, #2dd4a0); }
+/* Page Paquets invisible : visible au centre seulement pendant une vérification humaine du jeu */
+.wmx-sheet-frame.wmx-pulls-frame.wmx-human { opacity: 1; pointer-events: auto; z-index: 2147483100; }
+/* Cartes qui s'ajoutent pendant l'ouverture (écran plein), selon le style */
+.wmx-tile.wmx-rv-in-stack { animation: wmx-rv-instack .42s cubic-bezier(.2,.8,.3,1.1) var(--d, 0ms) both; }
+@keyframes wmx-rv-instack { from { opacity: 0; transform: translateY(-46px) rotate(-9deg) scale(.86); } }
+.wmx-tile.wmx-rv-pre { animation: wmx-rv-rise .4s ease-out var(--d, 0ms) both; }
+.wmx-tile.wmx-rv-pre .wmx-back { color: rgb(var(--rgb)); border-color: rgb(var(--rgb) / .75); box-shadow: 0 0 var(--glow) rgb(var(--rgb) / .45); }
+.wmx-rv-packcomet { position: fixed; z-index: 10001; left: 105%; top: 10%; width: 30vw; height: 4px; border-radius: 99px; pointer-events: none; transform: rotate(-18deg);
+  background: linear-gradient(90deg, transparent, rgb(var(--rgb) / .3) 40%, rgb(var(--rgb)) 92%, #fff); box-shadow: 0 0 16px rgb(var(--rgb)), 0 0 36px rgb(var(--rgb) / .5); animation: wmx-rv-packcomet 1.1s cubic-bezier(.45,.05,.4,1) forwards; }
+@keyframes wmx-rv-packcomet { to { left: -35%; top: 46%; } }
+@media (max-width: 720px) { .wmx-dr { left: 12px; right: 12px; width: auto; bottom: 86px; } }
+@media (prefers-reduced-motion: reduce) { .wmx-dr, .wmx-dr-card, .wmx-dr-comet, .wmx-dr-pile.bump, .wmx-rv-in-stack, .wmx-rv-pre, .wmx-rv-packcomet { animation: none !important; } }

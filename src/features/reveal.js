@@ -4,6 +4,7 @@
 (() => {
   const { el, sleep } = WMX.dom;
   const ORDER = ['C', 'PC', 'R', 'SR', 'UR', 'L'];
+  const RANKS = { C: 0, PC: 1, R: 2, SR: 3, UR: 4, L: 5 };
   // Couleurs relevées sur les cartes du jeu (rgb) et rayon de halo.
   const RGB = { C: '183 193 206', PC: '110 231 173', R: '100 191 255', SR: '244 114 182', UR: '255 159 67', L: '255 212 90' };
   const GLOW = { C: 8, PC: 13, R: 17, SR: 22, UR: 28, L: 32 };
@@ -198,8 +199,22 @@
         all.push(...cards);
         WMX.store.set('pendingCards', all);
         WMX.prices.prefetch?.(cards); // sans effet si déjà demandés par l'ouverture du paquet
-        for (let i = 0; i < cards.length; i++) grid.append(el('div', { class: 'wmx-tile wmx-neutral' },
-          el('div', { class: 'wmx-inner' }, el('div', { class: 'wmx-back' }, 'W'))));
+        // Cartes qui s'ajoutent pendant l'ouverture, selon le style choisi : Classique (face cachée, neutres), Pile lumineuse (elles tombent
+        // en pile), Vœu (étoile filante de la couleur de la meilleure carte du paquet, et chaque carte brille de sa rareté, comme dans un gacha).
+        const style = WMX.settings?.revealStyle || 'classic';
+        const anim = WMX.settings?.speed !== 'instant';
+        if (anim && style === 'wish') {
+          const best = cards.reduce((b, c) => (RANKS[rar(c)] > RANKS[b] ? rar(c) : b), 'C');
+          const comet = el('i', { class: `wmx-rv-packcomet r-${best}`, style: styleVars(best) });
+          overlay.append(comet);
+          setTimeout(() => comet.remove(), 1300);
+        }
+        for (let i = 0; i < cards.length; i++) {
+          const r = rar(cards[i]);
+          const cls = !anim ? '' : style === 'stack' ? ' wmx-rv-in-stack' : style === 'wish' ? ' wmx-rv-pre' : '';
+          grid.append(el('div', { class: `wmx-tile wmx-neutral${cls}`, style: `${styleVars(r)};--d:${i * 70}ms` },
+            el('div', { class: 'wmx-inner' }, el('div', { class: 'wmx-back' }, 'W'))));
+        }
         title.textContent = stopped ? `${all.length} cartes tirées — arrêt de l’ouverture…` : `${all.length} cartes tirées…`;
       },
       setRemaining(n, total) {
@@ -245,7 +260,6 @@
   // Chaque style révèle les cartes (déjà dans la grille, face cachée) une par une et doit respecter skip() (« Passer ») et f (vitesse).
   // La couleur d'une carte n'apparaît qu'au moment de SA révélation (pas de spoil), sauf dans « Vœu », où, comme dans les jeux gacha,
   // l'étoile filante annonce la meilleure rareté du tirage et les cartes brillent de leur couleur avant d'être retournées.
-  const RANKS = { C: 0, PC: 1, R: 2, SR: 3, UR: 4, L: 5 };
   WMX.REVEAL_STYLES = [
     ['classic', 'Classique', 'Chaque carte tremble, s’illumine de sa rareté puis se retourne.'],
     ['stack', 'Pile lumineuse', 'Les cartes s’empilent ; celle du dessus brille de sa rareté avant d’être retournée et posée.'],

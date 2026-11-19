@@ -40,19 +40,52 @@
     return Number.isNaN(t) ? null : Math.max(1, (t - Date.now()) / 1000);
   };
 
+  // --- Où l'ouverture a lieu ----------------------------------------------------------------------
+  // CTX null : la page principale (page Paquets affichée). Ouverture en parallèle : une page Paquets INVISIBLE (cadre « #wmx-pulls ») où
+  // l'extension clique « Ouvrir » ; vous pouvez utiliser le jeu pendant ce temps. Ses requêtes sont relayées par frame-hook.js (postMessage)
+  // et remises dans le circuit habituel (wmx:start / wmx:api) : cartes tirées, statistiques et copie de la collection comme d'habitude.
+  let CTX = null;
+  const D = () => (CTX ? CTX.doc() : document) || document;
+  const bodyText = () => { try { return D().body?.innerText || ''; } catch (_) { return ''; } };
+  window.addEventListener('message', (e) => {
+    if (!CTX || e.origin !== location.origin || e.source !== CTX.win()) return;
+    let d = null;
+    try { d = JSON.parse(String(e.data)); } catch (_) { return; }
+    if (d?.wmx !== 'pulls') return;
+    if (d.t === 'start') window.dispatchEvent(new CustomEvent('wmx:start', { detail: { url: d.url } }));
+    else if (d.t === 'api') window.dispatchEvent(new CustomEvent('wmx:api', { detail: { url: d.url, method: d.method, status: d.status, data: d.data, req: null } }));
+  });
+  /** Page Paquets invisible, prête quand son bouton « Ouvrir » et son compteur sont affichés ; null si elle ne se charge pas. */
+  async function pullsFrame() {
+    const f = el('iframe', { class: 'wmx-sheet-frame wmx-pulls-frame', src: '/pulls#wmx-pulls', title: 'Paquets (ouverture en parallèle)', tabindex: '-1' });
+    document.body.append(f);
+    const doc = () => { try { return f.contentDocument; } catch (_) { return null; } };
+    const ok = await WMX.dom.waitFor(() => {
+      const d = doc();
+      return d?.body && /\d+\s*\/\s*\d+\s*paquets?/i.test(d.body.innerText || '') && [...d.querySelectorAll('button')].some((b) => b.textContent.trim().toLowerCase() === 'ouvrir');
+    }, 40000, 300);
+    if (!ok) { f.remove(); return null; }
+    return {
+      frame: f, doc, win: () => f.contentWindow,
+      /** Vérification humaine du jeu : la page invisible apparaît au centre de l'écran, le temps de la faire. */
+      human(on) { f.classList.toggle('wmx-on', !!on); f.classList.toggle('wmx-human', !!on); },
+      close() { f.remove(); },
+    };
+  }
+
   // --- Lecture de l'état du jeu --------------------------------------------------------------
   const packInfo = () => {
-    const m = document.body.innerText.match(/(\d+)\s*\/\s*(\d+)\s*paquets?/i);
+    const m = bodyText().match(/(\d+)\s*\/\s*(\d+)\s*paquets?/i);
     if (!m) return { packs: 0, max: WMX.logic.PACK_MAX };
     const max = WMX.logic.packMax(m[2]); // stock maximum affiché par le jeu (« 3 / 20 paquets »)
     return { packs: Math.min(max, Number(m[1])), max };
   };
   const packsLeft = () => packInfo().packs;
   const nextPackIn = () => {
-    const m = document.body.innerText.match(/Prochain dans\s*(\d+):(\d{2})/i);
+    const m = bodyText().match(/Prochain dans\s*(\d+):(\d{2})/i);
     return m ? Number(m[1]) * 60 + Number(m[2]) : null;
   };
-  const humanCheck = () => /vérification rapide/i.test(document.body.innerText);
+  const humanCheck = () => /vérification rapide/i.test(bodyText());
   const rand = (a, b) => a + Math.random() * Math.max(0, b - a);
   const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
@@ -93,13 +126,13 @@
   async function dismissResult() {
     // On ignore notre interface, dont l'image figée (qui contient une copie du bouton « Ouvrir »).
     const outside = (e) => !e.closest('.wmx-panel, .wmx-overlay, .wmx-cover');
-    const nativeOpen = () => [...document.querySelectorAll('button')].find((b) => outside(b) && b.textContent.trim().toLowerCase() === 'ouvrir');
+    const nativeOpen = () => [...D().querySelectorAll('button')].find((b) => outside(b) && b.textContent.trim().toLowerCase() === 'ouvrir');
     for (let i = 0; i < 250; i++) {
       if (nativeOpen()) return true; // même désactivé : après le dernier paquet il reste grisé
-      const cont = findExact('continuer', 'button');
+      const cont = CTX ? [...D().querySelectorAll('button')].find((b) => b.textContent.trim().toLowerCase() === 'continuer') : findExact('continuer', 'button');
       if (cont && !cont.disabled && outside(cont)) cont.click();
       else {
-        const arrows = [...document.querySelectorAll('button')]
+        const arrows = [...D().querySelectorAll('button')]
           .filter((b) => outside(b) && !b.textContent.trim() && /w-12/.test(b.className) && /rounded-full/.test(b.className) && !b.disabled);
         arrows.at(-1)?.click();
       }
@@ -140,12 +173,12 @@
   const stopped = (session) => !!session?.stopped;
 
   async function openOne(session) {
-    const btn = [...document.querySelectorAll('button')]
+    const btn = [...D().querySelectorAll('button')]
       .find((b) => !b.disabled && !b.closest('.wmx-cover, .wmx-panel') && b.textContent.trim().toLowerCase() === 'ouvrir');
     if (!btn) return null;
     lastCards = null;
-    const snap = makeSnapshot(btn, packsLeft());
-    document.documentElement.classList.add('wmx-opening');
+    const snap = CTX ? null : makeSnapshot(btn, packsLeft()); // page invisible : rien à masquer
+    if (!CTX) document.documentElement.classList.add('wmx-opening');
     btn.click();
     let clickedAt = Date.now();
     openError = null;
@@ -193,7 +226,7 @@
         }
         if (stopped(session)) break;
         session?.setNote('');
-        const retry = [...document.querySelectorAll('button')]
+        const retry = [...D().querySelectorAll('button')]
           .find((b) => !b.disabled && !b.closest('.wmx-cover, .wmx-panel') && b.textContent.trim().toLowerCase() === 'ouvrir');
         if (retry) retry.click();
         clickedAt = Date.now();
@@ -201,11 +234,12 @@
       }
       const hc = humanCheck();
       session?.yield(hc); // l'écran de révélation s'efface pour laisser la vérification du jeu cliquable
+      CTX?.human(hc); // page invisible : elle s'affiche au centre le temps de la vérification
       setStatus(hc ? 'Vérification du jeu : cliquez-la si besoin…' : 'Ouverture…');
       // Clic perdu (le jeu n'était pas encore prêt) : aucune requête d'ouverture n'est partie et le bouton est
       // toujours là, on recommence au lieu d'attendre indéfiniment.
       if (!hc && Date.now() - clickedAt > 2500 && !(WMX.apiStarts || []).some((a) => a.t >= clickedAt && /human-check|packs\/open/.test(a.path))) {
-        const again = [...document.querySelectorAll('button')]
+        const again = [...D().querySelectorAll('button')]
           .find((b) => !b.disabled && !b.closest('.wmx-cover, .wmx-panel') && b.textContent.trim().toLowerCase() === 'ouvrir');
         if (again) again.click();
         clickedAt = Date.now();
@@ -217,7 +251,7 @@
         if (waited > noAnswerMs()) {
           WMX.journal?.add('Paquets', `aucune réponse du jeu ${Math.round(waited / 1000)} s après l’ouverture : nouvel essai`, 'warn');
           session?.setNote('');
-          const again = [...document.querySelectorAll('button')]
+          const again = [...D().querySelectorAll('button')]
             .find((b) => !b.disabled && !b.closest('.wmx-cover, .wmx-panel') && b.textContent.trim().toLowerCase() === 'ouvrir');
           if (again) again.click();
           clickedAt = Date.now();
@@ -226,12 +260,12 @@
       await sleep(100);
     }
     session?.yield(false);
+    CTX?.human(false);
     const cards = lastCards;
     if (cards) { blocks = 0; consumeInSnapshot(snap); } // succès : la pause repart de sa valeur de base
     const ok = !cards || (await dismissResult());
     if (ok && cards) await sleep(300); // laisse l'écran « Ouvrir » du jeu se remettre en place avant le clic suivant
-    document.documentElement.classList.remove('wmx-opening');
-    document.querySelector('.wmx-cover')?.replaceChildren();
+    if (!CTX) { document.documentElement.classList.remove('wmx-opening'); document.querySelector('.wmx-cover')?.replaceChildren(); }
     if (!ok) { setStatus('Écran de résultat inattendu : arrêt'); state.busy = false; state.auto = false; persistAuto(); }
     return cards;
   }
@@ -254,14 +288,26 @@
   }
 
   // --- « Tout ouvrir » -----------------------------------------------------------------------
-  async function openAll() {
+  /**
+   * « Tout ouvrir ». Réglages (Paramètres → Paquets) : « Ouverture en parallèle » (page Paquets invisible, le jeu reste utilisable) et
+   * « Tiroir à cartes » (les cartes s'ajoutent dans un tiroir avec l'animation du style choisi ; « Révéler » les montre quand vous voulez).
+   * En parallèle sans tiroir, le tiroir sert seulement à suivre l'ouverture, puis toutes les cartes sont révélées en plein écran à la fin.
+   * Ni l'un ni l'autre : la révélation plein écran pendant l'ouverture, comme avant.
+   */
+  async function openAll({ parallel = !!WMX.settings.packParallel, drawer = !!WMX.settings.packDrawer } = {}) {
     if (state.auto) { setStatus('Arrêtez d’abord l’ouverture auto'); return; }
     if (state.busy) return;
-    const total = packsLeft();
-    if (!total) { setStatus('Aucun paquet disponible'); return; }
     state.busy = true;
+    if (parallel) {
+      setStatus('Préparation de l’ouverture en parallèle…');
+      CTX = await pullsFrame();
+      if (!CTX) { state.busy = false; setStatus('La page Paquets invisible ne s’est pas chargée : réessayez, ou désactivez « Ouverture en parallèle »'); return; }
+    }
+    const total = packsLeft();
+    if (!total) { state.busy = false; CTX?.close(); CTX = null; setStatus('Aucun paquet disponible'); return; }
     cooldownS = BASE_COOLDOWN_S; // chaque « Tout ouvrir » repart de la pause courte
-    const session = WMX.revealSession({ stoppable: true });
+    const panel = parallel || drawer;
+    const session = panel ? WMX.packDrawer.session(total, { keep: drawer }) : WMX.revealSession({ stoppable: true });
     session.setRemaining(total, total);
     let opened = 0;
     try {
@@ -273,7 +319,7 @@
         session.setRemaining(total - done - 1, total);
         if (done < total - 1) await cooldown(session);
       }
-    } finally { state.busy = false; setStatus(''); }
+    } finally { state.busy = false; setStatus(''); CTX?.close(); CTX = null; }
     // « Passer » pendant l'ouverture : les paquets restants ne sont pas ouverts, ils restent dans le stock du jeu.
     if (session.stopped && opened < total) {
       const left = total - opened;
@@ -285,6 +331,7 @@
 
   /** « Tout ouvrir » depuis une autre page : on revient d'abord sur la page Paquets, puis on ouvre. */
   async function openAllAnywhere() {
+    if (WMX.settings.packParallel) return openAll(); // ouverture en parallèle : depuis n'importe quelle page, sans la quitter
     if (!/^\/pulls/.test(location.pathname)) {
       window.dispatchEvent(new CustomEvent('wmx:navigate', { detail: '/pulls' }));
       setStatus('Retour sur la page Paquets…');
@@ -309,7 +356,8 @@
         if (dailyLimit) { dailyLimit = false; stopAuto(); setStatus('Ouverture auto arrêtée : le jeu indique une limite d’ouvertures pour aujourd’hui (réponse du jeu dans le journal)'); } // remis à zéro : une prochaine ouverture repart normalement
         return;
       }
-      state.buffer.push(...cards);
+      if (WMX.settings.packDrawer && WMX.packDrawer) WMX.packDrawer.add(cards); // tiroir à cartes : chaque paquet s'y ajoute, avec l'animation du style choisi
+      else state.buffer.push(...cards);
       state.opened += 1;
       persistAuto(); // les cartes mises de côté survivent à un rechargement de la page
       setBadge();
@@ -408,7 +456,7 @@
     state.buffer = []; state.opened = 0;
     persistAuto();
     setBadge(); setAutoBtn(); setStatus('');
-    WMX.reveal(cards);
+    if (cards.length) WMX.reveal(cards); // (avec le tiroir, les cartes y sont déjà)
   }
 
   // --- Panneau --------------------------------------------------------------------------------
