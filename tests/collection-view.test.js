@@ -264,6 +264,70 @@ test('actions de masse par lots de 100 (limite du jeu) : défausse de 250 cartes
   env.close();
 });
 
+test('étiquette sur plusieurs cartes : les cartes refusées par le jeu (en vente, vendues) sont ignorées, les autres étiquetées ; « N ajoutées » juste ; copie nettoyée ; autre erreur affichée', async () => {
+  let real = null;
+  const env = setup(250, undefined, async (u, init = {}) => (real && /supabase/.test(String(u)) ? real(u, init) : json({ collection: [] })));
+  const { w, WMX } = env;
+  await init(env);
+  const gone = new Set(['row-5', 'row-120', 'row-121']); // plus dans la collection du jeu (en vente)
+  const sent = [];
+  let mode = 'rls';
+  w.Response = class { constructor(b, o = {}) { this._b = b == null ? '' : String(b); this.status = o.status || 200; this.ok = this.status < 300; const h = o.headers || {}; this.headers = { get: (k) => h[k.toLowerCase()] ?? null }; } async json() { return JSON.parse(this._b); } async text() { return this._b; } clone() { return this; } };
+  w.eval(fs.readFileSync(path.join(ROOT, 'src/page-hook.js'), 'utf8'));
+  const res = (status, body, headers = {}) => new w.Response(body == null ? null : JSON.stringify(body), { status, headers });
+  // Le relais de page-hook.js appelle la fetch d'origine : celle du test (base du jeu simulée).
+  real = async (u, init = {}) => {
+    const rows = JSON.parse(init.body);
+    sent.push(rows.length);
+    if (mode === 'jwt') return res(401, { code: 'PGRST301', message: 'JWT expired' });
+    if (rows.some((r) => gone.has(r.user_card_id))) return res(403, { code: '42501', message: 'new row violates row-level security policy for table "user_card_tags"' });
+    const added = rows.filter((r) => r.user_card_id !== 'row-10').length; // row-10 a déjà l'étiquette : ignorée par le jeu (sans doublon)
+    return res(201, null, { 'content-range': `*/${added}` });
+  };
+  const relayed = [];
+  w.addEventListener('wmx:api', (e) => { if (/user_card_tags/.test(e.detail.url)) relayed.push(...e.detail.req.map((r) => r.user_card_id)); });
+  const rows = Array.from({ length: 200 }, (_, i) => ({ user_card_id: `row-${i}`, tag_id: TAG.id }));
+  const r = await w.fetch('https://abc.supabase.co/rest/v1/user_card_tags?on_conflict=user_card_id%2Ctag_id', { method: 'POST', headers: { Prefer: 'resolution=ignore-duplicates,count=exact' }, body: JSON.stringify(rows) });
+  assert.ok(r.ok, 'la page reçoit une réussite (pas « Impossible d’appliquer l’étiquette »)');
+  assert.equal(r.headers.get('content-range'), '*/196', '200 cartes − 3 refusées − 1 déjà étiquetée = 196 ajoutées (la page affiche aussi les ignorées)');
+  assert.ok(sent.length < 40, `peu de demandes (${sent.length})`);
+  assert.equal(relayed.length, 197, 'seules les cartes acceptées sont relayées (copie : étiquette ajoutée à celles-là)');
+  assert.ok(![...gone].some((id) => relayed.includes(id)));
+  await sleep(20);
+  const ids = new Set(WMX.inventory.items().map((it) => it.id));
+  assert.ok(![...gone].some((id) => ids.has(id)), 'cartes refusées retirées de la copie de la vue étendue');
+  assert.equal(ids.size, 247);
+  assert.ok(WMX.inventory.items().find((it) => it.id === 'row-7').tags.some((t) => t.id === TAG.id), 'étiquette ajoutée dans la copie');
+  // Autre erreur (session expirée) : la page la reçoit telle quelle, rien d'autre ne part.
+  mode = 'jwt'; sent.length = 0;
+  const r2 = await w.fetch('https://abc.supabase.co/rest/v1/user_card_tags', { method: 'POST', body: JSON.stringify(rows.slice(0, 50)) });
+  assert.equal(r2.status, 401);
+  assert.equal(sent.length, 1);
+  env.close();
+});
+
+test('cartes en vente (réponse de « Mes enchères ») : retirées de la copie quand c’est sans ambiguïté', async () => {
+  const env = setup(20);
+  const { WMX } = env;
+  await init(env);
+  const dup = { ...WMX.inventory.items().find((it) => it.id === 'row-4'), id: 'row-4b' }; // deux exemplaires de la carte 4 : une seule en vente
+  WMX.inventory.items().push(dup);
+  const after = (iso) => new Date(Date.parse(iso) + 60000).toISOString();
+  const it = (i) => WMX.inventory.items().find((x) => x.id === `row-${i}`);
+  WMX.collView.listed([
+    { card_id: 'card-2', snapshot_rarity: 'SR', status: 'active', created_at: after(it(2).at) },
+    { card_id: 'card-4', snapshot_rarity: 'PC', status: 'active', created_at: after(it(4).at) },
+    { card_id: 'card-9', snapshot_rarity: 'R', status: 'expired', created_at: after(it(9).at) },
+    { card_id: 'card-11', snapshot_rarity: 'C', status: 'active', created_at: '2026-01-01T00:00:00Z' }, // mise en vente AVANT d'obtenir cet exemplaire
+  ]);
+  const ids = new Set(WMX.inventory.items().map((x) => x.id));
+  assert.ok(!ids.has('row-2'), 'en vente : retirée');
+  assert.ok(ids.has('row-4') && ids.has('row-4b'), 'un autre exemplaire gardé : copie laissée (relecture complète)');
+  assert.ok(ids.has('row-9'), 'enchère terminée : rien');
+  assert.ok(ids.has('row-11'), 'exemplaire obtenu après la mise en vente : gardé');
+  env.close();
+});
+
 test('icône de l’extension : bouton « Vue étendue », entrée « WikiMasters+ » sous Paramètres, en-tête des Paramètres (dégradés uniques)', async () => {
   const env = setup(10, { on: false, size: 100, price: false });
   const { w, WMX } = env;

@@ -170,7 +170,29 @@
     const dup = rows.length !== new Set(rows.map((it) => it.card_id)).size;
     if (dup) { S.fullAt = 0; WMX.inventory.reload(); } else WMX.inventory.removeIds(rows.map((it) => it.id));
   }
+  /**
+   * Cartes en vente (réponse de /api/marketplace?mine=1, lue par le jeu ou l'extension) : le jeu les retire de la collection le temps de l'enchère.
+   * Retirées de la copie quand c'est sans ambiguïté : autant (ou plus) d'enchères en cours que d'exemplaires de la carte dans la copie, chacun
+   * obtenu avant la mise en vente. Sinon (un autre exemplaire gardé) la copie est laissée : la relecture complète tranchera.
+   */
+  function listed(selling) {
+    const active = (selling || []).filter((a) => a?.card_id && a.status === 'active' && !a.settled_at);
+    if (!active.length || !ready()) return;
+    const byCard = new Map();
+    for (const a of active) { const k = `${a.card_id}|${WMX.normRarity(a.snapshot_rarity) || ''}`; const o = byCard.get(k) || { n: 0, at: '' }; o.n += 1; if (!o.at || a.created_at < o.at) o.at = a.created_at || ''; byCard.set(k, o); }
+    const gone = [];
+    const items = WMX.inventory.items();
+    for (const [k, o] of byCard) {
+      const [cid, rar] = k.split('|');
+      const rows = items.filter((it) => it.card_id === cid && (!rar || it.rarity === rar));
+      const copies = rows.reduce((n, it) => n + (it.count || 1), 0);
+      if (rows.length && copies <= o.n && rows.every((it) => !it.at || !o.at || it.at <= o.at)) gone.push(...rows.map((it) => it.id));
+    }
+    const n = WMX.inventory.removeIds(gone);
+    if (n) WMX.journal?.add('Collection', `vue étendue : ${n} carte${n > 1 ? 's' : ''} en vente retirée${n > 1 ? 's' : ''} de la copie`);
+  }
   WMX.onApi?.(({ url, path, method, status, data, req }) => {
+    if (path === '/api/marketplace' && method === 'GET' && okStatus(status) && Array.isArray(data?.selling)) { try { listed(data.selling); } catch (_) { /* réponse inattendue */ } return; }
     if (!okStatus(status) || method === 'GET') return;
     try {
       if (path === '/api/user-cards/bulk-discard' && Array.isArray(req?.card_ids)) discarded(req.card_ids);
@@ -197,6 +219,17 @@
         if (id) WMX.inventory.patch(WMX.inventory.items().filter((it) => it.tags.some((o) => o.id === id)).map((it) => it.id), (it) => { it.tags = it.tags.map((o) => (o.id === id ? { ...o, ...('name' in req ? { name: req.name } : {}), ...('color' in req ? { color: req.color } : {}) } : o)); });
       }
     } catch (err) { console.warn('[WMX] vue étendue : écriture du jeu', err); }
+  });
+
+  // Cartes refusées par le jeu à l'étiquetage (page-hook.js) : elles ne sont plus dans la collection (mises en vente, vendues…). Retirées de la
+  // copie, sauf celles engagées dans un échange en cours (toujours à vous).
+  window.addEventListener('wmx:coll-gone', (e) => {
+    let ids = [];
+    try { ids = JSON.parse(String(e.detail || '{}')).ids || []; } catch (_) { return; }
+    const trade = new Set(S.pending);
+    const rows = WMX.inventory.items().filter((it) => ids.includes(it.id) && !trade.has(it.card_id)).map((it) => it.id);
+    const n = WMX.inventory.removeIds(rows);
+    if (n) WMX.journal?.add('Collection', `étiquette : ${n} carte${n > 1 ? 's' : ''} ignorée${n > 1 ? 's' : ''} (plus dans la collection : en vente ou vendue${n > 1 ? 's' : ''}), retirée${n > 1 ? 's' : ''} de la vue étendue`);
   });
 
   // --- Relance de la liste de la page du jeu (après un changement de taille, de tri par moyenne ou de mode) -------------------------
@@ -317,7 +350,7 @@
     obs.observe(document.body, { childList: true, subtree: true });
   }
 
-  WMX.collView = { serve, parse, sync, state: () => ({ ...S, memo: undefined }), setOn, setSize: (n) => { if (SIZES.includes(n)) { S.size = n; savePrefs(); paintTools(); } }, setPrice: (v) => { S.price = !!v; savePrefs(); } };
+  WMX.collView = { serve, parse, sync, listed, state: () => ({ ...S, memo: undefined }), setOn, setSize: (n) => { if (SIZES.includes(n)) { S.size = n; savePrefs(); paintTools(); } }, setPrice: (v) => { S.price = !!v; savePrefs(); } };
 
   WMX.register({
     name: 'collection-view',

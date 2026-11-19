@@ -124,8 +124,63 @@
     return new Response(JSON.stringify(merge(parts)), { status: last.status, headers: { 'content-type': 'application/json' } });
   }
 
+  // --- Étiquette ajoutée à plusieurs cartes : seulement à celles qui le permettent ----------------------------------------------------
+  // Le jeu envoie toutes les cartes sélectionnées en UNE demande (ajout sans doublon : une carte qui a déjà l'étiquette est ignorée). Une carte
+  // qui n'est plus dans la collection (mise en vente, vendue : la vue étendue peut encore l'afficher) fait refuser TOUTE la demande par la base
+  // du jeu (403, code 42501). Ici : lots de 100 ; un lot refusé ainsi est coupé en deux, puis encore, jusqu'à isoler les cartes refusées, qui
+  // sont ignorées (et retirées de la copie de la vue étendue). La page reçoit une seule réponse, avec le nombre de cartes étiquetées : elle
+  // affiche « N ajoutées, M ignorées », comme sur la page du jeu. Toute autre erreur (session expirée, trop de demandes…) arrête et s'affiche.
+  const refusedRows = async (res) => {
+    if (res.status !== 403 && res.status !== 409) return false;
+    try { const j = await res.clone().json(); return j?.code === '42501' || j?.code === '23503'; } catch (_) { return false; }
+  };
+  const rangeCount = (res) => { const m = /\/(\d+)$/.exec(res.headers.get('content-range') || ''); return m ? Number(m[1]) : null; };
+  async function tagsUpsert(self, args) {
+    const [input, init] = args;
+    if (typeof input !== 'string' || !init || typeof init.body !== 'string' || String(init.method || '').toUpperCase() !== 'POST') return null;
+    let u;
+    try { u = new URL(input, location.origin); } catch (_) { return null; }
+    if (!/\.supabase\.co$/.test(u.hostname) || u.pathname !== '/rest/v1/user_card_tags') return null;
+    let rows;
+    try { rows = JSON.parse(init.body); } catch (_) { return null; }
+    if (!Array.isArray(rows) || rows.length < 2) return null; // une seule carte : la demande telle quelle (son refus est la bonne réponse)
+    let sent = 0;
+    const send = async (part) => {
+      if (sent++) await new Promise((r) => setTimeout(r, 150));
+      return origFetch.call(self, input, { ...init, body: JSON.stringify(part) });
+    };
+    let count = 0;
+    let counted = false;
+    let last = null;
+    const skipped = [];
+    const queue = lots(rows);
+    while (queue.length) {
+      const part = queue.shift();
+      const res = await send(part);
+      if (res.ok) {
+        last = res;
+        const n = rangeCount(res);
+        if (n != null) { count += n; counted = true; }
+        relay(input, 'POST', res.status, null, part);
+        continue;
+      }
+      if (!(await refusedRows(res))) return res; // autre refus : la page l'affiche, rien de plus n'est envoyé
+      if (part.length === 1) { skipped.push(part[0].user_card_id); continue; }
+      if (sent > 300) return res; // garde-fou : beaucoup trop de cartes refusées
+      const half = Math.ceil(part.length / 2);
+      queue.unshift(part.slice(0, half), part.slice(half));
+    }
+    if (skipped.length) {
+      try { window.dispatchEvent(new CustomEvent('wmx:coll-gone', { detail: JSON.stringify({ ids: skipped }) })); } catch (_) { /* relais facultatif */ }
+    }
+    const headers = { 'content-type': 'application/json' };
+    if (counted || !last) headers['content-range'] = `*/${count}`;
+    return new Response(null, { status: last?.status === 200 ? 200 : 201, headers });
+  }
+
   const origFetch = window.fetch;
   window.fetch = async function (...args) {
+    try { const r = await tagsUpsert(this, args); if (r) return r; } catch (_) { /* en cas de doute : la demande telle quelle */ }
     try { const r = await inLots(this, args); if (r) return r; } catch (_) { /* en cas de doute : la demande telle quelle */ }
     let url = null;
     try {

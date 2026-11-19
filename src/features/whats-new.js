@@ -7,6 +7,10 @@
   // Nouveautés, de la plus récente à la plus ancienne. Écrites pour les joueurs : ce qu'ils voient et ce que ça change pour eux.
   // kind : 'new' (nouveau), 'better' (amélioré), 'fix' (corrigé). highlights : les grandes nouveautés, mises en avant en tête de la fenêtre.
   const CHANGES = [
+    { v: '1.0.94', title: 'Vue étendue', items: [
+      ['fix', 'Étiqueter plusieurs cartes dans la vue étendue marche de nouveau quand la sélection contient des cartes en vente ou vendues : elles sont ignorées, les autres sont étiquetées, comme sur la page du jeu.'],
+      ['better', 'Les cartes mises en vente disparaissent de la vue étendue le temps de l’enchère.'],
+    ] },
     { v: '1.0.93', title: 'Paquets et Collection', highlights: [
       { icon: '📦', title: 'Ouvrez vos paquets depuis n’importe quelle page', text: '« Tout ouvrir » et l’ouverture auto travaillent maintenant en arrière-plan : restez sur la Collection, le Marché ou les Échanges. La progression s’affiche sur le cadran des paquets, en bas à gauche, et vos cartes sont révélées à la fin. L’ouverture auto n’attend plus votre retour sur la page Paquets : votre stock n’atteint plus le maximum.' },
       { icon: '🃏', title: 'Une Collection plus pratique : la vue étendue', text: 'Cliquez sur « Vue étendue », à côté de la recherche de la Collection : jusqu’à 500 cartes par page, tri « Moyenne (plus chères) » et navigation instantanée. Sélection, défausse, favoris et étiquettes fonctionnent comme d’habitude.' },

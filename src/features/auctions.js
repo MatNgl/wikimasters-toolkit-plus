@@ -204,6 +204,7 @@
       }
       const j = await res.json();
       WMX.ledger?.ingest(j); // registre des achats et des ventes (onglet « Plus-values » du tableau de bord)
+      try { WMX.collView?.listed(j.selling); } catch (_) { /* facultatif */ } // cartes en vente : hors de la copie de la vue étendue
       if (!D.me) { // mon identifiant : celui des enchères que j'ai gagnées, ou le vendeur de mes ventes
         const win = {};
         for (const a of j.won || []) if (a.winner_id) win[a.winner_id] = (win[a.winner_id] || 0) + 1;
