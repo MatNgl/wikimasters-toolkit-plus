@@ -149,12 +149,15 @@ test('vue étendue : boutons dans la barre du jeu (même apparence que ses menus
   const [toggle, size] = tools.children;
   assert.ok(toggle.className.includes('native-btn'), 'même apparence que les menus du jeu');
   assert.equal(size.hidden, true, 'taille cachée tant que la vue est désactivée');
+  assert.ok(!toggle.querySelector('.wmx-cv-dot') && toggle.querySelector('.wmx-logo'), 'seulement l’icône, sans voyant');
+  assert.equal(toggle.classList.contains('wmx-cv-on'), false, 'désactivée : comme les autres menus');
   toggle.click();
   await sleep(350);
   assert.equal(env.mem.collView.on, true);
   assert.equal(w.localStorage.getItem('wmxCollView'), 'on');
   assert.deepEqual(chipClicks, ['L', 'L'], 'liste du jeu relancée (filtre coché puis décoché)');
   assert.equal(toggle.getAttribute('aria-pressed'), 'true');
+  assert.equal(toggle.classList.contains('wmx-cv-on'), true, 'activée : contour vert');
   assert.equal(size.hidden, false);
   size.click();
   const opt = [...w.document.querySelectorAll('.wmx-cv-menu button')].find((b) => b.textContent === '500 cartes');
