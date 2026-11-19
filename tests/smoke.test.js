@@ -2194,3 +2194,16 @@ test('paquets : une ouverture restée sans réponse du jeu est signalée puis re
   assert.equal(w.document.querySelectorAll('.wmx-tile.flip').length, 15);
   env.close();
 });
+
+test('verrou entre onglets WMX.lock : sans Web Locks, exécuté comme si le verrou était obtenu ; avec Web Locks (Chrome), appel direct de navigator.locks', async () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  const { w, WMX } = env;
+  assert.equal(await WMX.lock('a', async (l) => (l ? 'ok' : 'refusé')), 'ok', 'sans Web Locks (jsdom) : la fonction reçoit un verrou');
+  assert.equal(await WMX.lock('a', { ifAvailable: true }, async (l) => (l ? 'ok' : 'refusé')), 'ok', 'ifAvailable aussi (la remise de l’étiquette de vente tourne)');
+  const calls = [];
+  Object.defineProperty(w.navigator, 'locks', { configurable: true, value: { request: (name, opts, fn) => { calls.push([name, JSON.stringify(opts)]); return Promise.resolve(fn({ name })); } } });
+  assert.equal(await WMX.lock('b', async () => 7), 7);
+  assert.equal(await WMX.lock('c', { steal: true }, async () => 8), 8);
+  assert.deepEqual(calls, [['b', '{}'], ['c', '{"steal":true}']], 'Chrome : navigator.locks.request appelé tel quel (pas le détour de Firefox)');
+  env.close();
+});

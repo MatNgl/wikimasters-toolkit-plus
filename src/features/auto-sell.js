@@ -14,7 +14,7 @@
   const H = WMX.logic.HOUR;
   const EVERY = 45000;
   const PAUSE = 3 * 60000; // pause après une mise en vente que le jeu n'a pas enregistrée
-  const S = { skip: {}, log: {}, fails: {}, follow: {}, retagDone: {}, leader: !navigator.locks?.request, busy: false, wanted: false, purged: new Set(), release: null, shared: null, painters: new Set() };
+  const S = { skip: {}, log: {}, fails: {}, follow: {}, retagDone: {}, leader: !WMX.lock.available, busy: false, wanted: false, purged: new Set(), release: null, shared: null, painters: new Set() };
   const on = () => !!WMX.settings?.autoSell;
   const tags = () => String(WMX.settings?.autoSellTags || '').split(',').map((t) => t.trim()).filter(Boolean);
   const cap = () => Math.max(1, Number(WMX.settings?.autoSellCap) || 500);
@@ -179,10 +179,10 @@
 
   /** Un onglet pilote l'assistant : celui qui prend le verrou. Demandé seulement si l'assistant est activé, rendu dès qu'il est désactivé. */
   function ensureLock() {
-    if (!navigator.locks?.request) { S.leader = true; return; }
+    if (!WMX.lock.available) { S.leader = true; return; }
     if (on() && !S.wanted) {
       S.wanted = true;
-      navigator.locks.request('wmx-autosell', () => {
+      WMX.lock('wmx-autosell', () => {
         if (!on()) return undefined; // désactivé entre-temps : on rend le verrou aussitôt
         return new Promise((release) => { S.leader = true; S.release = () => { S.leader = false; S.release = null; release(); }; setTimeout(tick, 1500); });
       }).finally(() => { S.wanted = false; });
@@ -344,7 +344,7 @@
       WMX.journal?.add('Assistant de vente', `« ${title} » est revenue invendue sans étiquette de vente (oubliée par la mémoire de l’assistant) : rattrapage, l’étiquette ${tags()[0]} va lui être remise`, 'warn');
     }
   }
-  const retagSafely = () => (navigator.locks?.request ? navigator.locks.request('wmx-retag', { ifAvailable: true }, async (l) => { if (l) await retagPass(); }) : retagPass());
+  const retagSafely = () => WMX.lock('wmx-retag', { ifAvailable: true }, async (l) => { if (l) await retagPass(); });
 
   async function resetSkips() {
     S.skip = {}; S.log = {}; S.pauseUntil = 0;

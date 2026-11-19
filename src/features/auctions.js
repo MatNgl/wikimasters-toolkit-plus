@@ -341,7 +341,7 @@
     if (rule && !rule.overNotified) { rule.overNotified = true; saveAuto(); renderAll(); capNotice(a, min, cap, rule); }
     if (opts.auto) S.autoTry[a.id] = Date.now() + 20000;
   }
-  const withLock = (name, fn) => (navigator.locks?.request ? navigator.locks.request(name, fn) : fn());
+  const withLock = (name, fn) => WMX.lock(name, fn); // verrou entre onglets (compatible Firefox : voir namespace.js)
   const bid = (a, opts = {}) => withLock(`wmx-bid-${a.id}`, () => bidInner(a, opts));
   async function bidInner(a, opts = {}) {
     if (!D.me) await refresh(); // sans mon identifiant, on ne sait pas qui mène : pas de mise
@@ -1199,12 +1199,12 @@
       WMX.quick?.onChange(() => { clearTimeout(S.qT); S.qT = setTimeout(() => { if (WMX.alive()) refresh(); }, 900); });
       // Élection du « chef » : un seul onglet du jeu exécute les mises automatiques (sinon chaque onglet miserait de son côté).
       // L'onglet affiché prend le rôle (un onglet en arrière-plan voit ses minuteries ralenties par le navigateur : il ne tiendrait pas un délai de 15 s).
-      const takeLead = (steal) => navigator.locks.request('wmx-auto-leader', steal ? { steal: true } : {}, () => {
+      const takeLead = (steal) => WMX.lock('wmx-auto-leader', steal ? { steal: true } : {}, () => {
         S.leader = true;
         // Le rôle est rendu dès que ce script est orphelin (extension rechargée) : un onglet actualisé peut alors le reprendre.
         return new Promise((done) => { const t = setInterval(() => { if (!WMX.alive() || !S.leader) { clearInterval(t); S.leader = false; done(); } }, 2000); });
       }).catch((e) => { S.leader = e?.name === 'AbortError' ? false : true; }); // AbortError : un autre onglet, affiché, a pris le rôle
-      if (navigator.locks?.request) {
+      if (WMX.lock.available) {
         takeLead(false);
         const claim = () => { if (!document.hidden && !S.leader && WMX.alive() && Object.keys(S.auto).length) takeLead(true); };
         document.addEventListener('visibilitychange', claim);

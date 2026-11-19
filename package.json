@@ -4,7 +4,8 @@
   "description": "Extension Chrome pour WikiMasters (tests des fonctions pures uniquement)",
   "scripts": {
     "test": "node --test --test-force-exit --test-timeout=60000 \"tests/*.test.js\"",
-    "build": "node scripts/build.js"
+    "build": "node scripts/build.js",
+    "check:firefox": "node scripts/firefox-check.js"
   },
   "devDependencies": {
     "jsdom": "^29.1.1",

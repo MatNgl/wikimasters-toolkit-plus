@@ -382,8 +382,8 @@
   /** Une seule page du jeu mène l'ouverture auto (deux pages ouvriraient les mêmes paquets). Vrai si ce rôle est pris. */
   function takeAutoLock() {
     return new Promise((resolve) => {
-      if (!navigator.locks?.request) { resolve(true); return; }
-      navigator.locks.request('wmx-pack-auto', { ifAvailable: true }, (lock) => {
+      if (!WMX.lock.available) { resolve(true); return; }
+      WMX.lock('wmx-pack-auto', { ifAvailable: true }, (lock) => {
         if (!lock) { resolve(false); return null; }
         resolve(true);
         return new Promise((release) => { state.unlock = release; });

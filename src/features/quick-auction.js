@@ -21,7 +21,7 @@
   let pending = Promise.resolve(); // dernière écriture de la file : « claim » l'attend, sinon une opération juste ajoutée paraîtrait absente du stockage
   const persist = () => { pending = WMX.store.set('quickQueue', S.queue.filter((o) => o !== S.current).map((o) => ({ id: o.id, type: o.type, item: o.item }))); return pending; };
   const newId = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
-  const withLock = (name, fn) => (navigator.locks?.request ? navigator.locks.request(name, fn) : fn());
+  const withLock = (name, fn) => WMX.lock(name, fn); // verrou entre onglets (compatible Firefox : voir namespace.js)
   /**
    * Plusieurs onglets peuvent avoir copié la même file : avant d'exécuter une opération, on la « réclame » dans le stockage
    * partagé, sous verrou. Si un autre onglet l'a déjà prise (ou traitée), on passe : jamais deux fois la même opération.
