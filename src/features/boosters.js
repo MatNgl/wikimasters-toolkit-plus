@@ -652,7 +652,8 @@
     }, 1000);
     // Logo « W » de l'en-tête. Le bouton réduit est un cadran à part, comme celui des enchères : le menu en sort et y rentre.
     const fab = el('span', { class: 'wmx-fab', title: 'WikiMasters Toolkit+' }, el('span', { class: 'wmx-fab-w' }, 'W'), ui.fabCount2);
-    const dial = dialEl = el('button', { class: 'wmx-pdial gone', title: 'Ouvrir le menu des paquets', 'aria-label': 'Menu des paquets', onclick: () => setCollapsed(false) }, ui.fabRing, ui.fabTxt, ui.fabCount);
+    // Comme la bulle des enchères : le cadran reste affiché menu ouvert ; un clic ouvre le menu, un autre le referme.
+    const dial = dialEl = el('button', { class: 'wmx-pdial', title: 'Ouvrir le menu des paquets', 'aria-label': 'Menu des paquets', 'aria-expanded': 'false', onclick: () => setCollapsed(panel.classList.contains('open')) }, ui.fabRing, ui.fabTxt, ui.fabCount);
     const fold = el('button', { class: 'wmx-icon wmx-fold', title: 'Réduire le menu', 'aria-label': 'Réduire le menu', onclick: () => setCollapsed(true) });
     fold.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M11 6l-6 6 6 6M19 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
@@ -720,14 +721,15 @@
       if (!c) {
         if (animate) { aim(); void panel.offsetWidth; } else { panel.hidden = false; panel.style.transition = 'none'; }
         panel.classList.add('open');
-        dial.classList.add('gone');
         if (!animate) { void panel.offsetWidth; panel.style.transition = ''; }
       } else {
         if (animate) aim();
         panel.classList.remove('open');
         panel._t = setTimeout(() => { if (!panel.classList.contains('open')) panel.hidden = true; }, animate ? 340 : 0);
-        setTimeout(() => dial.classList.remove('gone'), animate ? 160 : 0);
       }
+      dial.classList.toggle('on', !c); // le cadran reste toujours affiché ; enfoncé tant que le menu est ouvert
+      dial.setAttribute('aria-expanded', String(!c));
+      dial.title = c ? 'Ouvrir le menu des paquets' : 'Refermer le menu des paquets';
       if (remember && /^\/pulls/.test(location.pathname)) { prefCollapsed = c; WMX.store.set('panelCollapsed', c); }
     }
 
@@ -742,6 +744,7 @@
     })
       .observe(document.documentElement, { attributes: true, attributeFilter: ['data-wmx-route'] });
 
+    WMX.packsMenu = { collapse: () => { if (panel.classList.contains('open')) setCollapsed(true, true, false); } }; // tableau de bord ouvert : le menu rentre dans son cadran
     const cover = el('div', { class: 'wmx-cover' });
     document.body.append(panel, dial, cover, warn);
     [panel, dial, cover, warn].forEach(WMX.dom.keepAttached);

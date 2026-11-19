@@ -7,6 +7,11 @@
   // Nouveautés, de la plus récente à la plus ancienne. Écrites pour les joueurs : ce qu'ils voient et ce que ça change pour eux.
   // kind : 'new' (nouveau), 'better' (amélioré), 'fix' (corrigé). highlights : les grandes nouveautés, mises en avant en tête de la fenêtre.
   const CHANGES = [
+    { v: '1.0.96', title: 'Cadran des paquets et tableau de bord', items: [
+      ['better', 'Le cadran des paquets reste affiché quand son menu est ouvert : un clic l’ouvre, un autre le referme (comme la bulle des enchères).'],
+      ['fix', 'Le cadran des paquets est de nouveau visible sur le tableau de bord, et toujours sur la page Paquets.'],
+      ['new', 'Tableau de bord : votre solde s’affiche à gauche des Paramètres ; un clic ouvre la boutique.'],
+    ] },
     { v: '1.0.94', title: 'Vue étendue', items: [
       ['fix', 'Étiqueter plusieurs cartes dans la vue étendue marche de nouveau quand la sélection contient des cartes en vente ou vendues : elles sont ignorées, les autres sont étiquetées, comme sur la page du jeu.'],
       ['better', 'Les cartes mises en vente disparaissent de la vue étendue le temps de l’enchère.'],

@@ -256,7 +256,7 @@
     const status = el('span', { class: 'wmx-cp-status' });
     tabsEl = el('div', { class: 'wmx-seg wmx-dash-tabs' });
     page = el('section', { class: 'wmx-cplus', id: 'wmx-dashboard', hidden: '' },
-      el('header', { class: 'wmx-cp-head' }, el('h2', {}, 'Tableau de bord'), tabsEl, status,
+      el('header', { class: 'wmx-cp-head' }, el('h2', {}, 'Tableau de bord'), tabsEl, status, balEl = el('button', { type: 'button', class: 'wmx-dash-bal', hidden: '', onclick: openShop }),
         el('button', { class: 'wmx-close', title: 'Paramètres (enchère rapide, prix…)', onclick: () => WMX.openSettings() }, '⚙')),
       el('div', { class: 'wmx-cp-scroll' }, priceBar = WMX.inventory.makePriceBar(), body));
     document.body.append(page);
@@ -277,6 +277,22 @@
 
   const place = () => { if (page) page.style.left = `${Math.round(WMX.dom.sidebarRight())}px`; };
 
+  // Solde : le jeu l'affiche en haut à droite, sous la page du tableau de bord ; on en montre une copie dans l'en-tête, tenue à jour. Un clic
+  // ouvre la boutique du jeu (comme son bouton), après avoir quitté le tableau de bord.
+  let balEl = null;
+  const shopBtn = () => document.querySelector('button[aria-label="Ouvrir la boutique WikiBidous"]');
+  function paintBalance() {
+    if (!balEl || !isOpen()) return;
+    const txt = (shopBtn()?.textContent || '').replace(/\s+/g, ' ').trim();
+    const n = txt.match(/\d[\d\s  ]*/)?.[0].trim();
+    balEl.hidden = !n;
+    if (!n) return;
+    if (balEl.dataset.n !== n) { balEl.dataset.n = n; balEl.replaceChildren(el('span', {}, n), el('small', {}, 'W')); }
+    balEl.title = `${n} wikibidous — Ouvrir la boutique`;
+  }
+  function openShop() { const b = shopBtn(); close(); b?.click(); }
+  setInterval(() => { if (WMX.alive()) paintBalance(); }, 1000);
+
   function markNav() {
     document.querySelectorAll('[data-wmx-nav="dash"]').forEach((a) => a.classList.toggle('wmx-nav-active', isOpen()));
   }
@@ -293,6 +309,8 @@
     page.hidden = false;
     document.documentElement.classList.add('wmx-page-open');
     markNav();
+    paintBalance();
+    WMX.packsMenu?.collapse(); // le menu des paquets (au-dessus des pages) ne cache pas le tableau de bord ; son cadran reste là
     WMX.inventory.ensure();
     WMX.inventory.renderStatus();
     render();

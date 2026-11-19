@@ -1312,3 +1312,16 @@ button.wmx-tc-cancel:hover { background: rgb(239 68 68 / .18) !important; color:
 .wmx-wn-featicon { width: 44px; height: 44px; display: grid; place-items: center; font-size: 22px; border-radius: 12px; background: #0b100e; border: 1px solid #2dd4a044; box-shadow: 0 0 18px #2dd4a01f; }
 .wmx-wn-feat b { display: block; font-size: 15px; margin: 2px 0 4px; color: #f2fffa; }
 .wmx-wn-feat p { margin: 0; color: #cfe0d7; font-size: 13.5px; line-height: 1.5; }
+
+/* 1.0.95 : cadran des paquets toujours affiché (comme la bulle des enchères), au-dessus des pages du jeu et du tableau de bord (z-index 50) ;
+   menu ouvert calé au-dessus du cadran (sauf déplacé), le cadran reste cliquable pour le refermer. */
+.wmx-pdial { z-index: 9390; }
+.wmx-panel { z-index: 9385; }
+.wmx-panel:not(.moved) { top: auto; bottom: 200px; margin-block: 0; max-height: calc(100vh - 220px); }
+.wmx-pdial.on { box-shadow: 0 10px 28px #000b, 0 0 0 2px var(--acc,#2dd4a0); transform: scale(.96); }
+.wmx-pdial.on:hover { transform: scale(.98); }
+/* Solde du jeu dans l'en-tête du tableau de bord (à gauche des Paramètres) */
+.wmx-dash-bal { display: inline-flex; align-items: center; gap: 6px; margin-left: 6px; padding: 6px 12px; border-radius: 999px; border: 1px solid #27493b; background: #0b1411; color: var(--acc,#2dd4a0); font: 700 14px Outfit, system-ui, sans-serif; cursor: pointer; white-space: nowrap; }
+.wmx-dash-bal:hover { border-color: var(--acc,#2dd4a0); }
+.wmx-dash-bal[hidden] { display: none; }
+.wmx-dash-bal small { font: 600 11px Outfit, system-ui, sans-serif; color: #9db5a8; }

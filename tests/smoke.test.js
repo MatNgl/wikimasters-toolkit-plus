@@ -1578,6 +1578,33 @@ test('menu des paquets : ouvert depuis une autre page, il reste ouvert en arriva
   w.document.documentElement.dataset.wmxRoute = '/pulls';
   await sleep(80);
   assert.ok(panel.classList.contains('open'), 'toujours ouvert sur la page Paquets');
+  // Comme la bulle des enchères : le cadran reste affiché menu ouvert, un nouveau clic le referme.
+  const dial = w.document.querySelector('.wmx-pdial');
+  assert.ok(!dial.classList.contains('gone') && dial.classList.contains('on'), 'cadran toujours affiché (enfoncé) menu ouvert');
+  assert.equal(dial.getAttribute('aria-expanded'), 'true');
+  dial.click();
+  assert.ok(!panel.classList.contains('open'), 'second clic sur le cadran : menu refermé');
+  assert.ok(!dial.classList.contains('on'));
+  env.close();
+});
+
+test('tableau de bord : solde du jeu affiché à gauche des Paramètres (tenu à jour) ; clic : boutique du jeu', async () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  const { w, WMX } = env;
+  w.document.body.insertAdjacentHTML('beforeend', '<div class="fixed top-0 right-0 z-50"><button aria-label="Ouvrir la boutique WikiBidous" title="113 901 wikibidous — Ouvrir la boutique"><svg></svg>113 901</button></div>');
+  let shop = 0;
+  w.document.querySelector('button[aria-label="Ouvrir la boutique WikiBidous"]').addEventListener('click', () => { shop += 1; });
+  await WMX.dashboard.open();
+  const bal = w.document.querySelector('#wmx-dashboard .wmx-dash-bal');
+  assert.ok(bal && !bal.hidden, 'solde affiché');
+  assert.equal(bal.textContent, '113 901W');
+  assert.equal(bal.nextElementSibling.textContent, '⚙', 'juste à gauche des Paramètres');
+  w.document.querySelector('button[aria-label="Ouvrir la boutique WikiBidous"]').lastChild.textContent = '120 000';
+  await sleep(1100);
+  assert.equal(bal.querySelector('span').textContent, '120 000', 'tenu à jour');
+  bal.click();
+  assert.equal(shop, 1, 'boutique du jeu ouverte');
+  assert.ok(w.document.querySelector('#wmx-dashboard').hidden, 'tableau de bord quitté');
   env.close();
 });
 
