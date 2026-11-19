@@ -1201,3 +1201,17 @@ button.wmx-tc-cancel:hover { background: rgb(239 68 68 / .18) !important; color:
 .wmx-lg-sort .wmx-lg-sorti.none { color: #4f6b60; }
 .wmx-lg-sort:hover .wmx-lg-sorti.none { color: #9db5a8; }
 .wmx-lg-sort .wmx-lg-sorti.desc, .wmx-lg-sort .wmx-lg-sorti.asc { color: #2dd4a0; }
+
+/* ===== Vue étendue de la Collection (collection-view.js, 1.0.81) : boutons dans la barre du jeu, même apparence que ses menus ===== */
+.wmx-cv-tools { display: flex; gap: 8px; flex: none; min-width: 0; }
+.wmx-cv-btn { width: auto !important; flex: none !important; justify-content: center !important; white-space: nowrap; gap: 8px !important; padding-right: 12px !important; cursor: pointer; }
+.wmx-cv-btn .wmx-cv-label { font-size: 13.5px; }
+.wmx-cv-dot { width: 8px; height: 8px; border-radius: 50%; background: #5b6b64; box-shadow: 0 0 0 2px #ffffff10; flex: none; transition: background .15s ease, box-shadow .15s ease; }
+.wmx-cv-toggle.wmx-cv-on { border-color: color-mix(in srgb, var(--color-accent, #2dd4a0) 60%, transparent) !important; }
+.wmx-cv-toggle.wmx-cv-on .wmx-cv-dot { background: var(--color-accent, #2dd4a0); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent, #2dd4a0) 25%, transparent); }
+.wmx-cv-size[hidden] { display: none !important; }
+.wmx-cv-menu { position: fixed; z-index: 2147483000; display: flex; flex-direction: column; padding: 4px 0; border-radius: 10px; border: 1px solid var(--color-border, #26332d); background: var(--color-surface, #101614); box-shadow: 0 16px 40px #000a; overflow: hidden; }
+.wmx-cv-menu button { all: unset; cursor: pointer; padding: 8px 14px; font: 500 13.5px Outfit, system-ui, sans-serif; color: var(--color-foreground, #e6efe9); }
+.wmx-cv-menu button:hover { background: var(--color-surface-light, #18211d); }
+.wmx-cv-menu button.on { background: color-mix(in srgb, var(--color-accent, #2dd4a0) 12%, transparent); }
+@media (prefers-reduced-motion: reduce) { .wmx-cv-dot { transition: none; } }

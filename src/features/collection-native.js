@@ -47,13 +47,19 @@
         chip.title = f?.line || '';
       }
     }
-    // Carte de la page affichée : moyenne jamais chargée ou de plus de 24 h relue, avant les tâches de fond, dans l'ordre de la page.
-    if (item) WMX.prices.keepFresh(item.card_id, Number(card.dataset.wmxIdx) || 0, { front: true });
+    // Carte À L'ÉCRAN (ou presque) : moyenne jamais chargée ou de plus de 24 h relue, avant les tâches de fond, dans l'ordre de la page. Avec la vue
+    // étendue (jusqu'à 500 cartes par page), les cartes plus bas sont relues quand on y arrive : pas 500 demandes au jeu d'un coup.
+    if (item && card._wmxSeen) WMX.prices.keepFresh(item.card_id, Number(card.dataset.wmxIdx) || 0, { front: true });
     boltFor(card);
   }
 
   // --- Aperçu de trois styles de cartes (A plein cadre · B vitrine · C éditorial) sur des cartes d'essai ---------------
+  // Cartes proches de l'écran (400 px de marge) : leur moyenne est demandée à ce moment-là.
+  const seen = typeof IntersectionObserver === 'function' ? new IntersectionObserver((entries) => {
+    for (const e of entries) if (e.isIntersecting && !e.target._wmxSeen) { e.target._wmxSeen = true; seen.unobserve(e.target); paint(e.target); }
+  }, { rootMargin: '400px 0px' }) : null;
   function decorate(card) {
+    if (!card._wmxSeenObs) { card._wmxSeenObs = true; if (seen) seen.observe(card); else card._wmxSeen = true; }
     if (!card.querySelector('.wmx-nt-price')) {
       card.append(el('span', { class: 'wmx-nt-price' }, 'Moy. …'));
     }

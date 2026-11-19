@@ -8,7 +8,7 @@
   const INV_TTL = 3 * 60 * 60 * 1000; // relecture complète (~335 requêtes) au plus toutes les 3 h : les étiquettes sont relues à la demande (syncTagged), la défausse et les mises en vente tiennent la copie à jour
 
   const S = {
-    items: [], loading: false, loadedCount: 0, loadedAt: 0, started: false, gone: new Map(),
+    items: [], loading: false, loadedCount: 0, loadedAt: 0, started: false, gone: new Map(), ext: false, ver: 0, complete: false,
     priceRar: new Set(['L', 'UR', 'SR', 'R']), priceMode: 'rar', priceTags: new Set(), tagsTouched: false,
   };
   const listeners = new Set();
@@ -25,12 +25,32 @@
     if (p) return `Moy. ${fmt(p.avg)} W`;
     return WMX.prices.has(it.card_id) ? 'Sans vente' : 'Moy. —';
   };
+  /**
+   * Carte de la collection, en mémoire et en cache. `x` garde le reste de la ligne du jeu (catégorie, statistiques, lien…) : la vue étendue
+   * de la Collection (collection-view.js) en refait une ligne identique à celle du jeu (toRow), affichée par la page du jeu elle-même.
+   */
   const compact = (r) => ({
     id: r.id, card_id: r.card_id, title: r.card?.wikipedia_title || '?', rarity: WMX.normRarity(r.card?.rarity) || 'C',
     image: r.card?.hide_image || r.card?.nsfw_image ? '' : (r.card?.image_url || ''), lang: r.card?.lang || 'fr',
     count: r.count || 1, starred: !!r.starred, at: r.obtained_at || '',
-    tags: (r.tags || []).map((t) => ({ id: t.id, name: t.name, color: t.color })),
+    tags: (r.tags || []).map((t) => ({ id: t.id, name: t.name, color: t.color, user_id: t.user_id, created_at: t.created_at })),
+    x: {
+      cat: r.card?.category ?? '', rr: r.card?.rarity ?? '', atk: r.card?.atk, def: r.card?.def, qs: r.card?.q_score, pv: r.card?.pageviews,
+      cc: r.card?.created_at, wu: r.card?.wikipedia_url, hide: !!r.card?.hide_image, nsfw: r.card?.nsfw_image, img: r.card?.image_url || '',
+      uid: r.user_id, sh: !!r.is_shiny,
+    },
   });
+  /** Ligne au format du jeu (réponse de /api/my-collection), refaite depuis la copie : celle que la page du jeu affiche. */
+  const toRow = (it) => {
+    const x = it.x || {};
+    const card = { id: it.card_id, atk: x.atk, def: x.def, lang: it.lang, rarity: x.rr || it.rarity, q_score: x.qs, category: x.cat, image_url: x.img || it.image,
+      pageviews: x.pv, created_at: x.cc, hide_image: !!x.hide, wikipedia_url: x.wu, wikipedia_title: it.title };
+    if (x.nsfw !== undefined) card.nsfw_image = x.nsfw;
+    return { id: it.id, card, tags: it.tags.map((t) => ({ ...t })), count: it.count, card_id: it.card_id, starred: it.starred, user_id: x.uid, is_shiny: !!x.sh, obtained_at: it.at };
+  };
+  // Version du cache : 3 = lignes complètes (champ x). Un cache plus ancien sert toujours au reste de l'extension, mais pas à la vue étendue.
+  const CACHE_V = 3;
+  const saveCache = (complete) => WMX.store.set('invCacheV2', { t: Date.now(), items: S.items, complete, v: S.ext ? CACHE_V : 2 }); // v3 seulement si les lignes entières ont été lues
   const tagKey = (s) => String(s || '').trim().toLowerCase();
   const hasTag = (it, name) => it.tags.some((t) => tagKey(t.name) === tagKey(name));
 
@@ -44,7 +64,7 @@
     const left = (id) => (S.gone.get(id) || []).filter((t) => t >= since).length;
     return list.map((it) => { const n = left(it.card_id); return n ? { ...it, count: it.count - n } : it; }).filter((it) => it.count > 0);
   }
-  const setItems = (list) => { S.items = list; index = null; emit(); };
+  const setItems = (list) => { S.items = list; index = null; S.ver += 1; emit(); };
 
   async function loadInventory() {
     if (S.loading) return;
@@ -90,18 +110,18 @@
       if (!rows.length) { complete = true; break; }
       for (const r of rows) byId.set(r.id, compact(r));
       S.loadedCount = byId.size;
-      if (!hadCache && p % 4 === 0) setItems(withoutDiscarded([...byId.values()], startedAt));
+      if (!hadCache && !S.complete && p % 4 === 0) setItems(withoutDiscarded([...byId.values()], startedAt)); // premières pages montrées seulement sans copie complète
       else renderStatus();
       await sleep(500); // un peu plus lent : ~335 requêtes d'affilée font réagir la protection du jeu
     }
     S.loading = false;
-    if (complete) S.loadedAt = Date.now();
+    if (complete) { S.loadedAt = Date.now(); S.ext = true; S.complete = true; } // AVANT setItems : ceux qui écoutent la copie (vue étendue) la voient complète
     if (complete || !S.items.length) setItems(withoutDiscarded([...byId.values()], startedAt));
     // Une relecture complète lit ses pages pendant plusieurs minutes : une carte étiquetée entre-temps peut y apparaître sans son étiquette.
     // Les cartes étiquetées seront donc relues au prochain contrôle (syncTagged), même si leur nombre n'a pas changé.
     taggedSyncAt = 0;
     // Un chargement interrompu ne remplace pas un inventaire plus complet, et son cache est marqué incomplet (rechargé la prochaine fois).
-    WMX.store.set('invCacheV2', { t: Date.now(), items: S.items, complete });
+    saveCache(complete || S.complete);
   }
 
   /**
@@ -140,6 +160,10 @@
     return true;
   }
 
+  // Écriture du cache regroupée (la copie complète pèse plusieurs Mo) : au plus une toutes les 3 s.
+  let saveT = null;
+  const saveSoon = () => { clearTimeout(saveT); saveT = setTimeout(() => { if (!S.loading) saveCache(S.complete); }, 3000); };
+
   const tagCounts = new Map(); // étiquette (minuscules) -> dernier nombre de cartes annoncé par le jeu (cardCount)
   let taggedSyncAt = 0;
   /**
@@ -172,9 +196,16 @@
     return refreshTagged(wanted, ids);
   }
 
-  /** Charge les préférences, puis l'inventaire en cache (affiché aussitôt) et, s'il est périmé, l'inventaire à jour. */
-  async function ensure() {
-    if (S.started) return;
+  /**
+   * Charge les préférences, puis l'inventaire en cache (affiché aussitôt) et, s'il est périmé, l'inventaire à jour.
+   * Tous les appelants attendent le MÊME chargement : avant, un second appel rendait la main tout de suite, avant la lecture du cache ; la vue
+   * étendue croyait alors la copie absente et relançait une lecture complète qui remplaçait la copie au fur et à mesure (450 cartes affichées).
+   */
+  function ensure() {
+    if (!S.ensureP) S.ensureP = ensureOnce();
+    return S.ensureP;
+  }
+  async function ensureOnce() {
     S.started = true;
     const prefs = await WMX.store.get('cplusPrefs', {});
     if (prefs.priceMode === 'tag') S.priceMode = 'tag';
@@ -183,7 +214,12 @@
     S.tagsTouched = !!prefs.tagsTouched;
     await WMX.prices.load();
     const cached = await WMX.store.get('invCacheV2', null);
-    if (cached?.items?.length) { setItems(withoutDiscarded(cached.items, cached.t || 0)); if (cached.complete) S.loadedAt = cached.t || 0; }
+    if (cached?.items?.length) {
+      // Repères posés AVANT setItems : ceux qui écoutent la copie (vue étendue) la voient tout de suite complète.
+      if (cached.complete) { S.loadedAt = cached.t || 0; S.complete = true; }
+      S.ext = (cached.v || 0) >= CACHE_V && !!cached.complete;
+      setItems(withoutDiscarded(cached.items, cached.t || 0));
+    }
     if (!cached || !cached.complete || Date.now() - cached.t > INV_TTL) loadInventory(); // un cache sans « complete » est partiel : on recharge
   }
 
@@ -215,7 +251,7 @@
     S.gone.set(e.detail.card_id, [...(S.gone.get(e.detail.card_id) || []), Date.now()]);
     for (const it of S.items) if (it.card_id === e.detail.card_id) it.count -= 1;
     setItems(S.items.filter((i) => i.count > 0));
-    if (!S.loading) WMX.store.set('invCacheV2', { t: Date.now(), items: S.items, complete: true }); // le cache ne réaffiche plus les cartes défaussées (jamais une liste partielle)
+    if (!S.loading) saveCache(true); // le cache ne réaffiche plus les cartes défaussées (jamais une liste partielle)
   });
 
   function totals() {
@@ -371,6 +407,41 @@
     age: () => (S.loadedAt ? Date.now() - S.loadedAt : Infinity),
     reload: () => loadInventory(),
     refreshTagged, syncTagged,
+    // --- Vue étendue de la Collection (collection-view.js) ---
+    /** Copie complète, avec les lignes entières du jeu : la vue étendue peut s'en servir. */
+    extReady: () => S.ext && S.complete && S.items.length > 0, // pendant une relecture, la copie précédente (complète) continue de servir
+    /** Numéro qui change à chaque modification de la copie (tri et filtres de la vue étendue recalculés seulement alors). */
+    version: () => S.ver,
+    toRow,
+    /** Cache d'avant la version 3 (sans les lignes entières) : relecture complète en arrière-plan, une seule fois. */
+    upgrade() { if (!S.ext && !S.loading) loadInventory(); },
+    /** Cartes reçues (paquets, achats, échanges…) lues dans une réponse du jeu : ajoutées ou mises à jour. Rend le nombre de nouvelles cartes. */
+    upsertRows(rows) {
+      if (!rows?.length) return 0;
+      const byId = new Map(S.items.map((it) => [it.id, it]));
+      let added = 0;
+      for (const r of rows) { if (!r?.id) continue; if (!byId.has(r.id)) added += 1; byId.set(r.id, compact(r)); }
+      setItems([...byId.values()]);
+      saveSoon();
+      return added;
+    },
+    /** Cartes défaussées (identifiants de ligne) : retirées de la copie. */
+    removeIds(ids) {
+      const gone = new Set(ids || []);
+      if (!gone.size) return 0;
+      const before = S.items.length;
+      setItems(S.items.filter((it) => !gone.has(it.id)));
+      saveSoon();
+      return before - S.items.length;
+    },
+    /** Modifie des cartes (identifiants de ligne) : favori, étiquettes… */
+    patch(ids, fn) {
+      const set = new Set(ids || []);
+      let n = 0;
+      for (const it of S.items) if (set.has(it.id)) { fn(it); n += 1; }
+      if (n) { index = null; S.ver += 1; emit(); saveSoon(); }
+      return n;
+    },
     /** Dernier nombre de cartes annoncé par le jeu pour une étiquette (null tant qu'il n'a pas été lu). */
     tagCount: (name) => tagCounts.get(tagKey(name)) ?? null,
   };
