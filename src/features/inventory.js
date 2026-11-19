@@ -276,31 +276,53 @@
     const st = WMX.prices.state();
     const noSale = S.items.filter((it) => WMX.prices.has(it.card_id) && !price(it)).length; // prix demandé, mais aucune vente pour cette rareté
     const loaded = t.priced + noSale; // cartes dont le prix est connu (moyenne existante ou « sans vente »)
-    const info = !S.items.length ? (S.loading || S.started ? `Chargement de la collection : ${fmt(S.loadedCount)} cartes…` : 'Collection non chargée')
-      : st.running
-        ? `Prix : ${fmt(st.done)} / ${fmt(st.total)}${st.wait ? ` · pause ${st.wait} s (limite du jeu)` : ''}${st.failed ? ` · ${st.failed} à réessayer` : ''}${st.paused ? ' · en pause' : ''}`
-        : `Prix récupérés : ${fmt(loaded)} / ${fmt(t.total)} (dont ${fmt(noSale)} sans vente)${st.failed ? ` · ${st.failed} à réessayer` : ''}`;
-    const pct = `${st.running && st.total ? (st.done / st.total) * 100 : (t.total ? (loaded / t.total) * 100 : 0)}%`;
+    // Jauge : chargement en cours (fait / à faire), sinon part des cartes dont le prix est connu.
+    const noItems = !S.items.length;
+    const ratio = st.running && st.total ? st.done / st.total : (t.total ? loaded / t.total : 0);
+    const state = noItems ? 'idle' : st.running ? (st.paused ? 'paused' : st.wait ? 'wait' : 'run') : 'idle';
+    const label = noItems ? 'Collection' : st.running ? (st.paused ? 'Chargement des prix en pause' : st.wait ? 'Le jeu ralentit les demandes' : 'Chargement des prix') : 'Prix récupérés';
+    const count = noItems ? (S.loading || S.started ? `${fmt(S.loadedCount)} cartes lues…` : 'non chargée')
+      : st.running ? `${fmt(st.done)} / ${fmt(st.total)}` : `${fmt(loaded)} / ${fmt(t.total)}`;
+    const runSub = [st.wait ? `nouvel essai dans ${st.wait} s (limite du jeu)` : '', st.failed ? `${fmt(st.failed)} à réessayer` : '', st.paused ? 'reprenez quand vous voulez' : ''].filter(Boolean).join(' · ');
+    const sub = noItems ? (S.loading || S.started ? 'Lecture de la collection en cours' : '')
+      : st.running ? (runSub || 'les moyennes arrivent au fil de l’eau')
+        : [`dont ${fmt(noSale)} sans vente`, st.failed ? `${fmt(st.failed)} à réessayer` : ''].filter(Boolean).join(' · ');
     for (const b of bars) {
       if (!b.root.isConnected) continue;
-      b.info.textContent = info;
-      b.bar.firstChild.style.width = pct;
-      b.btn.textContent = st.running ? (st.paused ? 'Reprendre' : 'Pause') : 'Charger les prix…';
+      b.root.dataset.state = state;
+      b.label.textContent = label;
+      b.count.textContent = count;
+      b.pct.textContent = noItems ? '' : `${Math.floor(ratio * 100)} %`;
+      b.info.textContent = sub;
+      b.bar.firstChild.style.width = `${Math.max(0, Math.min(100, ratio * 100))}%`;
+      b.btn.textContent = st.running ? (st.paused ? '▶ Reprendre' : '❚❚ Pause') : 'Charger les prix…';
+      b.btn.classList.toggle('wmx-btn--ghost', !!st.running);
       b.stop.hidden = !st.running;
-      b.value.textContent = t.total ? `Valeur estimée : ${fmt(t.value)} W` : '';
-      b.value.title = `Somme des moyennes du marché × exemplaires, pour les ${fmt(t.priced)} cartes dont le prix est chargé.`;
+      b.value.textContent = t.total ? fmt(t.value) : '—';
+      b.valueSub.textContent = t.total ? `${fmt(t.priced)} carte${t.priced > 1 ? 's' : ''} évaluée${t.priced > 1 ? 's' : ''} sur ${fmt(t.total)}` : '';
+      b.kpi.title = `Somme des moyennes du marché × exemplaires, pour les ${fmt(t.priced)} cartes dont le prix est chargé.`;
     }
   }
 
-  /** Barre « valeur · état des prix · bouton » : un seul bouton, qui ouvre la fenêtre de choix. */
+  /**
+   * Barre de la Collection, en trois blocs : la valeur estimée en grand, la jauge des prix (pourcentage, état, détail), puis les actions
+   * (charger, pause ou reprise, arrêt ; « Défausser… » est ajouté par collection-native.js dans .wmx-cp-pricehead).
+   */
   function makePriceBar(cls = '') {
-    const info = el('span', { class: 'wmx-pb-info' });
     const value = el('b', { class: 'wmx-pb-value' });
-    const bar = el('div', { class: 'wmx-cp-bar' }, el('i'));
+    const valueSub = el('small', { class: 'wmx-pb-valuesub' });
+    const kpi = el('div', { class: 'wmx-pb-kpi' }, el('small', { class: 'wmx-pb-eyebrow' }, 'Valeur estimée'),
+      el('div', { class: 'wmx-pb-amount' }, value, el('span', { class: 'wmx-pb-unit' }, 'W')), valueSub);
+    const label = el('span', { class: 'wmx-pb-label' });
+    const count = el('span', { class: 'wmx-pb-count' });
+    const pct = el('span', { class: 'wmx-pb-pct' });
+    const info = el('small', { class: 'wmx-pb-info' });
+    const bar = el('div', { class: 'wmx-cp-bar', role: 'progressbar' }, el('i'));
+    const prog = el('div', { class: 'wmx-pb-prog' }, el('div', { class: 'wmx-pb-proghead' }, label, count, el('span', { class: 'wmx-cp-pspacer' }), pct), bar, info);
     const btn = el('button', { class: 'wmx-btn', onclick: priceAction }, 'Charger les prix…');
-    const stop = el('button', { class: 'wmx-btn wmx-btn--ghost', hidden: '', onclick: () => WMX.prices.stop() }, 'Arrêter');
-    const root = el('div', { class: `wmx-cp-prices ${cls}` }, el('div', { class: 'wmx-cp-pricehead' }, value, info, el('span', { class: 'wmx-cp-pspacer' }), btn, stop), bar);
-    bars.push({ root, info, value, bar, btn, stop });
+    const stop = el('button', { class: 'wmx-btn wmx-btn--ghost wmx-pb-stop', hidden: '', onclick: () => WMX.prices.stop() }, '■ Arrêter');
+    const root = el('div', { class: `wmx-cp-prices wmx-pb ${cls}` }, kpi, prog, el('div', { class: 'wmx-cp-pricehead' }, btn, stop));
+    bars.push({ root, info, value, valueSub, kpi, label, count, pct, bar, btn, stop });
     renderStatus();
     return root;
   }

@@ -5,7 +5,7 @@
   const plural = (n, w) => `${n} ${w}${n > 1 ? 's' : ''}`;
 
   WMX.DEFAULTS = {
-    speed: 'normal', order: 'rarity', images: true,
+    speed: 'normal', order: 'rarity', images: true, revealStyle: 'classic',
     stopOn: 'off', reserve: 0, fullStockOpen: true, anticipate: true,
     quickPct: -10, quickDuration: '1h', quickPrudent: false, auctionBubble: true, auctionNotify: true, autoReload: true,
     autoDefaultMode: 'time', autoDefaultSecs: 35, autoCapMode: 'avg', autoCapW: 100, autoCapPct: 20, autoDefaultOn: false, watchMax: 12, autoSell: false, autoSellTags: 'VENTE', autoSellMax: 5, autoSellCap: 500, autoSellOrder: 'avg', autoSellPriorityRar: '', autoSellStrict: true, autoSellRelistLimit: true, autoSellRelistMax: 4, quickNoSalePrice: 10, cardStyle: true, cardShowDesc: true, cardShowStats: true,
@@ -26,6 +26,8 @@
       title: 'Révélation',
       desc: 'Animation et ordre d’affichage des cartes après l’ouverture.',
       items: [
+        { key: 'revealStyle', type: 'select', label: 'Style d’ouverture', desc: 'Animation de révélation des cartes après l’ouverture des paquets. Aperçu en direct à droite.',
+          options: (WMX.REVEAL_STYLES || [['classic', 'Classique']]).map(([v, l]) => [v, l]) },
         { key: 'speed', type: 'select', label: 'Vitesse de révélation', desc: 'Durée des secousses et des retournements.',
           options: [['normal', 'Normale'], ['fast', 'Rapide'], ['instant', 'Instantanée']] },
         { key: 'order', type: 'select', label: 'Ordre des cartes', desc: 'Du plus commun au plus rare, ou dans l’ordre du tirage.',
@@ -114,6 +116,14 @@
       ],
     },
     {
+      title: 'Présentation et nouveautés',
+      desc: 'La présentation de l’extension et la liste de ce qui a changé à chaque version (affichée une fois après chaque mise à jour).',
+      items: [
+        { type: 'action', label: 'Nouveautés', desc: 'Ce qui a été ajouté ou corrigé dans les dernières versions.', button: 'Voir les nouveautés', run: () => { closeAll(); WMX.whatsNew?.showChanges(); } },
+        { type: 'action', label: 'Présentation', desc: 'Les principales fonctions de l’extension, en cinq étapes.', button: 'Revoir la présentation', run: () => { closeAll(); WMX.whatsNew?.showTour(); } },
+      ],
+    },
+    {
       title: 'Journal d’activité',
       desc: 'Les derniers événements de l’extension (file d’attente, assistant de vente, incidents), gardés sur cet ordinateur.',
       items: [
@@ -133,12 +143,14 @@
   ];
 
   // Menu de gauche : une page par thème, chacune regroupant une ou plusieurs parties ci-dessus (au lieu d'un seul long bloc à faire défiler).
+  /** Ferme la fenêtre des Paramètres (avant d'ouvrir la présentation ou les nouveautés par-dessus). */
+  const closeAll = () => document.querySelector('.wmx-modal--nav .wmx-close')?.click();
   const GROUPS = [
     { id: 'packs', label: 'Paquets', hint: 'Révélation, ouverture automatique', sections: ['Révélation', 'Ouverture automatique'] },
     { id: 'auctions', label: 'Enchères', hint: 'Bulle, alertes, mises automatiques, surveillance', sections: ['Enchères', 'Mises automatiques'] },
     { id: 'sell', label: 'Vente', hint: 'Enchère rapide ⚡, assistant de vente', sections: ['Enchère rapide', 'Assistant de vente'] },
     { id: 'cards', label: 'Aspect des cartes', hint: 'Style, description, attaque et défense', sections: ['Aspect des cartes'] },
-    { id: 'data', label: 'Journal et données', hint: 'Journal d’activité, diagnostic, historique', sections: ['Journal d’activité', 'Données', 'Extension'] },
+    { id: 'data', label: 'Journal et données', hint: 'Journal d’activité, diagnostic, historique', sections: ['Présentation et nouveautés', 'Journal d’activité', 'Données', 'Extension'] },
   ];
   let lastGroup = 'packs';
 
@@ -200,9 +212,9 @@
 
     const control = (it) => {
       if (it.type === 'select') {
-        const s = el('select', { class: 'wmx-input wmx-select wmx-dd' }, ...it.options.map(([v, l]) => el('option', { value: String(v) }, l)));
+        const s = el('select', { class: 'wmx-input wmx-select wmx-dd', 'data-key': it.key }, ...it.options.map(([v, l]) => el('option', { value: String(v) }, l)));
         s.value = String(draft[it.key]);
-        s.addEventListener('change', () => { draft[it.key] = it.number ? Number(s.value) : s.value; });
+        s.addEventListener('change', () => { draft[it.key] = it.number ? Number(s.value) : s.value; if (it.key === 'revealStyle' || it.key === 'speed') paintPreview(); });
         return s;
       }
       if (it.type === 'rarityOrder') {
@@ -329,7 +341,7 @@
       lastGroup = group;
       nav.replaceChildren(...GROUPS.filter((g) => visible.some((sec) => g.sections.includes(sec.title))).map((g) => {
         const b = el('button', { type: 'button', class: 'wmx-set-navbtn', 'aria-current': g.id === group ? 'page' : 'false' }, el('b', {}, g.label), el('small', {}, g.hint));
-        b.addEventListener('click', () => { if (group === g.id) return; group = g.id; render(); content.scrollTop = 0; });
+        b.addEventListener('click', () => { if (group === g.id) return; group = g.id; render(); paintPreview(); content.scrollTop = 0; });
         return b;
       }));
       const g = GROUPS.find((x) => x.id === group) || GROUPS[0];
@@ -342,19 +354,50 @@
           return row;
         })))));
     };
+    // Aperçu du style d'ouverture, à droite de la rubrique « Paquets » : cinq cartes d'exemple animées en boucle avec le style choisi
+    // (dans la liste du réglage ou avec les boutons de l'aperçu, qui changent aussi le réglage).
+    const preview = el('aside', { class: 'wmx-set-preview', 'aria-label': 'Aperçu du style d’ouverture' });
+    let stopPreview = null;
+    function paintPreview() {
+      stopPreview?.();
+      stopPreview = null;
+      const show = group === 'packs' && !!WMX.revealPreview;
+      preview.hidden = !show;
+      preview.closest('.wmx-modal')?.classList.toggle('wmx-has-preview', show);
+      if (!show) return;
+      const styles = WMX.REVEAL_STYLES || [];
+      const cur = styles.find(([v]) => v === draft.revealStyle) || styles[0];
+      const stage = el('div', { class: 'wmx-rv-preview' });
+      const pick = el('div', { class: 'wmx-rv-pick', role: 'group', 'aria-label': 'Style d’ouverture' }, ...styles.map(([v, l]) => {
+        const b = el('button', { type: 'button', 'aria-pressed': String(v === cur?.[0]) }, l);
+        b.addEventListener('click', () => {
+          draft.revealStyle = v;
+          const sel = content.querySelector('select[data-key="revealStyle"]');
+          if (sel) sel.value = v;
+          paintPreview();
+        });
+        return b;
+      }));
+      // Vitesse « Instantanée » : à l'ouverture des paquets, l'animation est sautée (les cartes apparaissent retournées) ; on le signale.
+      const instant = draft.speed === 'instant' ? el('p', { class: 'wmx-rv-warn' }, 'Vitesse « Instantanée » : à l’ouverture, l’animation est sautée. Choisissez « Normale » ou « Rapide » pour la voir.') : '';
+      preview.replaceChildren(el('h4', {}, `Aperçu : ${cur?.[1] || ''}`), el('p', {}, cur?.[2] || ''), pick, instant, stage,
+        el('p', {}, 'Cartes d’exemple, de la commune à la légendaire. La vitesse et « Passer » s’appliquent aussi.'));
+      stopPreview = WMX.revealPreview(stage, cur?.[0] || 'classic');
+    }
+    const renderAll = () => { render(); paintPreview(); };
     render();
 
-    const close = () => { backdrop.remove(); document.querySelectorAll('.wmx-tip').forEach((t) => t.remove()); document.removeEventListener('keydown', onKey); };
+    const close = () => { stopPreview?.(); backdrop.remove(); document.querySelectorAll('.wmx-tip').forEach((t) => t.remove()); document.removeEventListener('keydown', onKey); };
     const onKey = (e) => { if (e.key === 'Escape') close(); };
     document.addEventListener('keydown', onKey);
 
     const modal = el('div', { class: 'wmx-modal wmx-modal--nav', role: 'dialog', 'aria-label': 'Paramètres de l’extension' },
       el('header', {}, el('div', { class: 'wmx-set-title' }, WMX.dom.logo(34), el('div', {}, el('h2', {}, 'Paramètres de l’extension'), el('p', {}, 'Réglez uniquement ce dont vous avez besoin.'))),
         el('button', { class: 'wmx-close', title: 'Fermer', onclick: close }, '×')),
-      el('div', { class: 'wmx-set-layout' }, nav, content),
+      el('div', { class: 'wmx-set-layout' }, nav, content, preview),
       el('footer', {}, el('span', {}, 'Les changements s’appliquent avec « Appliquer ».'),
         el('div', {},
-          el('button', { class: 'wmx-btn wmx-btn--ghost', onclick: () => { draft = { ...WMX.DEFAULTS }; render(); } }, 'Valeurs par défaut'),
+          el('button', { class: 'wmx-btn wmx-btn--ghost', onclick: () => { draft = { ...WMX.DEFAULTS }; renderAll(); } }, 'Valeurs par défaut'),
           el('button', { class: 'wmx-btn wmx-btn--ghost', onclick: close }, 'Annuler'),
           el('button', { class: 'wmx-btn', onclick: () => {
             const changed = Object.fromEntries(Object.keys(draft).filter((k) => draft[k] !== initial[k]).map((k) => [k, draft[k]]));
@@ -363,6 +406,7 @@
           } }, 'Appliquer'))));
     const backdrop = el('div', { class: 'wmx-modal-backdrop', onmousedown: (e) => { if (e.target === backdrop) close(); } }, modal);
     document.body.append(backdrop);
+    paintPreview();
     if (sectionTitle) {
       const sec = [...content.querySelectorAll('section.wmx-sec')].find((s) => s.querySelector('h3')?.textContent === sectionTitle);
       if (sec) {
