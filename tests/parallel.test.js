@@ -40,6 +40,7 @@ async function setup(stockStart, opts = {}) {
     }
     return n;
   };
+  if (opts.before) opts.before(env);
   WMX.features.find((x) => x.name === 'stats').init();
   await WMX.features.find((x) => x.name === 'boosters').init();
   Object.assign(WMX.settings, { speed: 'instant', images: false });
@@ -94,5 +95,18 @@ test('ouverture en parallèle : « Arrêter l’ouverture » garde les paquets r
   assert.equal(w.document.querySelectorAll('.wmx-overlay .wmx-grid .wmx-tile').length, opened * 5);
   await sleep(600);
   assert.equal(6 - st.stock, opened, 'plus rien d’ouvert ensuite');
+  env.close();
+});
+
+test('ouverture auto en parallèle : depuis une autre page, à l’échéance, ouverture dans la page Paquets invisible ; stock relevé pour le cadran, sans revenir sur la page Paquets', async () => {
+  const { env, w, WMX, st } = await setup(3, { before: (e) => { e.mem.autoRun = { on: true, t: Date.now(), buffer: [], opened: 0, nextAt: Date.now() - 1000 }; } });
+  WMX.settings.reserve = 0;
+  for (let i = 0; i < 120 && st.stock > 0; i++) await sleep(50);
+  assert.equal(st.stock, 0, 'les 3 paquets ouverts à l’échéance, depuis le Marché');
+  assert.equal(w.location.pathname, '/marketplace');
+  for (let i = 0; i < 40 && env.mem.packsSeen?.packs !== 0; i++) await sleep(50);
+  assert.equal(env.mem.packsSeen.packs, 0, 'stock relevé après l’ouverture : le cadran est à jour');
+  assert.ok(st.frames.filter((f) => /wmx-pulls/.test(f.getAttribute('src'))).every((f) => !f.isConnected), 'page invisible refermée');
+  assert.match(w.document.querySelector('.wmx-fab-count').textContent, /^3$/, 'pastille : 3 paquets ouverts par l’auto');
   env.close();
 });

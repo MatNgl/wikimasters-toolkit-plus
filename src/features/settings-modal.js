@@ -38,10 +38,10 @@
     },
     {
       title: 'Ouverture des paquets',
-      desc: 'Où s’ouvrent vos paquets quand vous cliquez sur « Tout ouvrir ».',
+      desc: 'Où s’ouvrent vos paquets (« Tout ouvrir » et ouverture auto).',
       items: [
-        { key: 'openParallel', type: 'toggle', label: 'Ouverture en parallèle', desc: 'Activée (par défaut) : « Tout ouvrir » ouvre vos paquets dans une page Paquets invisible, depuis n’importe quelle page ; vous continuez à jouer, la progression s’affiche sur le cadran des paquets et les cartes sont révélées à la fin. Désactivée : sur la page Paquets, en plein écran.',
-          help: 'Les demandes envoyées au jeu sont les mêmes qu’avec la page Paquets affichée. Si le jeu demande une vérification humaine, elle s’affiche au centre de l’écran : faites-la, l’ouverture reprend. « Arrêter l’ouverture » (menu des paquets) garde les paquets restants.' },
+        { key: 'openParallel', type: 'toggle', label: 'Ouverture en parallèle', desc: 'Ouvre vos paquets dans une page invisible, depuis n’importe quelle page.',
+          help: 'Activée (par défaut) : « Tout ouvrir » et l’ouverture auto se font dans une page Paquets invisible, depuis n’importe quelle page du jeu (Collection, Marché, Échanges…). Vous continuez à jouer ; la progression et le nombre de paquets s’affichent sur le cadran des paquets, et les cartes sont révélées à la fin. L’ouverture auto n’attend plus votre retour sur la page Paquets : votre stock n’atteint jamais le maximum. Les demandes envoyées au jeu sont les mêmes qu’avec la page Paquets affichée. Si le jeu demande une vérification humaine, elle s’affiche au centre de l’écran. « Arrêter l’ouverture » (menu des paquets) garde les paquets restants. Désactivée : ouverture sur la page Paquets, en plein écran.' },
       ],
     },
     {
@@ -239,7 +239,7 @@
           const rest = Object.keys(NAMES).filter((r) => !ord.includes(r));
           const mode = (label, on, onClick) => { const b = el('button', { type: 'button', class: 'wmx-seg-btn', 'aria-pressed': String(on) }, label); b.addEventListener('click', onClick); return b; };
           wrap.replaceChildren(
-            el('div', { class: 'wmx-seg' }, mode('Toutes les raretés', !ord.length, () => set([])), mode('Seulement celles-ci', !!ord.length, () => { if (!ord.length) set(['UR']); })),
+            el('div', { class: 'wmx-seg' }, mode('Toutes les raretés', !ord.length, () => set([])), mode('Seulement celles-ci', !!ord.length, () => { if (!ord.length) set(['L']); })),
             ...(ord.length ? [el('ol', { class: 'wmx-rord-list' }, ...ord.map((r, i) => el('li', {}, el('span', { class: 'wmx-rord-n' }, `n°${i + 1}`), badge(r), el('span', { class: 'wmx-rord-name' }, NAMES[r]),
               btn('↑', 'Monter', () => { const a = [...ord]; [a[i - 1], a[i]] = [a[i], a[i - 1]]; set(a); }, i ? {} : { disabled: '' }),
               btn('↓', 'Descendre', () => { const a = [...ord]; [a[i + 1], a[i]] = [a[i], a[i + 1]]; set(a); }, i < ord.length - 1 ? {} : { disabled: '' }),

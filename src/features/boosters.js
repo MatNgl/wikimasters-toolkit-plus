@@ -116,6 +116,8 @@
     for (const c of [ui.fabCount, ui.fabCount2]) { c.hidden = !state.auto && !state.par; c.textContent = String(state.par ? state.par.cards.length : state.opened); }
   };
   let refreshDial = () => {}; // redessine le cadran (défini à sa construction)
+  let recordSeen = () => {};  // note un relevé du stock (page Paquets invisible) : base de l'estimation du cadran sur les autres pages
+  let getEstimate = () => null; // stock estimé hors de la page Paquets ({ packs, max, nextIn, est }) ou null
   /** « Tout ouvrir » devient « Arrêter l'ouverture » pendant une ouverture en parallèle. */
   const setAllBtn = () => {
     if (!ui.allBtn) return;
@@ -425,33 +427,68 @@
       }
       if (!state.auto) break;
       if (state.busy) continue;
-      if (!/^\/pulls/.test(location.pathname)) { // hors de la page Paquets, les paquets ne sont pas visibles : le compte à rebours continue, l'ouverture attend le retour
+      // Hors de la page Paquets : avec l'ouverture en parallèle (par défaut), le compte à rebours continue sur n'importe quelle page et, à
+      // l'échéance, les paquets s'ouvrent dans une page Paquets invisible ; sans elle, l'ouverture attend le retour sur la page Paquets.
+      const onPulls = /^\/pulls/.test(location.pathname);
+      const par = WMX.settings.openParallel !== false;
+      if (!onPulls && !par) {
         const w = (state.nextAt - Date.now()) / 1000;
         setStatus(w > 0 ? `Prochaine ouverture dans ${mmss(w)} · elle se fera sur la page Paquets` : 'Ouverture prête : retournez sur la page Paquets');
         continue;
       }
-      const { packs, max } = packInfo();
-      const nextIn = nextPackIn();
+      let packs; let max; let nextIn;
+      if (onPulls) { ({ packs, max } = packInfo()); nextIn = nextPackIn(); } else {
+        const e = getEstimate(); // relevé de la dernière visite (ou de la dernière ouverture invisible), recalculé chaque seconde
+        packs = e ? e.packs : null; max = e?.max || WMX.logic.PACK_MAX; nextIn = e ? e.nextIn : null;
+      }
       const cfg = WMX.settings;
       const reserve = Math.min(cfg.reserve, max - 1);
       const wait = (state.nextAt - Date.now()) / 1000;
       let toOpen = 0;
       let why = '';
       // À chaque échéance : on ouvre TOUS les paquets disponibles au-dessus de la réserve, pour ne jamais atteindre le maximum.
-      const ready = Math.max(0, packs - reserve);
-      if (packs >= max && cfg.fullStockOpen) { toOpen = ready; why = 'stock plein'; }
+      const ready = Math.max(0, (packs ?? 0) - reserve);
+      if (packs == null) { if (wait <= 0) toOpen = -1; } // stock inconnu (page Paquets jamais visitée) : on le lit à l'échéance
+      else if (packs >= max && cfg.fullStockOpen) { toOpen = ready; why = 'stock plein'; }
       else if (ready > 0) {
         if (wait <= 0) toOpen = ready;
         else if (cfg.anticipate && nextIn != null && nextIn + (max - packs - 1) * regenS() <= wait + 60) { toOpen = ready; why = 'avant blocage du stock'; }
       }
-      if (toOpen > 0) {
+      if (toOpen !== 0 && !onPulls) {
+        await autoInvisible(reserve, why);
+        setNextAt(Date.now() + nextInterval());
+      } else if (toOpen > 0) {
         setStatus(why ? `Ouverture anticipée (${why})` : 'Ouverture…');
         await openBatch(toOpen);
         setNextAt(Date.now() + nextInterval());
       } else if (state.auto) {
-        setStatus(`Prochaine ouverture dans ${mmss(Math.max(0, wait))} · ${packs} paquet${packs > 1 ? 's' : ''} en attente${ready === 0 && packs > 0 ? ' (réserve)' : ''}`);
+        const where = onPulls ? '' : ' · en parallèle';
+        setStatus(packs == null ? `Prochaine ouverture dans ${mmss(Math.max(0, wait))}${where}`
+          : `Prochaine ouverture dans ${mmss(Math.max(0, wait))} · ${onPulls ? '' : '~'}${packs} paquet${packs > 1 ? 's' : ''} en attente${ready === 0 && packs > 0 ? ' (réserve)' : ''}${where}`);
       }
     }
+  }
+
+  /**
+   * Ouverture auto depuis une autre page que Paquets (ouverture en parallèle) : page Paquets invisible, lecture du VRAI stock, ouverture des
+   * paquets au-dessus de la réserve, puis nouveau relevé du stock pour le cadran (nombre de paquets à jour sans revenir sur la page Paquets).
+   */
+  async function autoInvisible(reserve, why) {
+    setStatus(why ? `Ouverture anticipée en parallèle (${why})…` : 'Ouverture auto en parallèle…');
+    state.busy = true;
+    CTX = await pullsFrame();
+    state.busy = false;
+    if (!CTX) { setStatus('Page Paquets invisible indisponible : nouvel essai à la prochaine échéance'); return; }
+    try {
+      let real = packsLeft();
+      for (let i = 0; i < 10 && !real; i++) { await sleep(400); real = packsLeft(); } // compteur du jeu d'abord à 0, le temps de lire le stock
+      const info = packInfo();
+      recordSeen(real, info.max, nextPackIn());
+      const n = Math.max(0, real - reserve);
+      if (n > 0) await openBatch(n);
+      const after = packInfo();
+      recordSeen(after.packs, after.max, nextPackIn());
+    } finally { CTX?.close(); CTX = null; }
   }
 
   /**
@@ -537,6 +574,15 @@
     let seenSnap = seenPacks; // dernier relevé fait sur la page Paquets (mémorisé) : base de l'estimation sur les autres pages
     let lastPacks = estimateSeen(seenSnap);
     let lastSave = 0;
+    recordSeen = (packs, max, nextIn) => {
+      const now = Date.now();
+      seenSnap = { packs, max, nextAt: packs >= max || nextIn == null ? null : now + nextIn * 1000, t: now, account };
+      lastSave = now;
+      WMX.store.set('packsSeen', seenSnap);
+      lastPacks = estimateSeen(seenSnap);
+      refreshDial();
+    };
+    getEstimate = () => estimateSeen(seenSnap);
     // Un relevé fait dans un autre onglet (page Paquets) vaut aussitôt ici.
     WMX.onStorage?.((c) => {
       if (c.packsSeen?.newValue && !/^\/pulls/.test(location.pathname)) seenSnap = c.packsSeen.newValue;
@@ -571,7 +617,7 @@
       } else lastPacks = estimateSeen(seenSnap) || (onPulls ? lastPacks : null); // hors de la page Paquets : estimation recalculée chaque seconde
       const full = !!lastPacks && lastPacks.packs >= lastPacks.max;
       if (!full) warnDismissed = false; // le prochain stock plein ramènera l'alerte
-      warn.hidden = !(full && !onPulls && !warnDismissed);
+      warn.hidden = !(full && !onPulls && !warnDismissed) || (state.auto && WMX.settings.openParallel !== false); // ouverture auto en parallèle : elle s'en charge
       if (!warn.hidden) warn.querySelector('.wmx-fullwarn-txt').textContent = `Stock plein (${lastPacks.est ? '~' : ''}${lastPacks.packs}/${lastPacks.max}) : ` + (state.auto ? 'l’ouverture auto ne marche que sur la page Paquets' : 'vos paquets ne se régénèrent plus, allez les ouvrir');
       dialEl?.classList.toggle('full', full); // anneau rouge : le stock est plein
       dialEl?.classList.toggle('opening', !!state.par);

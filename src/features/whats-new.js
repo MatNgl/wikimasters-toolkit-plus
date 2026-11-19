@@ -7,8 +7,10 @@
   // Nouveautés, de la plus récente à la plus ancienne. Écrites pour les joueurs : ce qu'ils voient et ce que ça change pour eux.
   // kind : 'new' (nouveau), 'better' (amélioré), 'fix' (corrigé).
   const CHANGES = [
-    { v: '1.0.91', title: 'Ouvrir ses paquets sans quitter sa page', items: [
+    { v: '1.0.92', title: 'Ouvrir ses paquets sans quitter sa page', items: [
       ['new', '« Tout ouvrir » ouvre vos paquets en parallèle, depuis n’importe quelle page : vous continuez à jouer, la progression s’affiche sur le cadran des paquets, puis vos cartes sont révélées. Désactivable dans Paramètres → Paquets.'],
+      ['new', 'L’ouverture auto marche aussi depuis n’importe quelle page : à chaque échéance, vos paquets s’ouvrent en arrière-plan et le cadran se met à jour. Votre stock n’atteint plus le maximum.'],
+      ['better', 'Assistant de vente : « Seulement celles-ci » propose d’abord les légendaires.'],
       ['better', 'Révélation plus fluide : les cartes se retournent en vague, sans temps mort ; une courte lueur annonce les plus rares. « Rapide » va environ trois fois plus vite.'],
       ['fix', '« Aucun paquet disponible » n’apparaît plus quand il vous reste des paquets.'],
     ] },

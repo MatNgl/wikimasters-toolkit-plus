@@ -776,21 +776,21 @@ test('réglages : raretés à vendre de l’assistant (toutes par défaut, liste
   assert.equal(pressed(), 'Toutes les raretés');
   [...w.document.querySelectorAll('.wmx-rord .wmx-seg-btn')].find((b) => b.textContent === 'Seulement celles-ci').click();
   const rows = () => [...w.document.querySelectorAll('.wmx-rord-list li')].map((li) => li.querySelector('.wmx-rord-r').textContent);
-  assert.deepEqual(rows(), ['UR'], 'une liste proposée : les ultra rares seulement');
+  assert.deepEqual(rows(), ['L'], 'une liste proposée : les légendaires d’abord');
   const add = (r) => [...w.document.querySelectorAll('.wmx-rord-add .wmx-rord-btn')].find((b) => b.textContent === r).click();
-  add('L'); add('SR');
-  assert.deepEqual(rows(), ['UR', 'L', 'SR']);
+  add('UR'); add('SR');
+  assert.deepEqual(rows(), ['L', 'UR', 'SR']);
   w.document.querySelectorAll('.wmx-rord-list li')[1].querySelector('button[title="Monter"]').click();
-  assert.deepEqual(rows(), ['L', 'UR', 'SR'], 'les légendaires passent devant');
+  assert.deepEqual(rows(), ['UR', 'L', 'SR'], 'les ultra rares passent devant');
   w.document.querySelectorAll('.wmx-rord-list li')[1].querySelector('button[title="Monter"]').click();
-  assert.deepEqual(rows(), ['UR', 'L', 'SR'], 'les ultra rares repassent devant');
+  assert.deepEqual(rows(), ['L', 'UR', 'SR'], 'les légendaires repassent devant');
   add('R');
-  assert.deepEqual(rows(), ['UR', 'L', 'SR', 'R'], 'une rareté ajoutée à la liste');
+  assert.deepEqual(rows(), ['L', 'UR', 'SR', 'R'], 'une rareté ajoutée à la liste');
   w.document.querySelectorAll('.wmx-rord-list li')[3].querySelector('button[title="Retirer de la liste"]').click();
-  assert.deepEqual(rows(), ['UR', 'L', 'SR']);
+  assert.deepEqual(rows(), ['L', 'UR', 'SR']);
   [...w.document.querySelectorAll('.wmx-modal footer .wmx-btn')].find((b) => b.textContent === 'Appliquer').click();
   await sleep(300);
-  assert.equal(WMX.settings.autoSellPriorityRar, 'UR,L,SR', 'l’ordre est enregistré');
+  assert.equal(WMX.settings.autoSellPriorityRar, 'L,UR,SR', 'l’ordre est enregistré');
   WMX.openSettings('Assistant de vente');
   [...w.document.querySelectorAll('.wmx-rord .wmx-seg-btn')].find((b) => b.textContent === 'Toutes les raretés').click();
   assert.equal(w.document.querySelectorAll('.wmx-rord-list li').length, 0, 'retour à aucune priorité');
@@ -1462,9 +1462,10 @@ test('statistiques : retenues pendant l\'ouverture auto (pas de spoil de la rép
   env.close();
 });
 
-test('stock plein hors de la page Paquets : avertissement et bouton pour y retourner (auto active)', async () => {
+test('stock plein hors de la page Paquets : avertissement et bouton pour y retourner (auto active, sans ouverture en parallèle) ; avec elle, pas d’avertissement (l’auto ouvre les paquets)', async () => {
   const env = createEnv({ fetchImpl: async () => json({}) });
   const { w, mem, WMX } = env;
+  WMX.settings.openParallel = false;
   mem.autoRun = { on: true, t: Date.now() - 3000, buffer: [], opened: 0, nextAt: Date.now() + 5 * 60000 };
   mem.packsSeen = { packs: 10, max: 10, nextIn: null, t: Date.now() - 60000 };
   const nav = [];
@@ -1477,6 +1478,9 @@ test('stock plein hors de la page Paquets : avertissement et bouton pour y retou
   warn.querySelector('button').click();
   assert.deepEqual(nav, ['/pulls'], 'le bouton ramène sur la page Paquets');
   assert.equal(WMX.RARITY_RGB.SR, '244 114 182', 'SR en rose');
+  WMX.settings.openParallel = true;
+  await sleep(1200);
+  assert.equal(warn.hidden, true, 'ouverture en parallèle : l’auto s’en charge, pas d’avertissement');
   env.close();
 });
 
