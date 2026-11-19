@@ -59,6 +59,15 @@ fs.writeFileSync(path.join(dir, 'check.js'), `(async () => {
     out.frameInput = d.documentElement.dataset.seen || 'rien'; out.frameValue = input.value;
     d.querySelector('button').click(); await wait(50); out.frameClick = d.documentElement.dataset.clicked || 'non';
   } catch (e) { out.frameErr = String(e); }
+  // Vue étendue : localStorage partagé avec la page (lu par page-hook.js) et aller-retour d'événements page → extension → page (chaînes JSON).
+  try {
+    localStorage.setItem('wmxCheck', 'on');
+    window.addEventListener('wmx:ask', (e) => { const d = JSON.parse(String(e.detail)); window.dispatchEvent(new CustomEvent('wmx:answer', { detail: JSON.stringify({ id: d.id, body: 'ok-' + d.id }) })); });
+    window.dispatchEvent(new CustomEvent('wmx:go'));
+    await wait(300);
+    out.pageSawStorage = document.documentElement.dataset.ls || 'rien';
+    out.roundTrip = document.documentElement.dataset.rt || 'rien';
+  } catch (e) { out.bridgeErr = String(e); }
   try { out.get = await (await fetch('/echo')).text(); out.post = await (await fetch('/echo', { method: 'POST', body: '{}', headers: { 'content-type': 'application/json' } })).text(); } catch (e) { out.fetchErr = String(e); }
   await fetch('/report', { method: 'POST', body: JSON.stringify(out) });
 })();`);
@@ -94,6 +103,8 @@ const server = http.createServer((req, res) => {
         ['verrou : tenu longtemps (onglet meneur), puis pris avec steal', r.leaderHeld === true && r.leaderOther === 'none' && r.steal === 'stolen' && r.stolenName === 'AbortError'],
         ['cadre : prix saisi et vu par la page (comme React)', r.frameInput === 'change:137' && r.frameValue === '137'],
         ['cadre : clic sur un bouton', r.frameClick === 'oui'],
+        ['vue étendue : localStorage commun à l’extension et à la page', r.pageSawStorage === 'on'],
+        ['vue étendue : question de la page, réponse de l’extension (événements)', r.roundTrip === 'ok-7'],
         ['requête GET : cookies de la page', get.cookie === 'sess=abc'],
         ['requête POST : cookies et origine de la page', post.cookie === 'sess=abc' && post.origin === `http://127.0.0.1:${PORT}`],
       ];
@@ -108,7 +119,8 @@ const server = http.createServer((req, res) => {
   res.setHeader('content-type', 'text/html; charset=utf-8');
   if (req.url === '/frame') { res.end(FRAME); return; }
   res.setHeader('set-cookie', 'sess=abc; Path=/');
-  res.end('<!doctype html><meta charset="utf-8"><title>wmx</title><iframe src="/frame"></iframe>');
+  // Script de la page (comme page-hook.js) : lit le localStorage écrit par l'extension et lui pose une question par événement.
+  res.end('<!doctype html><meta charset="utf-8"><title>wmx</title><iframe src="/frame"></iframe><script>window.addEventListener("wmx:answer", (e) => { document.documentElement.dataset.rt = JSON.parse(String(e.detail)).body; }); window.addEventListener("wmx:go", () => { document.documentElement.dataset.ls = localStorage.getItem("wmxCheck") || "rien"; window.dispatchEvent(new CustomEvent("wmx:ask", { detail: JSON.stringify({ id: 7 }) })); });</script>');
 });
 server.listen(PORT, '127.0.0.1', () => {
   const q = (s) => `"${s}"`; // chemins avec espaces (« Program Files »)
