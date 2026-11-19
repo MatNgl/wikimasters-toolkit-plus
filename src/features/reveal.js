@@ -228,7 +228,7 @@
         remaining.textContent = stopped ? remNote.replace(/^ · /, 'Ouverture ') : '';
         const tiles = sorted.map(realTile);
         grid.replaceChildren(...tiles);
-        // Style d'ouverture choisi dans les Paramètres (Classique, Pile lumineuse, Vœu, Décryptage) ; « Passer » termine tout de suite.
+        // Style d'ouverture choisi dans les Paramètres (Classique, Pile lumineuse, Vœu) ; « Passer » termine tout de suite.
         await WMX.revealPlay(cfg.revealStyle || 'classic', { root: overlay, grid, tiles, f, skip: () => skip, onFlip: updateLot });
         tiles.forEach((t) => t.classList.add('flip'));
         skipBtn.remove();
@@ -250,7 +250,6 @@
     ['classic', 'Classique', 'Chaque carte tremble, s’illumine de sa rareté puis se retourne.'],
     ['stack', 'Pile lumineuse', 'Les cartes s’empilent ; celle du dessus brille de sa rareté avant d’être retournée et posée.'],
     ['wish', 'Vœu', 'Une étoile filante de la couleur de la meilleure carte, puis toutes les cartes brillent avant de se retourner.'],
-    ['decrypt', 'Décryptage', 'Un scanner balaie chaque carte : son nom se décode lettre par lettre, puis elle se révèle.'],
   ];
   /** Attente interrompue par « Passer ». */
   const waitFor = async (ms, skip) => { const end = Date.now() + ms; while (!skip() && Date.now() < end) await sleep(Math.min(50, end - Date.now())); };
@@ -326,38 +325,9 @@
     tiles.forEach((t) => t.classList.remove('wmx-rv-aura'));
   }
 
-  // Décryptage : une ligne de scan de la couleur de la carte la balaie, son nom se décode lettre par lettre, puis elle se retourne.
-  const GLYPHS = 'ABCDEFGHJKLMNPQRSTUVWXYZ0123456789#$%&@*+=?<>/';
-  async function playDecrypt({ tiles, f, skip, onFlip }) {
-    const DUR = { C: 420, PC: 520, R: 760, SR: 1050, UR: 1450, L: 2100 };
-    for (const t of tiles) {
-      if (skip()) break;
-      const back = t.querySelector('.wmx-back');
-      const name = (t._card?.wikipedia_title || t.dataset.name || 'WikiMasters').toUpperCase().slice(0, 16);
-      const code = el('span', { class: 'wmx-rv-code' });
-      const keep = back ? [...back.childNodes] : [];
-      back?.replaceChildren(code);
-      t.classList.add('wmx-rv-scan');
-      const dur = (DUR[t.dataset.r] || 450) * f;
-      const t0 = Date.now();
-      while (!skip() && Date.now() - t0 < dur) {
-        const k = Math.floor(((Date.now() - t0) / dur) * name.length);
-        code.textContent = name.split('').map((ch, i) => (i < k || ch === ' ' ? ch : GLYPHS[Math.floor(Math.random() * GLYPHS.length)])).join('');
-        await sleep(45);
-      }
-      code.textContent = name;
-      t.classList.remove('wmx-rv-scan');
-      t.classList.add('flip');
-      onFlip?.();
-      await waitFor((RANKS[t.dataset.r] >= 4 ? 800 : 240) * f, skip);
-      back?.replaceChildren(...keep);
-    }
-    tiles.forEach((t) => t.classList.remove('wmx-rv-scan'));
-  }
-
   /** Joue un style d'ouverture sur des cartes déjà posées face cachée dans `grid` (dans `root`). */
   WMX.revealPlay = async function revealPlay(style, o) {
-    const run = { stack: playStack, wish: playWish, decrypt: playDecrypt }[style] || playClassic;
+    const run = { stack: playStack, wish: playWish }[style] || playClassic; // style inconnu (ou retiré, comme « Décryptage ») : Classique
     try { await run(o); } catch (e) { console.warn('[WMX] style d’ouverture', style, e); }
     o.tiles.forEach((t) => t.classList.add('flip'));
   };

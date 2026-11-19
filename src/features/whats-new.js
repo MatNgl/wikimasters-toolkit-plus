@@ -8,7 +8,7 @@
   // kind : 'new' (nouveau), 'better' (amélioré), 'fix' (corrigé).
   const CHANGES = [
     { v: '1.0.87', title: 'Ouverture des paquets et Collection', items: [
-      ['new', 'Trois nouveaux styles d’ouverture des paquets : Pile lumineuse, Vœu (étoile filante) et Décryptage. À choisir dans Paramètres → Paquets, avec un aperçu en direct.'],
+      ['new', 'Deux nouveaux styles d’ouverture des paquets : Pile lumineuse et Vœu (étoile filante). À choisir dans Paramètres → Paquets, avec un aperçu en direct.'],
       ['better', 'Barre de la Collection redessinée : valeur estimée bien visible, jauge de chargement des prix avec pause et arrêt.'],
       ['new', 'Cette fenêtre : les nouveautés de chaque version, une seule fois.'],
     ] },

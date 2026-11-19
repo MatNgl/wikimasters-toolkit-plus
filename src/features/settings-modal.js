@@ -15,6 +15,7 @@
   WMX.migrateSettings = (s) => {
     if (s && s.quickPct == null && Number(s.quickCoef) > 0) s.quickPct = Math.round((Number(s.quickCoef) - 1) * 100);
     if (s) delete s.quickCoef;
+    if (s && s.revealStyle === 'decrypt') s.revealStyle = 'classic'; // style « Décryptage » retiré (1.0.89)
     return s || {};
   };
 

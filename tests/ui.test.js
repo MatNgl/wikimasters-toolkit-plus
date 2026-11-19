@@ -8,7 +8,7 @@ const json = (body, status = 200) => ({ ok: true, status, headers: { get: () => 
 const RAR = { commun: 'C', peu_commun: 'PC', rare: 'R', super_rare: 'SR', legendaire: 'L' };
 const cards = Object.keys(RAR).map((r, i) => ({ id: `k${i}`, wikipedia_title: `Carte ${i}`, rarity: r }));
 
-for (const [style, marker] of [['classic', null], ['stack', '.wmx-rv-stage'], ['wish', '.wmx-rv-wish'], ['decrypt', '.wmx-rv-scan']]) {
+for (const [style, marker] of [['classic', null], ['stack', '.wmx-rv-stage'], ['wish', '.wmx-rv-wish']]) {
   test(`ouverture des paquets, style « ${style} » : animation propre au style, toutes les cartes retournées à la fin, « Continuer » disponible`, async () => {
     const env = createEnv({ fetchImpl: async () => json({ summary: {} }) });
     const { w, WMX } = env;
@@ -51,7 +51,7 @@ test('Paramètres → Paquets : réglage « Style d’ouverture » (4 styles) et
   WMX.openSettings('Révélation');
   const sel = w.document.querySelector('select[data-key="revealStyle"]');
   assert.ok(sel, 'réglage présent');
-  assert.deepEqual([...sel.options].map((o) => o.value), ['classic', 'stack', 'wish', 'decrypt']);
+  assert.deepEqual([...sel.options].map((o) => o.value), ['classic', 'stack', 'wish']);
   const preview = w.document.querySelector('.wmx-set-preview');
   assert.equal(preview.hidden, false, 'aperçu affiché pour les Paquets');
   await sleep(50);
