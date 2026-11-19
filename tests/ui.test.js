@@ -97,3 +97,31 @@ test('barre de la Collection : valeur estimée en grand, jauge (pourcentage, ét
   assert.equal(bar.querySelector('.wmx-pb-stop').hidden, true, '« Arrêter » seulement pendant un chargement');
   env.close();
 });
+
+test('mise à jour vers la 1.0.93 : « À la une » (paquets depuis n’importe quelle page, vue étendue de la Collection) une seule fois, aussi pour qui vient d’une version sans cette fenêtre', async () => {
+  const open = async (seen) => {
+    const env = createEnv({ fetchImpl: async () => json({}) });
+    env.w.chrome.runtime.getManifest = () => ({ version: '1.0.93', version_name: '1.0.93' });
+    if (seen) env.mem.seenVersion = seen;
+    env.mem.wmxSettings = { speed: 'normal' }; // déjà utilisateur
+    env.w.document.body.insertAdjacentHTML('beforeend', '<nav><a href="/collection">Collection</a></nav>');
+    env.WMX.features.find((f) => f.name === 'whats-new').init();
+    for (let i = 0; i < 40 && !env.w.document.querySelector('.wmx-wn'); i++) await sleep(100);
+    return env;
+  };
+  for (const seen of [null, '1.0.79']) {
+    const env = await open(seen);
+    const box = env.w.document.querySelector('.wmx-wn');
+    assert.ok(box, `fenêtre affichée (version vue : ${seen || 'aucune'})`);
+    const top = box.querySelector('.wmx-wn-top');
+    assert.ok(top, 'bloc « À la une »');
+    assert.match(top.textContent, /Ouvrez vos paquets depuis n’importe quelle page/);
+    assert.match(top.textContent, /vue étendue/);
+    assert.equal(env.mem.seenVersion, '1.0.93');
+    env.close();
+  }
+  const again = await open('1.0.93');
+  await sleep(2600);
+  assert.ok(!again.w.document.querySelector('.wmx-wn'), 'pas une deuxième fois');
+  again.close();
+});

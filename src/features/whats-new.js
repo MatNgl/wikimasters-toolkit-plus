@@ -5,13 +5,14 @@
   const { el } = WMX.dom;
 
   // Nouveautés, de la plus récente à la plus ancienne. Écrites pour les joueurs : ce qu'ils voient et ce que ça change pour eux.
-  // kind : 'new' (nouveau), 'better' (amélioré), 'fix' (corrigé).
+  // kind : 'new' (nouveau), 'better' (amélioré), 'fix' (corrigé). highlights : les grandes nouveautés, mises en avant en tête de la fenêtre.
   const CHANGES = [
-    { v: '1.0.92', title: 'Ouvrir ses paquets sans quitter sa page', items: [
-      ['new', '« Tout ouvrir » ouvre vos paquets en parallèle, depuis n’importe quelle page : vous continuez à jouer, la progression s’affiche sur le cadran des paquets, puis vos cartes sont révélées. Désactivable dans Paramètres → Paquets.'],
-      ['new', 'L’ouverture auto marche aussi depuis n’importe quelle page : à chaque échéance, vos paquets s’ouvrent en arrière-plan et le cadran se met à jour. Votre stock n’atteint plus le maximum.'],
-      ['better', 'Assistant de vente : « Seulement celles-ci » propose d’abord les légendaires.'],
+    { v: '1.0.93', title: 'Paquets et Collection', highlights: [
+      { icon: '📦', title: 'Ouvrez vos paquets depuis n’importe quelle page', text: '« Tout ouvrir » et l’ouverture auto travaillent maintenant en arrière-plan : restez sur la Collection, le Marché ou les Échanges. La progression s’affiche sur le cadran des paquets, en bas à gauche, et vos cartes sont révélées à la fin. L’ouverture auto n’attend plus votre retour sur la page Paquets : votre stock n’atteint plus le maximum.' },
+      { icon: '🃏', title: 'Une Collection plus pratique : la vue étendue', text: 'Cliquez sur « Vue étendue », à côté de la recherche de la Collection : jusqu’à 500 cartes par page, tri « Moyenne (plus chères) » et navigation instantanée. Sélection, défausse, favoris et étiquettes fonctionnent comme d’habitude.' },
+    ], items: [
       ['better', 'Révélation plus fluide : les cartes se retournent en vague, sans temps mort ; une courte lueur annonce les plus rares. « Rapide » va environ trois fois plus vite.'],
+      ['better', 'Assistant de vente : « Seulement celles-ci » propose d’abord les légendaires.'],
       ['fix', '« Aucun paquet disponible » n’apparaît plus quand il vous reste des paquets.'],
     ] },
     { v: '1.0.87', title: 'Collection', items: [
@@ -44,7 +45,7 @@
   // Présentation (première installation).
   const TOUR = [
     { icon: '🎁', title: 'Bienvenue dans WikiMasters Toolkit+', text: 'L’extension s’ajoute au jeu sans le remplacer : prix du marché sur vos cartes, ouverture des paquets en un clic, enchères suivies et ventes automatiques. Voici l’essentiel en quatre étapes.' },
-    { icon: '📦', title: 'Paquets', text: '« Tout ouvrir » ouvre tous vos paquets et révèle les cartes d’un coup, avec leur moyenne du marché. « Ouvrir auto » les ouvre à intervalles réguliers. Le style d’ouverture se choisit dans les Paramètres.' },
+    { icon: '📦', title: 'Paquets', text: '« Tout ouvrir » ouvre tous vos paquets et révèle les cartes, avec leur moyenne du marché ; « Ouvrir auto » les ouvre à intervalles réguliers. Les deux marchent depuis n’importe quelle page : la progression s’affiche sur le cadran des paquets, en bas à gauche.' },
     { icon: '🃏', title: 'Collection', text: 'Chaque carte affiche sa moyenne du marché et un bouton ⚡ pour la mettre aux enchères. La « Vue étendue » affiche jusqu’à 500 cartes par page et les trie par moyenne.' },
     { icon: '⚡', title: 'Enchères et ventes', text: 'La bulle en bas à droite suit vos mises et vos ventes. L’assistant de vente met en vente les cartes d’une étiquette (par exemple VENTE). Le Tableau de bord résume vos plus-values.' },
     { icon: '⚙️', title: 'Vos réglages', text: 'Tout se règle dans « WikiMasters+ », sous « Paramètres » dans le menu du jeu. Le journal d’activité y garde la trace de ce que fait l’extension.' },
@@ -79,7 +80,11 @@
   function showChanges(since) {
     const groups = changesSince(since);
     if (!groups.length) return false;
-    const body = el('div', { class: 'wmx-wn-body' }, ...groups.map((g) => el('section', { class: 'wmx-wn-ver' },
+    // Grandes nouveautés en tête (« À la une »), en cartes ; puis le détail, version par version.
+    const tops = groups.flatMap((g) => g.highlights || []);
+    const featured = tops.length ? el('section', { class: 'wmx-wn-top' }, el('small', { class: 'wmx-wn-eyebrow' }, 'À la une'),
+      ...tops.map((h) => el('div', { class: 'wmx-wn-feat' }, el('div', { class: 'wmx-wn-featicon', 'aria-hidden': 'true' }, h.icon), el('div', {}, el('b', {}, h.title), el('p', {}, h.text))))) : '';
+    const body = el('div', { class: 'wmx-wn-body' }, featured, ...groups.map((g) => el('section', { class: 'wmx-wn-ver' },
       el('div', { class: 'wmx-wn-verhead' }, el('b', {}, g.title), el('span', { class: 'wmx-wn-vtag' }, `v${g.v}`)),
       el('ul', {}, ...g.items.map(([k, t]) => el('li', { class: `wmx-wn-item ${k}` }, el('span', { class: `wmx-wn-kind ${k}` }, KIND[k] || k), el('span', {}, t)))))));
     shell([

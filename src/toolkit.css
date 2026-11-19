@@ -1305,3 +1305,10 @@ button.wmx-tc-cancel:hover { background: rgb(239 68 68 / .18) !important; color:
 .wmx-pdial.opening { animation: wmx-dial-open 1.4s ease-in-out infinite; }
 @keyframes wmx-dial-open { 50% { box-shadow: 0 0 0 4px #2dd4a033, 0 0 22px #2dd4a055; } }
 @media (prefers-reduced-motion: reduce) { .wmx-pdial.opening { animation: none; } }
+/* Nouveautés : grandes nouveautés « À la une » en cartes (1.0.93) */
+.wmx-wn-top { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 16px; border: 1px solid #2dd4a055; background: radial-gradient(120% 120% at 0% 0%, #2dd4a024, #0d1411 60%); }
+.wmx-wn-eyebrow { color: var(--acc, #2dd4a0); font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.wmx-wn-feat { display: grid; grid-template-columns: 44px 1fr; gap: 12px; align-items: start; }
+.wmx-wn-featicon { width: 44px; height: 44px; display: grid; place-items: center; font-size: 22px; border-radius: 12px; background: #0b100e; border: 1px solid #2dd4a044; box-shadow: 0 0 18px #2dd4a01f; }
+.wmx-wn-feat b { display: block; font-size: 15px; margin: 2px 0 4px; color: #f2fffa; }
+.wmx-wn-feat p { margin: 0; color: #cfe0d7; font-size: 13.5px; line-height: 1.5; }
