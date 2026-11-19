@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WikiMasters Toolkit+",
-  "version": "1.0.90",
+  "version": "1.0.91",
   "description": "Prix du marché, ouverture de paquets en un clic, enchères automatiques et style de cartes pour WikiMasters.",
   "permissions": [
     "storage",
@@ -48,7 +48,6 @@
         "src/features/card-detail.js",
         "src/features/reveal.js",
         "src/features/settings-modal.js",
-        "src/features/pack-drawer.js",
         "src/features/boosters.js",
         "src/features/prices.js",
         "src/features/quick-auction.js",
@@ -85,7 +84,7 @@
       "world": "MAIN"
     }
   ],
-  "version_name": "1.0.90 · ouverture en parallèle, tiroir à cartes",
+  "version_name": "1.0.91 · une seule ouverture, en parallèle par défaut, révélation fluide",
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",

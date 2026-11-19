@@ -1,4 +1,4 @@
-// Styles d'ouverture des paquets (+ aperçu dans les Paramètres), fenêtre de bienvenue / nouveautés, barre de la Collection.
+// Révélation des paquets, fenêtre de bienvenue / nouveautés, barre de la Collection.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createEnv } = require('./harness');
@@ -8,67 +8,34 @@ const json = (body, status = 200) => ({ ok: true, status, headers: { get: () => 
 const RAR = { commun: 'C', peu_commun: 'PC', rare: 'R', super_rare: 'SR', legendaire: 'L' };
 const cards = Object.keys(RAR).map((r, i) => ({ id: `k${i}`, wikipedia_title: `Carte ${i}`, rarity: r }));
 
-for (const [style, marker] of [['classic', null], ['stack', '.wmx-rv-stage'], ['wish', '.wmx-rv-wish']]) {
-  test(`ouverture des paquets, style « ${style} » : animation propre au style, toutes les cartes retournées à la fin, « Continuer » disponible`, async () => {
+test('révélation fluide : une seule ouverture ; les cartes se retournent en vague, une courte lueur seulement pour les super rares et plus ; « Rapide » environ trois fois plus vite ; « Passer » révèle tout', async () => {
+  const run = async (speed, skipAfter = null) => {
     const env = createEnv({ fetchImpl: async () => json({ summary: {} }) });
     const { w, WMX } = env;
-    WMX.settings = { speed: 'fast', images: false, revealStyle: style };
+    WMX.settings = { speed, images: false };
     const s = WMX.revealSession();
     s.addPack(cards);
-    let seen = !marker;
-    const watch = setInterval(() => { if (marker && w.document.querySelector(marker)) seen = true; }, 20);
-    await s.finish();
+    assert.ok([...w.document.querySelectorAll('.wmx-overlay .wmx-grid .wmx-tile')].every((t) => !t.dataset.r), 'pendant l’ouverture : cartes alignées face cachée, neutres');
+    const glints = new Set();
+    const watch = setInterval(() => w.document.querySelectorAll('.wmx-tile.glint').forEach((t) => glints.add(t.dataset.r)), 15);
+    const t0 = Date.now();
+    const done = s.finish();
+    if (skipAfter != null) { await sleep(skipAfter); [...w.document.querySelectorAll('.wmx-overlay button')].find((b) => b.textContent === 'Passer').click(); }
+    await done;
     clearInterval(watch);
-    assert.ok(seen, `élément du style vu pendant l’animation (${marker})`);
-    const tiles = [...w.document.querySelectorAll('.wmx-overlay .wmx-grid .wmx-tile')];
-    assert.equal(tiles.length, 5, 'les 5 cartes dans la grille');
-    assert.ok(tiles.every((t) => t.classList.contains('flip')), 'toutes retournées');
-    assert.ok(!w.document.querySelector('.wmx-rv-stage, .wmx-rv-wish'), 'éléments temporaires retirés');
-    assert.ok(!w.document.querySelector('.wmx-overlay .wmx-actions button[disabled]'));
+    const ms = Date.now() - t0;
+    assert.equal(w.document.querySelectorAll('.wmx-overlay .wmx-grid .wmx-tile.flip').length, 5, 'toutes retournées');
+    assert.ok(!w.document.querySelector('.wmx-tile.glint'), 'plus aucune lueur à la fin');
     env.close();
-  });
-}
-
-test('ouverture des paquets : « Passer » pendant un style lent (Pile lumineuse) révèle tout de suite toutes les cartes', async () => {
-  const env = createEnv({ fetchImpl: async () => json({ summary: {} }) });
-  const { w, WMX } = env;
-  WMX.settings = { speed: 'normal', images: false, revealStyle: 'stack' };
-  const s = WMX.revealSession();
-  s.addPack(cards);
-  const t0 = Date.now();
-  const done = s.finish();
-  await sleep(300);
-  [...w.document.querySelectorAll('.wmx-overlay button')].find((b) => b.textContent === 'Passer').click();
-  await done;
-  assert.ok(Date.now() - t0 < 2000, 'fini aussitôt');
-  assert.equal(w.document.querySelectorAll('.wmx-overlay .wmx-grid .wmx-tile.flip').length, 5);
-  env.close();
-});
-
-test('Paramètres → Paquets : réglage « Style d’ouverture » (4 styles) et aperçu animé à droite, qui suit le style choisi ; caché dans les autres rubriques', async () => {
-  const env = createEnv({ fetchImpl: async () => json({}) });
-  const { w, WMX } = env;
-  WMX.openSettings('Révélation');
-  const sel = w.document.querySelector('select[data-key="revealStyle"]');
-  assert.ok(sel, 'réglage présent');
-  assert.deepEqual([...sel.options].map((o) => o.value), ['classic', 'stack', 'wish']);
-  const preview = w.document.querySelector('.wmx-set-preview');
-  assert.equal(preview.hidden, false, 'aperçu affiché pour les Paquets');
-  await sleep(50);
-  assert.equal(preview.querySelectorAll('.wmx-rv-demo .wmx-tile').length, 5, 'cinq cartes d’exemple');
-  sel.value = 'stack';
-  sel.dispatchEvent(new w.Event('change'));
-  assert.match(preview.querySelector('h4').textContent, /Pile lumineuse/);
-  for (let i = 0; i < 20 && !preview.querySelector('.wmx-rv-stage'); i++) await sleep(50);
-  assert.ok(preview.querySelector('.wmx-rv-stage'), 'l’aperçu joue la pile');
-  [...preview.querySelectorAll('.wmx-rv-pick button')].find((b) => b.textContent === 'Vœu').click();
-  assert.equal(sel.value, 'wish', 'les boutons de l’aperçu changent aussi le réglage');
-  [...w.document.querySelectorAll('.wmx-set-navbtn')].find((b) => /Vente/.test(b.textContent)).click();
-  assert.equal(w.document.querySelector('.wmx-set-preview').hidden, true, 'pas d’aperçu ailleurs');
-  [...w.document.querySelectorAll('.wmx-modal footer .wmx-btn')].find((b) => b.textContent === 'Appliquer').click();
-  await sleep(300);
-  assert.equal(WMX.settings.revealStyle, 'wish', 'style enregistré');
-  env.close();
+    return { ms, glints: [...glints].sort() };
+  };
+  const normal = await run('normal');
+  assert.deepEqual(normal.glints, ['L', 'SR'], 'lueur seulement pour la super rare et la légendaire');
+  assert.ok(normal.ms < 3500, `5 cartes en moins de 3,5 s (${normal.ms} ms)`);
+  const fast = await run('fast');
+  assert.ok(fast.ms < normal.ms * 0.6, `« Rapide » bien plus vite (${fast.ms} ms contre ${normal.ms} ms)`);
+  const skipped = await run('normal', 120);
+  assert.ok(skipped.ms < 600, 'Passer : tout de suite');
 });
 
 test('bienvenue : première installation → présentation en 5 étapes ; mise à jour → nouveautés depuis la version vue, une seule fois ; jamais hors connexion', async () => {

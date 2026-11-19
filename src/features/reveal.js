@@ -199,22 +199,9 @@
         all.push(...cards);
         WMX.store.set('pendingCards', all);
         WMX.prices.prefetch?.(cards); // sans effet si déjà demandés par l'ouverture du paquet
-        // Cartes qui s'ajoutent pendant l'ouverture, selon le style choisi : Classique (face cachée, neutres), Pile lumineuse (elles tombent
-        // en pile), Vœu (étoile filante de la couleur de la meilleure carte du paquet, et chaque carte brille de sa rareté, comme dans un gacha).
-        const style = WMX.settings?.revealStyle || 'classic';
-        const anim = WMX.settings?.speed !== 'instant';
-        if (anim && style === 'wish') {
-          const best = cards.reduce((b, c) => (RANKS[rar(c)] > RANKS[b] ? rar(c) : b), 'C');
-          const comet = el('i', { class: `wmx-rv-packcomet r-${best}`, style: styleVars(best) });
-          overlay.append(comet);
-          setTimeout(() => comet.remove(), 1300);
-        }
-        for (let i = 0; i < cards.length; i++) {
-          const r = rar(cards[i]);
-          const cls = !anim ? '' : style === 'stack' ? ' wmx-rv-in-stack' : style === 'wish' ? ' wmx-rv-pre' : '';
-          grid.append(el('div', { class: `wmx-tile wmx-neutral${cls}`, style: `${styleVars(r)};--d:${i * 70}ms` },
-            el('div', { class: 'wmx-inner' }, el('div', { class: 'wmx-back' }, 'W'))));
-        }
+        // Les cartes de chaque paquet s'alignent face cachée (neutres : rien n'est dévoilé avant la révélation).
+        for (let i = 0; i < cards.length; i++) grid.append(el('div', { class: 'wmx-tile wmx-neutral', style: `--d:${i * 60}ms` },
+          el('div', { class: 'wmx-inner' }, el('div', { class: 'wmx-back' }, 'W'))));
         title.textContent = stopped ? `${all.length} cartes tirées — arrêt de l’ouverture…` : `${all.length} cartes tirées…`;
       },
       setRemaining(n, total) {
@@ -235,7 +222,7 @@
         skipBtn.textContent = 'Passer';
         if (!all.length) { unsub(); overlay.remove(); return; }
         const cfg = WMX.settings || {};
-        const f = cfg.speed === 'fast' ? 0.4 : 1; // facteur de durée des animations
+        const f = cfg.speed === 'fast' ? 0.35 : 1; // facteur de durée des animations (« Rapide » : environ trois fois plus vite)
         if (cfg.speed === 'instant') skip = true;
         const byRarity = cfg.order !== 'draw';
         const sorted = byRarity ? WMX.sortCards(all) : all;
@@ -243,8 +230,7 @@
         remaining.textContent = stopped ? remNote.replace(/^ · /, 'Ouverture ') : '';
         const tiles = sorted.map(realTile);
         grid.replaceChildren(...tiles);
-        // Style d'ouverture choisi dans les Paramètres (Classique, Pile lumineuse, Vœu) ; « Passer » termine tout de suite.
-        await WMX.revealPlay(cfg.revealStyle || 'classic', { root: overlay, grid, tiles, f, skip: () => skip, onFlip: updateLot });
+        await playReveal({ tiles, f, skip: () => skip, onFlip: updateLot }); // « Passer » termine tout de suite
         tiles.forEach((t) => t.classList.add('flip'));
         skipBtn.remove();
         cont.removeAttribute('disabled');
@@ -256,120 +242,25 @@
     };
   };
 
-  // --- Styles d'ouverture ------------------------------------------------------------------------------------------------------------
-  // Chaque style révèle les cartes (déjà dans la grille, face cachée) une par une et doit respecter skip() (« Passer ») et f (vitesse).
-  // La couleur d'une carte n'apparaît qu'au moment de SA révélation (pas de spoil), sauf dans « Vœu », où, comme dans les jeux gacha,
-  // l'étoile filante annonce la meilleure rareté du tirage et les cartes brillent de leur couleur avant d'être retournées.
-  WMX.REVEAL_STYLES = [
-    ['classic', 'Classique', 'Chaque carte tremble, s’illumine de sa rareté puis se retourne.'],
-    ['stack', 'Pile lumineuse', 'Les cartes s’empilent ; celle du dessus brille de sa rareté avant d’être retournée et posée.'],
-    ['wish', 'Vœu', 'Une étoile filante de la couleur de la meilleure carte, puis toutes les cartes brillent avant de se retourner.'],
-  ];
+  // --- Révélation ------------------------------------------------------------------------------------------------------------------
+  // Fluide : les cartes se retournent en vague, sans temps mort. Les communes s'enchaînent vite ; à partir de la super rare, une courte
+  // lueur de sa couleur annonce la carte juste avant qu'elle se retourne (la couleur n'apparaît qu'à ce moment : pas de spoil des suivantes).
   /** Attente interrompue par « Passer ». */
-  const waitFor = async (ms, skip) => { const end = Date.now() + ms; while (!skip() && Date.now() < end) await sleep(Math.min(50, end - Date.now())); };
-
-  async function playClassic({ tiles, f, skip, onFlip }) {
-    for (const t of tiles) {
-      if (!skip()) {
-        t.classList.add('shake');
-        const ticks = { C: 5, PC: 6, R: 8, SR: 11, UR: 16, L: 30 }[t.dataset.r] || 5;
-        for (let i = 0; i < ticks && !skip(); i++) await sleep(90 * f);
-        t.classList.remove('shake');
-      }
-      t.classList.add('flip');
-      onFlip?.();
-      if (!skip()) await sleep(({ UR: 900, L: 2200 }[t.dataset.r] || 280) * f);
-    }
-  }
-
-  // Pile lumineuse : la pile au centre ; la carte du dessus brille (plus longtemps et plus fort selon sa rareté), se retourne, puis se pose.
-  async function playStack({ grid, tiles, f, skip, onFlip }) {
-    const slots = tiles.map((t) => { const h = el('div', { class: 'wmx-rv-slot' }); t.replaceWith(h); return h; });
-    const count = el('b', { class: 'wmx-rv-count' });
-    const deck = el('div', { class: 'wmx-rv-deck' }, el('i'), el('i'), el('i'), count);
-    const spot = el('div', { class: 'wmx-rv-spot' });
-    const stage = el('div', { class: 'wmx-rv-stage' }, deck, spot);
-    grid.before(stage);
-    const GLOWMS = { C: 260, PC: 380, R: 650, SR: 950, UR: 1500, L: 2400 };
-    let i = 0;
-    for (; i < tiles.length && !skip(); i++) {
-      const t = tiles[i];
-      count.textContent = String(tiles.length - i - 1);
-      deck.classList.toggle('empty', tiles.length - i - 1 === 0);
-      t.classList.add('wmx-rv-top');
-      spot.replaceChildren(t);
-      await sleep(30);
-      t.classList.add('wmx-rv-glow');
-      await waitFor((GLOWMS[t.dataset.r] || 300) * f, skip);
-      t.classList.remove('wmx-rv-glow');
-      t.classList.add('flip');
-      onFlip?.();
-      await waitFor((RANKS[t.dataset.r] >= 4 ? 1100 : RANKS[t.dataset.r] >= 2 ? 520 : 300) * f, skip);
-      t.classList.remove('wmx-rv-top');
-      slots[i].replaceWith(t);
-      t.classList.add('wmx-rv-land');
-    }
-    for (let k = i; k < tiles.length; k++) { slots[k].replaceWith(tiles[k]); tiles[k].classList.remove('wmx-rv-top', 'wmx-rv-glow'); }
-    if (spot.firstChild && !spot.firstChild.isConnected) spot.replaceChildren();
-    stage.remove();
-  }
-
-  // Vœu (inspiré des tirages gacha) : étoile filante de la couleur de la meilleure carte ; puis les cartes apparaissent face cachée en
-  // brillant de leur rareté, et se retournent une à une (éclat pour les super rares et au-delà).
-  async function playWish({ root, grid, tiles, f, skip, onFlip }) {
-    const best = tiles.reduce((b, t) => (RANKS[t.dataset.r] > RANKS[b] ? t.dataset.r : b), 'C');
-    const sky = el('div', { class: `wmx-rv-wish r-${best}`, style: styleVars(best) }, el('i', { class: 'wmx-rv-comet' }), el('i', { class: 'wmx-rv-flash' }));
-    grid.classList.add('wmx-rv-hidden');
-    root.append(sky);
-    await waitFor(2000 * f, skip);
-    sky.classList.add('out');
-    await waitFor(260, skip);
-    sky.remove();
-    grid.classList.remove('wmx-rv-hidden');
-    tiles.forEach((t, k) => { t.style.setProperty('--d', `${Math.min(k, 30) * 45 * f}ms`); t.classList.add('wmx-rv-aura'); });
-    await waitFor((600 + Math.min(tiles.length, 30) * 45) * f, skip);
+  const waitFor = async (ms, skip) => { const end = Date.now() + ms; while (!skip() && Date.now() < end) await sleep(Math.min(40, end - Date.now())); };
+  const GLINT = { SR: 260, UR: 420, L: 750 };                                // lueur avant le retournement
+  const STEP = { C: 110, PC: 120, R: 170, SR: 240, UR: 520, L: 950 };        // délai avant la carte suivante (le retournement se chevauche)
+  async function playReveal({ tiles, f, skip, onFlip }) {
     for (const t of tiles) {
       if (skip()) break;
-      const r = RANKS[t.dataset.r];
-      if (r >= 3) { t.classList.add('wmx-rv-burst'); await waitFor((r >= 5 ? 900 : 500) * f, skip); }
+      const r = t.dataset.r;
+      if (GLINT[r]) { t.classList.add('glint'); await waitFor(GLINT[r] * f, skip); }
+      t.classList.remove('glint');
       t.classList.add('flip');
       onFlip?.();
-      await waitFor((r >= 4 ? 900 : r >= 2 ? 360 : 170) * f, skip);
+      await waitFor((STEP[r] || 120) * f, skip);
     }
-    tiles.forEach((t) => t.classList.remove('wmx-rv-aura'));
+    tiles.forEach((t) => { t.classList.remove('glint'); t.classList.add('flip'); });
   }
-
-  /** Joue un style d'ouverture sur des cartes déjà posées face cachée dans `grid` (dans `root`). */
-  WMX.revealPlay = async function revealPlay(style, o) {
-    const run = { stack: playStack, wish: playWish }[style] || playClassic; // style inconnu (ou retiré, comme « Décryptage ») : Classique
-    try { await run(o); } catch (e) { console.warn('[WMX] style d’ouverture', style, e); }
-    o.tiles.forEach((t) => t.classList.add('flip'));
-  };
-
-  // --- Aperçu (Paramètres → Paquets) : cinq cartes d'exemple, l'animation du style choisi en boucle --------------------------------
-  const DEMO = [['C', 'Bouton'], ['PC', 'Saturne'], ['R', 'Jazz'], ['SR', 'Tour Eiffel'], ['L', 'Mozart']];
-  function demoTile(r, name) {
-    const face = el('div', { class: 'wmx-face wmx-rv-demoface' }, el('span', { class: 'wmx-rar' }, r), el('div', { class: 'wmx-rv-demoart' }, name.charAt(0)), el('div', { class: 'wmx-meta' }, el('strong', {}, name), el('small', { class: 'wmx-desc' }, NAMES[r])));
-    const t = el('div', { class: 'wmx-tile', 'data-r': r, 'data-name': name, style: styleVars(r) }, el('div', { class: 'wmx-inner' }, el('div', { class: 'wmx-back' }, 'W'), face));
-    return t;
-  }
-  /** Aperçu animé du style dans `box` ; rend une fonction d'arrêt. Relancé en boucle tant que la boîte est affichée. */
-  WMX.revealPreview = function revealPreview(box, style) {
-    let stopped = false;
-    const loop = async () => {
-      while (!stopped && box.isConnected) {
-        const grid = el('div', { class: 'wmx-grid wmx-rv-demogrid' });
-        const tiles = DEMO.map(([r, n]) => demoTile(r, n));
-        grid.append(...tiles);
-        const stage = el('div', { class: 'wmx-rv-demo' }, grid);
-        box.replaceChildren(stage);
-        await WMX.revealPlay(style, { root: stage, grid, tiles, f: 0.55, skip: () => stopped || !box.isConnected });
-        await waitFor(1800, () => stopped || !box.isConnected);
-      }
-    };
-    loop();
-    return () => { stopped = true; };
-  };
 
   WMX.reveal = async (cards) => {
     if (!cards.length) return;

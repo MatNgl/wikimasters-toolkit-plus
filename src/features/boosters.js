@@ -3,7 +3,7 @@
 // La vérification humaine n'est JAMAIS touchée : on attend qu'elle disparaisse.
 (() => {
   const { el, findExact, sleep } = WMX.dom;
-  const state = { busy: false, auto: false, buffer: [], opened: 0, loopId: 0, nextAt: null };
+  const state = { busy: false, auto: false, buffer: [], opened: 0, loopId: 0, nextAt: null, par: null }; // par : ouverture en parallèle en cours { done, total, cards, stop }
   let lastCards = null;
   const ui = {};
 
@@ -112,8 +112,17 @@
   const setStatus = (t) => { if (ui.status) ui.status.textContent = t; };
   /** Compteur rouge sur la bulle « W » : nombre de paquets ouverts pendant l'auto. */
   const setBadge = () => {
-    for (const c of [ui.fabCount, ui.fabCount2]) { c.hidden = !state.auto; c.textContent = String(state.opened); }
+    // Ouverture auto : paquets ouverts ; ouverture en parallèle : cartes tirées (révélées à la fin).
+    for (const c of [ui.fabCount, ui.fabCount2]) { c.hidden = !state.auto && !state.par; c.textContent = String(state.par ? state.par.cards.length : state.opened); }
   };
+  let refreshDial = () => {}; // redessine le cadran (défini à sa construction)
+  /** « Tout ouvrir » devient « Arrêter l'ouverture » pendant une ouverture en parallèle. */
+  const setAllBtn = () => {
+    if (!ui.allBtn) return;
+    ui.allBtn.textContent = state.par ? 'Arrêter l’ouverture' : 'Tout ouvrir';
+    ui.allBtn.classList.toggle('wmx-btn--danger', !!state.par);
+  };
+  const stopParallel = () => { if (state.par) { state.par.stop = true; setStatus('Arrêt après le paquet en cours…'); } };
   const setAutoBtn = () => {
     // Boutons côte à côte : libellés courts.
     ui.autoBtn.textContent = state.auto ? 'Arrêter' : 'Ouvrir auto';
@@ -289,12 +298,36 @@
 
   // --- « Tout ouvrir » -----------------------------------------------------------------------
   /**
-   * « Tout ouvrir ». Réglages (Paramètres → Paquets) : « Ouverture en parallèle » (page Paquets invisible, le jeu reste utilisable) et
-   * « Tiroir à cartes » (les cartes s'ajoutent dans un tiroir avec l'animation du style choisi ; « Révéler » les montre quand vous voulez).
-   * En parallèle sans tiroir, le tiroir sert seulement à suivre l'ouverture, puis toutes les cartes sont révélées en plein écran à la fin.
-   * Ni l'un ni l'autre : la révélation plein écran pendant l'ouverture, comme avant.
+   * Ouverture en parallèle : la progression est sur le cadran des paquets (anneau « 2/5 ouverts », pastille du nombre de cartes tirées) et
+   * « Tout ouvrir » devient « Arrêter l'ouverture ». Les cartes s'alignent ensuite dans l'écran de révélation habituel, à la fin. Elles sont
+   * gardées (pendingCards) si la page est rechargée en cours de route : la reprise les montre.
    */
-  async function openAll({ parallel = !!WMX.settings.packParallel, drawer = !!WMX.settings.packDrawer } = {}) {
+  function parallelRun(total) {
+    state.par = { done: 0, total, cards: [], stop: false };
+    setBadge(); setAllBtn(); refreshDial();
+    return {
+      get stopped() { return !!state.par?.stop; },
+      addPack(cards) {
+        state.par.cards.push(...cards);
+        state.par.done += 1;
+        WMX.store.set('pendingCards', state.par.cards);
+        WMX.prices.prefetch?.(cards); // moyennes chargées pendant l'ouverture : prêtes pour la révélation
+        setBadge(); refreshDial();
+      },
+      setRemaining() {},
+      setNote(t) { if (t) setStatus(t); },
+      yield() {},
+      async finish() {
+        const cards = state.par?.cards || [];
+        state.par = null;
+        setBadge(); setAllBtn(); refreshDial();
+        if (cards.length) await WMX.reveal(cards);
+      },
+    };
+  }
+
+  /** « Tout ouvrir », dans la page Paquets invisible si « Ouverture en parallèle » est activée (par défaut), sinon sur la page Paquets. */
+  async function openAll({ parallel = WMX.settings.openParallel !== false } = {}) {
     if (state.auto) { setStatus('Arrêtez d’abord l’ouverture auto'); return; }
     if (state.busy) return;
     state.busy = true;
@@ -303,11 +336,13 @@
       CTX = await pullsFrame();
       if (!CTX) { state.busy = false; setStatus('La page Paquets invisible ne s’est pas chargée : réessayez, ou désactivez « Ouverture en parallèle »'); return; }
     }
-    const total = packsLeft();
+    // Le compteur « N / M paquets » du jeu peut s'afficher d'abord à 0 le temps que la page lise votre stock : on lui laisse 4 s
+    // (sinon « Aucun paquet disponible » avec un paquet en stock).
+    let total = packsLeft();
+    for (let i = 0; i < 10 && !total; i++) { await sleep(400); total = packsLeft(); }
     if (!total) { state.busy = false; CTX?.close(); CTX = null; setStatus('Aucun paquet disponible'); return; }
     cooldownS = BASE_COOLDOWN_S; // chaque « Tout ouvrir » repart de la pause courte
-    const panel = parallel || drawer;
-    const session = panel ? WMX.packDrawer.session(total, { keep: drawer }) : WMX.revealSession({ stoppable: true });
+    const session = parallel ? parallelRun(total) : WMX.revealSession({ stoppable: true });
     session.setRemaining(total, total);
     let opened = 0;
     try {
@@ -320,6 +355,7 @@
         if (done < total - 1) await cooldown(session);
       }
     } finally { state.busy = false; setStatus(''); CTX?.close(); CTX = null; }
+    if (parallel && session.stopped) setStatus('Ouverture arrêtée : les paquets restants sont gardés');
     // « Passer » pendant l'ouverture : les paquets restants ne sont pas ouverts, ils restent dans le stock du jeu.
     if (session.stopped && opened < total) {
       const left = total - opened;
@@ -331,7 +367,7 @@
 
   /** « Tout ouvrir » depuis une autre page : on revient d'abord sur la page Paquets, puis on ouvre. */
   async function openAllAnywhere() {
-    if (WMX.settings.packParallel) return openAll(); // ouverture en parallèle : depuis n'importe quelle page, sans la quitter
+    if (WMX.settings.openParallel) return openAll(); // ouverture en parallèle : depuis n'importe quelle page, sans la quitter
     if (!/^\/pulls/.test(location.pathname)) {
       window.dispatchEvent(new CustomEvent('wmx:navigate', { detail: '/pulls' }));
       setStatus('Retour sur la page Paquets…');
@@ -356,8 +392,7 @@
         if (dailyLimit) { dailyLimit = false; stopAuto(); setStatus('Ouverture auto arrêtée : le jeu indique une limite d’ouvertures pour aujourd’hui (réponse du jeu dans le journal)'); } // remis à zéro : une prochaine ouverture repart normalement
         return;
       }
-      if (WMX.settings.packDrawer && WMX.packDrawer) WMX.packDrawer.add(cards); // tiroir à cartes : chaque paquet s'y ajoute, avec l'animation du style choisi
-      else state.buffer.push(...cards);
+      state.buffer.push(...cards);
       state.opened += 1;
       persistAuto(); // les cartes mises de côté survivent à un rechargement de la page
       setBadge();
@@ -456,7 +491,7 @@
     state.buffer = []; state.opened = 0;
     persistAuto();
     setBadge(); setAutoBtn(); setStatus('');
-    if (cards.length) WMX.reveal(cards); // (avec le tiroir, les cartes y sont déjà)
+    if (cards.length) WMX.reveal(cards);
   }
 
   // --- Panneau --------------------------------------------------------------------------------
@@ -515,7 +550,7 @@
       el('span', { class: 'wmx-fullwarn-ic' }, '⚠'), el('span', { class: 'wmx-fullwarn-txt' }),
       el('button', { class: 'wmx-btn', onclick: goPulls }, 'Aller aux paquets'),
       el('button', { class: 'wmx-qclear', title: 'Masquer', 'aria-label': 'Masquer', onclick: () => { warnDismissed = true; warn.hidden = true; } }, '×'));
-    const updateFab = () => {
+    const updateFab = refreshDial = () => {
       const onPulls = /^\/pulls/.test(location.pathname);
       const live = onPulls && document.body.innerText.match(/(\d+)\s*\/\s*(\d+)\s*paquets?/i); // compteur « N / M paquets » affiché (pas encore : on garde l'estimation)
       if (live) {
@@ -539,6 +574,17 @@
       warn.hidden = !(full && !onPulls && !warnDismissed);
       if (!warn.hidden) warn.querySelector('.wmx-fullwarn-txt').textContent = `Stock plein (${lastPacks.est ? '~' : ''}${lastPacks.packs}/${lastPacks.max}) : ` + (state.auto ? 'l’ouverture auto ne marche que sur la page Paquets' : 'vos paquets ne se régénèrent plus, allez les ouvrir');
       dialEl?.classList.toggle('full', full); // anneau rouge : le stock est plein
+      dialEl?.classList.toggle('opening', !!state.par);
+      if (state.par) { // ouverture en parallèle : l'anneau suit les paquets ouverts
+        const { done, total, cards } = state.par;
+        const ring = ringSvg.querySelector('.wmx-dial-ring');
+        ring.style.strokeDashoffset = String(RING * (1 - (total ? done / total : 0)));
+        ring.style.stroke = '#2dd4a0';
+        ui.fabTxt.firstChild.textContent = `${done}/${total}`;
+        ui.fabTxt.lastChild.textContent = 'ouverts';
+        ui.fabTxt.title = `Ouverture en parallèle : ${done} paquet${done > 1 ? 's' : ''} ouvert${done > 1 ? 's' : ''} sur ${total}, ${cards.length} carte${cards.length > 1 ? 's' : ''} tirée${cards.length > 1 ? 's' : ''} (révélées à la fin). Le menu des paquets (clic) permet de l'arrêter.`;
+        return;
+      }
       if (!lastPacks) return;
       const { packs, max, nextIn, est } = lastPacks;
       const frac = packs >= max ? 1 : Math.min(1, Math.max(0, 1 - (nextIn ?? regenS()) / regenS()));
@@ -565,7 +611,7 @@
     fold.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M11 6l-6 6 6 6M19 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
     const body = el('div', { class: 'wmx-body' },
-      el('div', { class: 'wmx-btnrow' }, el('button', { class: 'wmx-btn wmx-btn--wide', onclick: openAllAnywhere }, 'Tout ouvrir'), ui.autoBtn),
+      el('div', { class: 'wmx-btnrow' }, ui.allBtn = el('button', { class: 'wmx-btn wmx-btn--wide', onclick: () => (state.par ? stopParallel() : openAllAnywhere()) }, 'Tout ouvrir'), ui.autoBtn),
       ui.status,
       el('h4', {}, 'Intervalle de l’ouverture auto'),
       field('Minimum (min)', ui.min, 'Entre 1 et 60 minutes. Un intervalle court = plus de requêtes envoyées au jeu.'),
@@ -698,6 +744,8 @@
     render();
     WMX.onStorage((c) => { if (c.stats) render(); });
 
+    // Ancien tiroir à cartes (1.0.90, retiré) : ses cartes restantes sont révélées une dernière fois, puis il est vidé.
+    if (window.top === window) WMX.store.get('packDrawer', null).then((d) => { if (!d) return; WMX.store.set('packDrawer', null); if (d.cards?.length) WMX.reveal(d.cards); }).catch(() => {});
     // Reprise : cartes tirées avant un rechargement de la page et jamais révélées.
     const pending = await WMX.store.get('pendingCards', []);
     if (pending.length) WMX.reveal(pending);

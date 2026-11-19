@@ -7,13 +7,12 @@
   // Nouveautés, de la plus récente à la plus ancienne. Écrites pour les joueurs : ce qu'ils voient et ce que ça change pour eux.
   // kind : 'new' (nouveau), 'better' (amélioré), 'fix' (corrigé).
   const CHANGES = [
-    { v: '1.0.90', title: 'Ouvrir ses paquets sans quitter sa page', items: [
-      ['new', 'Ouverture en parallèle : « Tout ouvrir » ouvre vos paquets dans une page Paquets invisible, vous continuez à jouer pendant ce temps (Paramètres → Paquets).'],
-      ['new', 'Tiroir à cartes : les cartes tirées s’y ajoutent avec l’animation de votre style d’ouverture, puis « Révéler » les montre toutes quand vous voulez.'],
-      ['better', 'Pendant l’ouverture en plein écran, les cartes arrivent aussi selon le style : en pile, ou avec une étoile filante par paquet (Vœu).'],
+    { v: '1.0.91', title: 'Ouvrir ses paquets sans quitter sa page', items: [
+      ['new', '« Tout ouvrir » ouvre vos paquets en parallèle, depuis n’importe quelle page : vous continuez à jouer, la progression s’affiche sur le cadran des paquets, puis vos cartes sont révélées. Désactivable dans Paramètres → Paquets.'],
+      ['better', 'Révélation plus fluide : les cartes se retournent en vague, sans temps mort ; une courte lueur annonce les plus rares. « Rapide » va environ trois fois plus vite.'],
+      ['fix', '« Aucun paquet disponible » n’apparaît plus quand il vous reste des paquets.'],
     ] },
-    { v: '1.0.87', title: 'Ouverture des paquets et Collection', items: [
-      ['new', 'Deux nouveaux styles d’ouverture des paquets : Pile lumineuse et Vœu (étoile filante). À choisir dans Paramètres → Paquets, avec un aperçu en direct.'],
+    { v: '1.0.87', title: 'Collection', items: [
       ['better', 'Barre de la Collection redessinée : valeur estimée bien visible, jauge de chargement des prix avec pause et arrêt.'],
       ['new', 'Cette fenêtre : les nouveautés de chaque version, une seule fois.'],
     ] },
