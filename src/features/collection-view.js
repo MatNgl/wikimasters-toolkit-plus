@@ -252,7 +252,7 @@
     const tpl = sb.className; // même apparence que les menus du jeu
     const mk = (label, cls) => el('button', { type: 'button', class: `${tpl} wmx-cv-btn ${cls}` }, el('span', { class: 'wmx-cv-label' }, label));
     const toggle = mk('Vue étendue', 'wmx-cv-toggle');
-    toggle.prepend(el('i', { class: 'wmx-cv-dot', 'aria-hidden': 'true' }));
+    toggle.prepend(WMX.dom.logo(18), el('i', { class: 'wmx-cv-dot', 'aria-hidden': 'true' })); // icône de l'extension, puis voyant activé / désactivé
     toggle.addEventListener('click', () => setOn(!S.on));
     const size = mk(`${S.size} / page`, 'wmx-cv-size');
     size.setAttribute('aria-haspopup', 'listbox');

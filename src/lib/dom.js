@@ -61,6 +61,17 @@ WMX.dom = {
       hide() { tip.hidden = true; },
     };
   },
+  /**
+   * Icône de l'extension (icons/icon.svg, dessinée en SVG dans la page : rien à charger, même sous Firefox). Identifiants de dégradé uniques par
+   * icône (plusieurs icônes dans la page ne se mélangent pas). size : côté en px.
+   */
+  logo(size = 18) {
+    WMX.dom._logoN = (WMX.dom._logoN || 0) + 1;
+    const n = WMX.dom._logoN;
+    const span = WMX.dom.el('span', { class: 'wmx-logo', 'aria-hidden': 'true', style: `width:${size}px;height:${size}px` });
+    WMX.dom.svg(span, `<svg viewBox="0 0 128 128" width="${size}" height="${size}"><defs><linearGradient id="wmxlb${n}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#12201a"/><stop offset="1" stop-color="#07100c"/></linearGradient><linearGradient id="wmxlg${n}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5eead4"/><stop offset="1" stop-color="#2dd4a0"/></linearGradient></defs><rect x="4" y="4" width="120" height="120" rx="28" fill="url(#wmxlb${n})"/><rect x="30" y="20" width="68" height="88" rx="12" fill="#0d1713" stroke="url(#wmxlg${n})" stroke-width="4" transform="rotate(-6 64 64)"/><path d="M42 44l10 40 12-28 12 28 10-40" fill="none" stroke="url(#wmxlg${n})" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" transform="rotate(-6 64 64)"/><circle cx="98" cy="98" r="17" fill="#2dd4a0"/><path d="M98 89v18M89 98h18" stroke="#07100c" stroke-width="5" stroke-linecap="round"/></svg>`);
+    return span;
+  },
   /** Case à cocher de l'extension (style .wmx-check, coche animée) ; variant 'danger' : rouge, pour une confirmation irréversible. */
   checkbox({ checked = false, variant = '', ...attrs } = {}) {
     const c = WMX.dom.el('input', { type: 'checkbox', class: `wmx-check${variant ? ` wmx-check--${variant}` : ''}`, ...attrs });

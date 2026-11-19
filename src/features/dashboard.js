@@ -327,7 +327,6 @@
   }
 
   // --- Entrée « WikiMasters+ » sous « Paramètres » : ouvre les paramètres de l'extension -------------------
-  const SET_ICON = '<path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/>';
   function mountSettingsNav() {
     if (document.querySelector('[data-wmx-nav="settings"]')?.isConnected) return;
     const nav = [...document.querySelectorAll('nav')].find((n) => n.getBoundingClientRect().width > 100);
@@ -343,8 +342,9 @@
     a.className = a.className.replace(/bg-\[var\(--color-accent\)\]\/10|text-\[var\(--color-accent\)\]/g, '');
     a.classList.add('wmx-nav-item');
     a.dataset.wmxNav = 'settings';
+    // Icône de l'extension à la place de celle du jeu (on reconnaît tout de suite l'entrée de l'extension).
     const svg = a.querySelector('svg');
-    if (svg) WMX.dom.svg(svg, SET_ICON);
+    if (svg) svg.replaceWith(WMX.dom.logo(20));
     const iconWrap = a.querySelector('span');
     a.replaceChildren(...(iconWrap ? [iconWrap] : []), 'WikiMasters+', el('i', { class: 'wmx-nav-tag' }, 'ext'));
     const go = (e) => { e.preventDefault(); e.stopPropagation(); WMX.openSettings(); };

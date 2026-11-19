@@ -349,7 +349,7 @@
     document.addEventListener('keydown', onKey);
 
     const modal = el('div', { class: 'wmx-modal wmx-modal--nav', role: 'dialog', 'aria-label': 'Paramètres de l’extension' },
-      el('header', {}, el('div', {}, el('h2', {}, 'Paramètres de l’extension'), el('p', {}, 'Réglez uniquement ce dont vous avez besoin.')),
+      el('header', {}, el('div', { class: 'wmx-set-title' }, WMX.dom.logo(34), el('div', {}, el('h2', {}, 'Paramètres de l’extension'), el('p', {}, 'Réglez uniquement ce dont vous avez besoin.'))),
         el('button', { class: 'wmx-close', title: 'Fermer', onclick: close }, '×')),
       el('div', { class: 'wmx-set-layout' }, nav, content),
       el('footer', {}, el('span', {}, 'Les changements s’appliquent avec « Appliquer ».'),

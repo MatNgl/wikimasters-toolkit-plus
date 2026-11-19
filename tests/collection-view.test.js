@@ -221,3 +221,57 @@ test('vue étendue : copie abîmée (bien moins de cartes que le jeu) jamais mon
   assert.equal(WMX.collView.state().stale, true);
   env.close();
 });
+
+test('actions de masse par lots de 100 (limite du jeu) : défausse de 250 cartes en 3 demandes, réponse unique additionnée, arrêt au premier refus ; favoris par lots ; 100 ou moins : demande telle quelle', async () => {
+  const sent = [];
+  let refuseAt = 0;
+  const env = createEnv({ fetchImpl: async (u, init = {}) => {
+    const body = init.body ? JSON.parse(init.body) : null;
+    sent.push({ url: String(u), n: body?.card_ids?.length ?? (String(u).match(/in\.%28([^%]*(%2C[^%]*)*)%29|in\.\(([^)]*)\)/) ? decodeURIComponent(String(u)).match(/in\.\(([^)]*)\)/)[1].split(',').length : null) });
+    if (refuseAt && sent.length === refuseAt) return json({ error: 'Maximum 100 cartes par requête' }, 400);
+    return /bulk-discard/.test(String(u)) ? json({ discarded: body.card_ids.length, reward: body.card_ids.length * 2 }) : json([], 200);
+  } });
+  const { w } = env;
+  w.Response = class { constructor(b, o = {}) { this._b = String(b); this.status = o.status || 200; this.ok = this.status < 300; } async json() { return JSON.parse(this._b); } clone() { return this; } };
+  w.eval(fs.readFileSync(path.join(ROOT, 'src/page-hook.js'), 'utf8'));
+  const relayed = [];
+  w.addEventListener('wmx:api', (e) => relayed.push(e.detail.req?.card_ids?.length));
+  const ids = Array.from({ length: 250 }, (_, i) => `row-${i}`);
+  const r = await w.fetch('/api/user-cards/bulk-discard', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ card_ids: ids }) });
+  assert.deepEqual(sent.map((x) => x.n), [100, 100, 50], '3 demandes de 100 au plus');
+  const j = await r.json();
+  assert.equal(j.discarded, 250, 'nombres additionnés (la page affiche 250 cartes défaussées)');
+  assert.equal(j.reward, 500);
+  assert.deepEqual(relayed.filter(Boolean), [100, 100, 50], 'chaque lot relayé à l’extension (copie tenue à jour)');
+  // Refus au 2e lot : la page reçoit le refus, le 3e ne part pas.
+  sent.length = 0; refuseAt = 2;
+  const r2 = await w.fetch('/api/user-cards/bulk-discard', { method: 'POST', body: JSON.stringify({ card_ids: ids }) });
+  assert.equal(r2.status, 400);
+  assert.equal(sent.length, 2, 'arrêt au premier refus');
+  refuseAt = 0;
+  // Favoris sur 250 cartes (écriture directe dans la base du jeu) : 3 demandes.
+  sent.length = 0;
+  await w.fetch(`https://abc.supabase.co/rest/v1/user_cards?id=in.(${ids.join(',')})`, { method: 'PATCH', body: JSON.stringify({ starred: true }) });
+  assert.deepEqual(sent.map((x) => x.n), [100, 100, 50]);
+  // 100 cartes ou moins : la demande du jeu telle quelle.
+  sent.length = 0;
+  await w.fetch('/api/user-cards/bulk-discard', { method: 'POST', body: JSON.stringify({ card_ids: ids.slice(0, 100) }) });
+  assert.deepEqual(sent.map((x) => x.n), [100]);
+  await sleep(150);
+  env.close();
+});
+
+test('icône de l’extension : bouton « Vue étendue », entrée « WikiMasters+ » sous Paramètres, en-tête des Paramètres (dégradés uniques)', async () => {
+  const env = setup(10, { on: false, size: 100, price: false });
+  const { w, WMX } = env;
+  const main = w.document.createElement('main');
+  main.innerHTML = '<div><input placeholder="Rechercher"><div id="bar"><div><button aria-label="Filtrer par étiquette">x</button></div><div><button aria-label="Trier la collection"><span>Rareté</span></button></div></div></div>';
+  w.document.body.append(main);
+  await init(env);
+  assert.ok(main.querySelector('.wmx-cv-toggle .wmx-logo svg'), 'icône sur « Vue étendue »');
+  WMX.openSettings();
+  assert.ok(w.document.querySelector('.wmx-modal .wmx-set-title .wmx-logo svg'), 'icône dans l’en-tête des Paramètres');
+  const ids = [...w.document.querySelectorAll('.wmx-logo linearGradient')].map((g) => g.id);
+  assert.equal(new Set(ids).size, ids.length, 'identifiants de dégradé uniques');
+  env.close();
+});

@@ -64,8 +64,69 @@
   });
   const collJson = (body) => new Response(body, { status: 200, headers: { 'content-type': 'application/json' } });
 
+  // --- Actions de masse par lots de 100 cartes ------------------------------------------------------------------------------------
+  // Le jeu refuse plus de 100 cartes par demande (« Maximum 100 cartes par requête »). Avec la vue étendue, une page peut en compter 500 :
+  // une défausse en lot, ou une écriture directe dans la base du jeu (favoris, étiquettes) sur plus de 100 cartes, part donc en lots de 100,
+  // l'un après l'autre (0,4 s entre deux), avec la même requête du jeu. La page reçoit UNE réponse : les nombres additionnés, les listes mises
+  // bout à bout ; au premier refus, on s'arrête et la page reçoit ce refus (les lots déjà passés restent faits). Chaque lot est relayé à
+  // l'extension comme une requête normale (la copie de la collection reste exacte).
+  const LOT = 100;
+  const lots = (a) => { const out = []; for (let i = 0; i < a.length; i += LOT) out.push(a.slice(i, i + LOT)); return out; };
+  const relay = (url, method, status, data, req) => { try { window.dispatchEvent(new CustomEvent('wmx:api', { detail: { url, method, status, data, req } })); } catch (_) { /* relais facultatif */ } };
+  function merge(parts) {
+    if (parts.every((x) => Array.isArray(x))) return parts.flat();
+    const out = { ...(parts[parts.length - 1] || {}) };
+    for (const k of Object.keys(out)) {
+      const vals = parts.map((x) => x?.[k]);
+      if (vals.every((v) => typeof v === 'number')) out[k] = vals.reduce((n, v) => n + v, 0);
+      else if (vals.every((v) => Array.isArray(v))) out[k] = vals.flat();
+    }
+    return out;
+  }
+  /** Rend une réponse unique si la demande a dû être découpée, sinon null (demande normale). */
+  async function inLots(self, args) {
+    const [input, init] = args;
+    if (typeof input !== 'string' || !init || typeof init.body !== 'string' && !/\.supabase\.co\/rest\/v1\//.test(input)) return null;
+    const method = String(init.method || 'GET').toUpperCase();
+    if (method === 'GET') return null;
+    let u;
+    try { u = new URL(input, location.origin); } catch (_) { return null; }
+    const jobs = []; // [{ url, body }]
+    let body = null;
+    try { body = typeof init.body === 'string' ? JSON.parse(init.body) : null; } catch (_) { body = null; }
+    if (u.origin === location.origin && u.pathname === '/api/user-cards/bulk-discard' && method === 'POST' && Array.isArray(body?.card_ids) && body.card_ids.length > LOT) {
+      for (const ids of lots(body.card_ids)) jobs.push({ url: input, body: { ...body, card_ids: ids } });
+    } else if (/\.supabase\.co$/.test(u.hostname) && u.pathname.startsWith('/rest/v1/')) {
+      if (Array.isArray(body) && body.length > LOT) for (const part of lots(body)) jobs.push({ url: input, body: part }); // ajout d'étiquettes à plusieurs cartes
+      else {
+        const key = [...u.searchParams.keys()].find((k) => /^in\.\(/.test(u.searchParams.get(k) || '') && u.searchParams.get(k).slice(4, -1).split(',').length > LOT);
+        if (key) { // favoris ou étiquettes de plusieurs cartes : id=in.(…), user_card_id=in.(…)
+          const ids = u.searchParams.get(key).slice(4, -1).split(',');
+          for (const part of lots(ids)) { const v = new URL(u); v.searchParams.set(key, `in.(${part.join(',')})`); jobs.push({ url: v.toString(), body }); }
+        }
+      }
+    }
+    if (jobs.length < 2) return null;
+    const parts = [];
+    let last = null;
+    for (let i = 0; i < jobs.length; i++) {
+      if (i) await new Promise((r) => setTimeout(r, 400));
+      const j = jobs[i];
+      const res = await origFetch.call(self, j.url, { ...init, body: j.body == null ? init.body : JSON.stringify(j.body) });
+      let data = null;
+      try { data = await res.clone().json(); } catch (_) { data = null; }
+      relay(j.url, method, res.status, data, j.body);
+      if (!res.ok) return res; // refus : la page l'affiche, les lots suivants ne partent pas
+      parts.push(data);
+      last = res;
+    }
+    if (parts.some((x) => x == null)) return last; // réponses sans corps (204) : la dernière suffit
+    return new Response(JSON.stringify(merge(parts)), { status: last.status, headers: { 'content-type': 'application/json' } });
+  }
+
   const origFetch = window.fetch;
   window.fetch = async function (...args) {
+    try { const r = await inLots(this, args); if (r) return r; } catch (_) { /* en cas de doute : la demande telle quelle */ }
     let url = null;
     try {
       const u0 = typeof args[0] === 'string' ? args[0] : args[0]?.url;

@@ -1215,3 +1215,9 @@ button.wmx-tc-cancel:hover { background: rgb(239 68 68 / .18) !important; color:
 .wmx-cv-menu button:hover { background: var(--color-surface-light, #18211d); }
 .wmx-cv-menu button.on { background: color-mix(in srgb, var(--color-accent, #2dd4a0) 12%, transparent); }
 @media (prefers-reduced-motion: reduce) { .wmx-cv-dot { transition: none; } }
+
+/* Icône de l'extension (WMX.dom.logo, 1.0.85) : bouton « Vue étendue », entrée « WikiMasters+ » du menu, en-tête des Paramètres */
+.wmx-logo { display: inline-flex; flex: none; line-height: 0; }
+.wmx-logo svg { display: block; width: 100%; height: 100%; }
+.wmx-set-title { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.wmx-nav-item .wmx-logo { margin: -1px 0; }

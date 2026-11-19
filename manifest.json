@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WikiMasters Toolkit+",
-  "version": "1.0.84",
+  "version": "1.0.85",
   "description": "Prix du marché, ouverture de paquets en un clic, enchères automatiques et style de cartes pour WikiMasters.",
   "permissions": [
     "storage",
@@ -83,7 +83,7 @@
       "world": "MAIN"
     }
   ],
-  "version_name": "1.0.84 · Collection : vue étendue (50 à 500 cartes par page, tri par moyenne)",
+  "version_name": "1.0.85 · actions de masse par lots de 100, icône de l’extension",
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",
