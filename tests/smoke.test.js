@@ -2266,3 +2266,20 @@ test('moyenne du marché : historique des prix (moyenne de la semaine) ; refusé
   assert.equal(asked.filter((x) => x === 'history').length, 2, 'ensuite, plus d’essai sur l’historique pendant la session');
   env.close();
 });
+
+test('mon profil (ma vitrine, GET /api/showcase) : moyenne sur chaque carte et valeur des cartes affichées', async () => {
+  const env = createEnv({ fetchImpl: async (u) => (/\/(sales|price-history)/.test(String(u)) ? json({ by_rarity: { L: { weekly: [{ start: new Date().toISOString().slice(0, 10), avg: 1615, count: 51 }] } } }) : json({})) });
+  const { w, WMX } = env;
+  w.history.pushState({}, '', '/profile');
+  const tile = (title, r) => `<div class="relative"><div class="relative rounded-2xl overflow-hidden"><div class="absolute top-2 left-2">${r}</div><h3>${title}</h3></div></div>`;
+  w.document.body.innerHTML = `<main><div class="flex flex-wrap justify-center">${tile('Pologne', 'L')}</div></main>`;
+  for (const f of WMX.features) if (f.name === 'profile-prices') f.init();
+  w.dispatchEvent(new w.CustomEvent('wmx:api', { detail: { url: '/api/showcase', method: 'GET', status: 200, data: { showcase: [{ id: 's1', snapshot_rarity: 'L', card: { id: 'p1', wikipedia_title: 'Pologne', rarity: 'L' } }], galleries: [] } } }));
+  const chip = () => w.document.querySelector('main h3').closest('.rounded-2xl').querySelector('.wmx-nt-price');
+  for (let i = 0; i < 80 && !/1\s615/.test(chip()?.textContent || ''); i++) await sleep(150);
+  assert.match(chip().textContent, /Moy\. 1\s615 W/, 'moyenne de la semaine sur ma carte');
+  assert.doesNotMatch(chip().title, /chez ce joueur|Vous n’avez pas/);
+  assert.match(w.document.querySelector('.wmx-pp-bar')?.textContent || '', /1\s615 W · 1 carte/);
+  assert.doesNotMatch(w.document.querySelector('.wmx-pp-bar').textContent, /que vous avez aussi/, 'mon profil : pas de « que vous avez aussi »');
+  env.close();
+});

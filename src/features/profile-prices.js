@@ -12,7 +12,8 @@
   const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim();
   const keyOf = (title, rarity) => `${norm(title).toLowerCase()}|${rarity}`;
   const fmt = (n) => Math.round(n).toLocaleString('fr-FR');
-  const isPage = () => /^\/(profile\/[^/]+|global-collection)\/?$/.test(location.pathname);
+  const isPage = () => /^\/(profile(\/[^/]+)?|global-collection)\/?$/.test(location.pathname);
+  const isOwn = () => /^\/profile\/?$/.test(location.pathname); // mon profil (ma vitrine, GET /api/showcase)
   const isProfile = () => /^\/profile\//.test(location.pathname);
   let owned = new Set(); // « Toutes les cartes » : cartes que j'ai (liste donnée par le jeu)
 
@@ -52,7 +53,7 @@
     const p = WMX.prices.get(info.card_id, info.rarity);
     const f = WMX.prices.freshness?.(info.card_id);
     const text = p ? `Moy. ${fmt(p.avg)} W` : WMX.prices.has(info.card_id) ? 'Sans vente' : 'Moy. …';
-    const title = [f?.line, info.mine ? 'Vous avez aussi cette carte' : 'Vous n’avez pas cette carte', isProfile() && info.count > 1 ? `${info.count} exemplaires chez ce joueur` : ''].filter(Boolean).join('\n');
+    const title = [f?.line, isOwn() ? '' : info.mine ? 'Vous avez aussi cette carte' : 'Vous n’avez pas cette carte', isProfile() && !isOwn() && info.count > 1 ? `${info.count} exemplaires chez ce joueur` : ''].filter(Boolean).join('\n');
     const sig = `${text}|${f?.state || ''}|${info.mine}`;
     if (chip.dataset.sig === sig) return; // rien n'a changé : pas de réécriture
     chip.dataset.sig = sig;
@@ -79,7 +80,7 @@
     }
     if (!n) { bar?.remove(); return; }
     if (!bar || bar.nextElementSibling !== grid) { bar?.remove(); bar = el('div', { class: 'wmx-pp-bar', role: 'status' }); grid.before(bar); }
-    const text = `Valeur des cartes affichées : ${priced < n ? '≈ ' : ''}${fmt(sum)} W · ${n} carte${n > 1 ? 's' : ''}${priced < n ? ` · ${n - priced} prix en cours de chargement` : ''}${mine ? ` · ${mine} que vous avez aussi` : ''}`;
+    const text = `Valeur des cartes affichées : ${priced < n ? '≈ ' : ''}${fmt(sum)} W · ${n} carte${n > 1 ? 's' : ''}${priced < n ? ` · ${n - priced} prix en cours de chargement` : ''}${mine && !isOwn() ? ` · ${mine} que vous avez aussi` : ''}`;
     if (bar.textContent !== text) bar.textContent = text;
   }
 
@@ -108,7 +109,7 @@
     match: /^\/(profile|global-collection)/,
     init() {
       WMX.onApi(({ path, data }) => {
-        if (!/^\/api\/profile\/[^/]+\/(collection|showcase)\/?$/.test(path) && !/^\/api\/cards\/?$/.test(path)) return;
+        if (!/^\/api\/profile\/[^/]+\/(collection|showcase)\/?$/.test(path) && !/^\/api\/(cards|showcase)\/?$/.test(path)) return; // /api/showcase : ma vitrine
         if (Array.isArray(data?.ownedCardIds)) owned = new Set(data.ownedCardIds);
         learn(data?.cards || data);
         document.querySelectorAll('main [data-wmx-pp]').forEach((c) => { delete c.dataset.wmxPp; }); // nouvelle page de cartes : elles seront reprises
