@@ -474,6 +474,7 @@
         if (res.unconfirmed) { S.pauseUntil = Date.now() + PAUSE; return; } // le jeu n'a rien enregistré : ce n'est pas la faute de la carte (pas d'écart), on réessaie après une pause
         if (res.gone) { skipCard(op.item.card_id, 24 * H); WMX.journal?.add('Assistant de vente', op.item.title + ' introuvable dans la collection : écartée 24 h', 'warn'); return; } // vendue entre-temps
         if (res.capped) { skipCard(op.item.card_id, 24 * H); return; } // trop chère pour l'assistant : on n'y revient pas avant demain
+        if (res.noPrice) { skipCard(op.item.card_id, 24 * H); WMX.journal?.add('Assistant de vente', `${op.item.title} (${op.item.rarity}) : aucune vente connue, pas de mise en vente au prix par défaut ; écartée 24 h (à mettre en vente vous-même)`, 'warn'); return; }
         if (res.skipped || res.limit) return;
         S.fails[op.item.card_id] = (S.fails[op.item.card_id] || 0) + 1;
         if (S.fails[op.item.card_id] >= 2) { skipCard(op.item.card_id, 6 * H); delete S.fails[op.item.card_id]; WMX.journal?.add('Assistant de vente', `${op.item.title} écartée 6 h (deux échecs de suite)`, 'warn'); }

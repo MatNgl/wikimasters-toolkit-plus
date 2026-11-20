@@ -151,7 +151,14 @@
       sched.blocks = 0; // un succès : la pause repart de sa valeur de base
       gap = L.nextGap(gap, false, BASE_GAP);
       if (r.error != null) lastStatus = r.error;
-      if (r.summary) { cache[item.cardId] = { t: Date.now(), s: r.summary, w: 1 }; scheduleSave(); } // w : moyenne de la semaine (historique des prix)
+      if (r.summary) {
+        // Rareté absente de l'historique (aucune vente sur sa période, ex. une légendaire rarement vendue) : on garde la dernière moyenne connue
+        // pour cette rareté (marquée « kept »), plutôt que « Sans vente » — qui ferait mettre la carte en vente au prix par défaut (10 W).
+        const s = { ...r.summary };
+        for (const [k, v] of Object.entries(cache[item.cardId]?.s || {})) if (!s[k] && v && v.average > 0) s[k] = { ...v, count: 0, kept: true };
+        cache[item.cardId] = { t: Date.now(), s, w: 1 }; // w : moyenne de la semaine (historique des prix)
+        scheduleSave();
+      }
       sched.pending.delete(item.cardId);
       item.resolve(r);
       emit();

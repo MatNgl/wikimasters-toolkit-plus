@@ -7,7 +7,8 @@
   // Nouveautés, de la plus récente à la plus ancienne. Écrites pour les joueurs : ce qu'ils voient et ce que ça change pour eux.
   // kind : 'new' (nouveau), 'better' (amélioré), 'fix' (corrigé). highlights : les grandes nouveautés, mises en avant en tête de la fenêtre.
   const CHANGES = [
-    { v: '1.1.3', title: 'Moyenne de la semaine, défausse et vue étendue', items: [
+    { v: '1.1.4', title: 'Moyenne de la semaine, défausse et vue étendue', items: [
+      ['better', 'Garde-fou : une super rare, ultra rare ou légendaire sans aucune vente connue n’est jamais mise en vente au prix par défaut (10 W), ni par ⚡ ni par l’assistant ; une rareté sans vente récente garde sa dernière moyenne connue.'],
       ['new', 'Votre profil : la moyenne s’affiche aussi sur les cartes de votre vitrine, avec la valeur des cartes affichées.'],
       ['fix', 'Moyennes du marché : depuis la mise à jour du jeu, l’extension affiche la moyenne de la semaine, comme la fiche de la carte (sans vente cette semaine : celle de la dernière semaine avec des ventes). Plus de « Sans vente » à tort.'],
       ['fix', 'Défausse : plusieurs exemplaires d’une même carte sur la page sont cochés ou décochés un par un (plus d’arrêt « le jeu compte N cartes au lieu de N−1 »).'],

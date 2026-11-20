@@ -2283,3 +2283,18 @@ test('mon profil (ma vitrine, GET /api/showcase) : moyenne sur chaque carte et v
   assert.doesNotMatch(w.document.querySelector('.wmx-pp-bar').textContent, /que vous avez aussi/, 'mon profil : pas de « que vous avez aussi »');
   env.close();
 });
+
+test('garde-fou prix : rareté absente de l’historique → dernière moyenne connue gardée ; SR/UR/L sans aucune moyenne → jamais d’enchère rapide au prix par défaut', async () => {
+  const env = createEnv({ fetchImpl: async (u) => (/price-history/.test(String(u)) ? json({ by_rarity: { UR: { weekly: [{ start: new Date().toISOString().slice(0, 10), avg: 900, count: 2 }] } } }) : json({})) });
+  const { WMX } = env;
+  env.mem.priceCache = { rose: { t: Date.now() - 40 * 3600000, s: { L: { average: 5170, count: 3, latest: 5000 } } } }; // ancienne moyenne (avant la mise à jour du marché)
+  await WMX.prices.load();
+  await WMX.prices.fetchOne('rose');
+  assert.equal(WMX.prices.get('rose', 'UR')?.avg, 900, 'moyenne de la semaine');
+  assert.equal(WMX.prices.get('rose', 'L')?.avg, 5170, 'L absente de l’historique : dernière moyenne connue gardée (pas « Sans vente »)');
+  await WMX.prices.fetchOne('neuve');
+  assert.equal(WMX.prices.get('neuve', 'L'), null);
+  assert.match(WMX.quick.hint({ card_id: 'neuve', rarity: 'L' }), /Aucune vente connue .* pas d’enchère rapide au prix par défaut/, 'légendaire sans moyenne : pas de prix par défaut');
+  assert.match(WMX.quick.hint({ card_id: 'neuve', rarity: 'C' }), /10 W .*aucune vente/, 'commune : prix par défaut (inchangé)');
+  env.close();
+});

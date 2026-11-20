@@ -36,6 +36,7 @@
     return true;
   });
 
+  const HIGH = new Set(['SR', 'UR', 'L']); // raretés jamais mises en vente au prix par défaut, faute de moyenne
   const cfg = () => ({ noSale: Math.max(1, Math.round(Number(WMX.settings?.quickNoSalePrice) || 10)), pct: Number.isFinite(Number(WMX.settings?.quickPct)) ? Number(WMX.settings.quickPct) : -10, dur: LABELS[WMX.settings?.quickDuration] || '1 h', prudent: !!WMX.settings?.quickPrudent });
 
   /** Prix de départ : moyenne ± pourcentage (−10 = 10 % sous la moyenne), plafonné à 1,2 × dernière vente en mode prudent, arrondi, 1 W minimum. */
@@ -186,6 +187,8 @@
     // Aucune vente sur le marché pour cette rareté (prix bien chargé, mais sans moyenne) : prix de départ par défaut (réglage, 10 W).
     // Si le prix n'a simplement pas pu être chargé (réseau), on n'invente rien : nouvel essai plus tard.
     if (!p && !WMX.prices.has(item.card_id)) return { error: 'le prix de la carte n’a pas pu être chargé (le jeu est lent) : réessayez dans un instant' };
+    // Garde-fou : une super rare, ultra rare ou légendaire sans aucune vente connue n'est JAMAIS mise en vente au prix par défaut (10 W).
+    if (!p && HIGH.has(item.rarity)) return { noPrice: true, error: `aucune vente connue pour cette carte en ${item.rarity} : pas de mise en vente au prix par défaut (${c.noSale} W). Mettez-la en vente vous-même, au prix voulu.` };
     const price = p ? startPrice(p) : c.noSale;
     if (item.cap && price > item.cap) return { capped: true, error: `le prix de départ serait de ${price} W, au-dessus de votre plafond de ${item.cap} W` };
     const attempt = async () => {
@@ -515,6 +518,7 @@
       if (isStarred(item)) return 'Carte favorite : verrouillée, impossible de la vendre';
       const c = cfg();
       const p = WMX.prices.get(item.card_id, item.rarity);
+      if (!p && WMX.prices.has(item.card_id) && HIGH.has(item.rarity)) return `Aucune vente connue pour cette carte en ${item.rarity} : pas d’enchère rapide au prix par défaut, mettez-la en vente vous-même`;
       if (!p && WMX.prices.has(item.card_id)) return `Enchère rapide : ${c.noSale} W pendant ${c.dur} (aucune vente sur le marché : prix par défaut)`;
       return p ? `Enchère rapide : ${startPrice(p)} W pendant ${c.dur} (moyenne ${Math.round(p.avg)} W ${c.pct > 0 ? '+' : c.pct < 0 ? '−' : '±'} ${Math.abs(c.pct)} %)` : 'Enchère rapide (le prix sera chargé automatiquement)';
     },
