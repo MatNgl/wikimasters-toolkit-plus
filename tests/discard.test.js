@@ -92,6 +92,7 @@ function fakeGame(w, cards, { perPage = 50, failAfterDiscard = false, lateReload
         return;
       }
       st.discarded.push(...chosen.map((c) => c.title));
+      st.onDiscard?.();
       for (const c of chosen) c.count = (c.count || 1) - 1;
       // lateReload : comme le vrai jeu, la liste n'est relue qu'un peu plus tard (les cartes défaussées restent affichées, puis tout remonte d'un cran).
       if (lateReload) setTimeout(() => { st.list = st.list.filter((c) => (c.count ?? 1) > 0); render(); }, lateReload);
@@ -249,11 +250,14 @@ test('défausse : « Sans étiquette » sur plusieurs pages, favorites laissées
   env.close();
 });
 
-test('défausse en mode visible avec la vue étendue : passage à 500 cartes par page, compteur et message lus vite, cartes sans image seulement', async () => {
+test('défausse : vue étendue désactivée au lancement → activée à 500 cartes par page pendant la défausse, puis remise comme avant ; compteur lu vite, cartes sans image seulement', async () => {
   const cards = Array.from({ length: 80 }, (_, i) => ({ title: `Commune ${String(i).padStart(3, '0')}`, rarity: 'C', image: i % 2 ? '' : 'x.jpg' }));
   const { env, WMX, game } = setup(cards, { perPage: 500 });
-  const sizes = [];
-  WMX.collView = { state: () => ({ on: true, size: 100 }), setSize: (n, reload) => sizes.push([n, reload]) };
+  const calls = [];
+  const V = { on: false, size: 100 };
+  let during = null;
+  WMX.collView = { state: () => ({ ...V }), ready: () => V.on, setSize: (n) => { calls.push(`size ${n}`); V.size = n; }, setOn: (v) => { calls.push(`on ${v}`); V.on = v; } };
+  game.onDiscard = () => { during = during || { ...V }; };
   await WMX.features.find((f) => f.name === 'discard').init();
   // Compteur trouvé vite.
   const t0 = Date.now();
@@ -263,7 +267,9 @@ test('défausse en mode visible avec la vue étendue : passage à 500 cartes par
   const pl = WMX.discard.plan(p);
   assert.equal(pl.copies, 40);
   await WMX.discard.start(pl, { dry: false, visible: true, prefs: p });
-  assert.deepEqual(sizes, [[500, true]], 'vue étendue : 500 cartes par page demandées au lancement');
+  await sleep(1800); // remise comme avant, peu après la fin
+  assert.deepEqual(during, { on: true, size: 500 }, 'pendant la défausse : vue étendue, 500 cartes par page');
+  assert.deepEqual(calls, ['size 500', 'on true', 'size 100', 'on false'], 'activée au lancement, remise comme avant à la fin');
   assert.equal(game.discarded.length, 40, 'toutes les cartes sans image');
   assert.ok(game.discarded.every((t) => Number(t.slice(-3)) % 2 === 1), 'jamais une carte avec image');
   env.close();

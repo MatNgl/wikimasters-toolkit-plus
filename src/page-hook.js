@@ -63,6 +63,18 @@
     window.dispatchEvent(new CustomEvent('wmx:coll-ask', { detail: JSON.stringify({ id, kind: t.kind, url: t.url, real }) }));
   });
   const collJson = (body) => new Response(body, { status: 200, headers: { 'content-type': 'application/json' } });
+  // Page Collection invisible de la défausse (cadre « #wmx-discard », frame-hook.js) : elle n'a pas l'extension ; ses lectures de liste sont servies
+  // par la copie à travers cette page (mêmes réponses que la vue étendue : 500 cartes par page), et ses écritures (défausse) sont relayées ici
+  // pour tenir la copie à jour. Messages en texte JSON, même origine seulement.
+  window.addEventListener('message', (e) => {
+    if (e.origin !== location.origin || typeof e.data !== 'string' || !e.data.startsWith('{"wmx":"coll-')) return;
+    let d = null;
+    try { d = JSON.parse(e.data); } catch (_) { return; }
+    const reply = (body) => { try { e.source?.postMessage(JSON.stringify({ wmx: 'coll-reply', id: d.id, body }), location.origin); } catch (_) { /* cadre parti */ } };
+    if (d.wmx === 'coll-ready?') { reply(COLL.seen && COLL.ok ? 'on' : 'off'); return; }
+    if (d.wmx === 'coll-ask' && (d.kind === 'list' || d.kind === 'stats')) { collAsk({ kind: d.kind, url: d.url }, d.real ?? null).then(reply); return; }
+    if (d.wmx === 'coll-api' && d.method && d.method !== 'GET') relay(d.url, d.method, d.status, d.data, d.req);
+  });
 
   // --- Actions de masse par lots de 100 cartes ------------------------------------------------------------------------------------
   // Le jeu refuse plus de 100 cartes par demande (« Maximum 100 cartes par requête »). Avec la vue étendue, une page peut en compter 500 :

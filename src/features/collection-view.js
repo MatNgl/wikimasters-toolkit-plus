@@ -350,7 +350,7 @@
     obs.observe(document.body, { childList: true, subtree: true });
   }
 
-  WMX.collView = { serve, parse, sync, listed, state: () => ({ ...S, memo: undefined }), setOn, setSize: (n, reload = false) => { if (!SIZES.includes(n)) return; S.size = n; savePrefs(); paintTools(); if (reload) nudge(); }, /* reload : la page du jeu relit sa liste */ setPrice: (v) => { S.price = !!v; savePrefs(); } };
+  WMX.collView = { serve, parse, sync, listed, ready, /* copie prête : la vue étendue peut servir la page */ state: () => ({ ...S, memo: undefined }), setOn, setSize: (n, reload = false) => { if (!SIZES.includes(n)) return; S.size = n; savePrefs(); paintTools(); if (reload) nudge(); }, /* reload : la page du jeu relit sa liste */ setPrice: (v) => { S.price = !!v; savePrefs(); } };
 
   WMX.register({
     name: 'collection-view',

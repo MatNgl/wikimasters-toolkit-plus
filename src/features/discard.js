@@ -625,27 +625,58 @@
   const viewsOf = (p) => ((p.tags || []).length ? p.tags.map((tag) => ({ kind: 'tag', tag, label: `étiquette ${tag}` }))
     : p.includeTagged ? [{ kind: 'all', label: 'toutes les étiquettes' }] : [{ kind: 'none', label: 'sans étiquette' }]);
 
+  /**
+   * Vue étendue à 500 cartes par page pour la défausse : activée si besoin, la copie de la collection attendue si elle se lit encore (première
+   * fois : quelques minutes, une seule fois). Rend l'état d'avant ({ on, size }) pour le remettre à la fin, ou null (vue étendue indisponible).
+   * Copie pas prête au bout de 15 min (ou « Arrêter ») : la défausse se fait dans la page du jeu (50 cartes par page).
+   */
+  async function prepareView(visible) {
+    const cv = WMX.collView;
+    const st = cv?.state?.();
+    if (!st || !cv.setOn || !cv.ready) return null;
+    const before = { on: !!st.on, size: st.size };
+    if (st.on && st.size === 500 && cv.ready()) return before;
+    showRun('vue étendue : passage à 500 cartes par page…');
+    if (st.size !== 500) cv.setSize(500, visible && st.on && cv.ready());
+    if (!st.on) cv.setOn(true); // relance aussi la liste de la page affichée
+    let idle = 0; // secondes de suite sans lecture en cours : la copie ne viendra pas (hors ligne, lecture impossible) → page du jeu
+    for (const t0 = Date.now(); !cv.ready() && !run.stop && Date.now() - t0 < 15 * 60000 && idle < 5;) {
+      idle = WMX.inventory.isLoading?.() ? 0 : idle + 1;
+      const read = WMX.inventory.loaded?.() || 0;
+      const of = cv.state().lastReal || WMX.inventory.items().length || 0;
+      const pct = of && read ? `${Math.min(99, Math.floor((read / of) * 100))} %` : '…';
+      showRun(`vue étendue : lecture de toute la collection (${pct}), une seule fois ; la défausse commence ensuite…`);
+      await sleep(1000);
+    }
+    if (run.stop) return before;
+    if (!cv.ready()) { showRun('la vue étendue n’est pas prête : défausse dans la page du jeu, 50 cartes par page…', 'warn'); return before; }
+    if (visible) { await sleep(800); await waitFor(listReady, 15000, 200); await settled(); }
+    return before;
+  }
+  /** Remet la vue étendue comme avant la défausse (activée ou non, cartes par page). */
+  function putViewBack(before, visible) {
+    const cv = WMX.collView;
+    if (!before || !cv?.state) return;
+    const now = cv.state();
+    if (now.size !== before.size) cv.setSize(before.size, visible && before.on && now.on);
+    if (now.on !== before.on) cv.setOn(before.on);
+  }
   async function start(pl, { dry, visible = false, prefs: p = prefs }) {
     if (run.on) return;
     if (visible && !/^\/collection\/?$/.test(location.pathname)) return WMX.toast?.('Mode visible : ouvrez la page Collection pour lancer la défausse.', 5000);
     await loadTrades();
     run.on = true; run.stop = false; run.dry = dry; run.prog = { done: 0, total: pl.copies }; run.frame = null;
     let ctx = null;
+    // Vue étendue à 500 cartes par page pendant la défausse, dans les deux modes (bien moins de pages à parcourir et de relectures entre deux
+    // défausses) : activée si besoin, puis remise comme avant à la fin (restoreView, voir finish()).
+    const restoreView = await prepareView(visible);
+    if (run.stop) { run.on = false; putViewBack(restoreView, visible); showRun('arrêtée à votre demande avant de commencer : rien n’a été défaussé.', 'warn'); return; }
     if (visible) {
       D = document; W = window;
-      // Vue étendue : 500 cartes par page pendant la défausse (bien moins de pages à parcourir et de relectures entre deux défausses).
-      const cv = WMX.collView?.state?.();
-      if (cv?.on && cv.size !== 500) {
-        showRun('vue étendue : passage à 500 cartes par page…');
-        WMX.collView.setSize(500, true);
-        await sleep(600);
-        await waitFor(listReady, 15000, 200);
-        await settled();
-      }
     } else {
       showRun('préparation de la page Collection en arrière-plan…');
       ctx = await (WMX.discard.frameFactory || openFrame)();
-      if (!ctx) { run.on = false; showRun('la page Collection n’a pas pu être préparée en arrière-plan (jeu lent ?) : rien n’a été défaussé. Réessayez, ou utilisez le mode visible.', 'warn'); return; }
+      if (!ctx) { run.on = false; putViewBack(restoreView, visible); showRun('la page Collection n’a pas pu être préparée en arrière-plan (jeu lent ?) : rien n’a été défaussé. Réessayez, ou utilisez le mode visible.', 'warn'); return; }
       D = ctx.d; W = ctx.w; run.frame = ctx.frame || null;
     }
     // Cartes au prix inconnu (seuil activé) : « attendre » charge leurs prix AVANT de commencer ; « en dernier » les charge pendant la défausse
@@ -686,6 +717,7 @@
       const c = ctx; ctx = null;
       setTimeout(() => c?.remove?.(), 1500); // page invisible retirée (après la dernière réponse du jeu)
       D = document; W = window;
+      setTimeout(() => putViewBack(restoreView, visible), 1600); // vue étendue remise comme avant la défausse
       run.prog.done = stats.copies;
       showRun(text, kind);
       run.frame = null;
