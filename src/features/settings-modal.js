@@ -339,6 +339,8 @@
           setTimeout(() => { delete b.dataset.armed; b.textContent = it.button; b.classList.remove('wmx-btn--danger'); }, 4000);
           return;
         }
+        // Extension rechargée (mise à jour) sans actualiser l'onglet : cette copie est coupée de Chrome, ses actions ne marchent plus.
+        if (!WMX.alive()) { WMX.toast?.('L’extension a été mise à jour : actualisez la page (F5) pour utiliser ce bouton.', 7000); return; }
         it.run();
         if (it.confirm) { delete b.dataset.armed; b.textContent = 'Fait'; b.classList.remove('wmx-btn--danger'); }
       });

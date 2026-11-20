@@ -125,3 +125,13 @@ test('mise à jour vers la 1.0.93 : « À la une » (paquets depuis n’importe 
   assert.ok(!again.w.document.querySelector('.wmx-wn'), 'pas une deuxième fois');
   again.close();
 });
+
+test('« Voir les nouveautés » (Paramètres) : toujours les dernières nouveautés, même si la version installée est illisible (extension rechargée sans actualiser l’onglet)', async () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  env.w.chrome.runtime.getManifest = () => { throw new Error('Extension context invalidated.'); };
+  env.WMX.whatsNew.showChanges();
+  const box = env.w.document.querySelector('.wmx-wn');
+  assert.ok(box, 'fenêtre affichée');
+  assert.ok(box.querySelectorAll('.wmx-wn-ver').length >= 1, 'au moins une version listée');
+  env.close();
+});

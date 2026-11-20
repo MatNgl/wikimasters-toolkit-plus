@@ -7,7 +7,8 @@
   // Nouveautés, de la plus récente à la plus ancienne. Écrites pour les joueurs : ce qu'ils voient et ce que ça change pour eux.
   // kind : 'new' (nouveau), 'better' (amélioré), 'fix' (corrigé). highlights : les grandes nouveautés, mises en avant en tête de la fenêtre.
   const CHANGES = [
-    { v: '1.1.4', title: 'Moyenne de la semaine, défausse et vue étendue', items: [
+    { v: '1.1.5', title: 'Moyenne de la semaine, défausse et vue étendue', items: [
+      ['fix', 'Paramètres : « Voir les nouveautés » s’ouvre toujours ; après une mise à jour de l’extension sans actualiser la page, un message demande d’actualiser (F5).'],
       ['better', 'Garde-fou : une super rare, ultra rare ou légendaire sans aucune vente connue n’est jamais mise en vente au prix par défaut (10 W), ni par ⚡ ni par l’assistant ; une rareté sans vente récente garde sa dernière moyenne connue.'],
       ['new', 'Votre profil : la moyenne s’affiche aussi sur les cartes de votre vitrine, avec la valeur des cartes affichées.'],
       ['fix', 'Moyennes du marché : depuis la mise à jour du jeu, l’extension affiche la moyenne de la semaine, comme la fiche de la carte (sans vente cette semaine : celle de la dernière semaine avec des ventes). Plus de « Sans vente » à tort.'],
@@ -72,12 +73,15 @@
 
   const vNum = (v) => String(v || '0').split('.').map((x) => Number(x) || 0);
   const newer = (a, b) => { const x = vNum(a); const y = vNum(b); for (let i = 0; i < Math.max(x.length, y.length); i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
-  const current = () => { try { return chrome.runtime.getManifest().version; } catch (_) { return '0'; } };
+  // Version installée. Illisible quand l'extension a été rechargée sans actualiser l'onglet (ancienne copie coupée de Chrome) : on prend la
+  // dernière version de la liste (avant : « 0 », la liste était vide et le bouton « Voir les nouveautés » ne faisait rien).
+  const current = () => { try { return chrome.runtime.getManifest().version || CHANGES[0].v; } catch (_) { return CHANGES[0].v; } };
   /** Nouveautés des versions vues depuis `since` (exclue) jusqu'à la version installée (incluse). Sans `since` connu : les 3 dernières. */
   function changesSince(since) {
     const cur = current();
     const list = CHANGES.filter((c) => !newer(c.v, cur));
-    return since ? list.filter((c) => newer(c.v, since)) : list.slice(0, 3);
+    if (!since) return (list.length ? list : CHANGES).slice(0, 3); // demandé depuis les Paramètres : toujours les dernières nouveautés
+    return list.filter((c) => newer(c.v, since));
   }
 
   let open = null;
