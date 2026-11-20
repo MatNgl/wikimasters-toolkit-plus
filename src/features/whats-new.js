@@ -7,6 +7,14 @@
   // Nouveautés, de la plus récente à la plus ancienne. Écrites pour les joueurs : ce qu'ils voient et ce que ça change pour eux.
   // kind : 'new' (nouveau), 'better' (amélioré), 'fix' (corrigé). highlights : les grandes nouveautés, mises en avant en tête de la fenêtre.
   const CHANGES = [
+    { v: '1.1.1', title: 'Moyenne de la semaine, défausse et vue étendue', items: [
+      ['fix', 'Moyennes du marché : depuis la mise à jour du jeu, l’extension affiche la moyenne de la semaine, comme la fiche de la carte (sans vente cette semaine : celle de la dernière semaine avec des ventes). Plus de « Sans vente » à tort.'],
+      ['fix', 'Défausse : plusieurs exemplaires d’une même carte sur la page sont cochés ou décochés un par un (plus d’arrêt « le jeu compte N cartes au lieu de N−1 »).'],
+      ['fix', '« Garder 1 exemplaire » garde bien un exemplaire de chaque carte et défausse les autres (avant : aucun doublon reconnu).'],
+      ['fix', 'Défausse avec la vue étendue : elle ne s’arrête plus sur « bouton Défausser introuvable » ; elle attend que le jeu ait relu sa liste.'],
+      ['better', 'La défausse ne fige plus la page après chaque lot de cartes, et passe la vue étendue à 500 cartes par page en mode visible.'],
+      ['fix', 'Le doublon d’une carte défaussée ne disparaît plus de la vue étendue.'],
+    ] },
     { v: '1.0.96', title: 'Cadran des paquets et tableau de bord', items: [
       ['better', 'Le cadran des paquets reste affiché quand son menu est ouvert : un clic l’ouvre, un autre le referme (comme la bulle des enchères).'],
       ['fix', 'Le cadran des paquets est de nouveau visible sur le tableau de bord, et toujours sur la page Paquets.'],

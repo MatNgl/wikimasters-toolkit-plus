@@ -177,7 +177,7 @@ async function watchEnv({ rules = {}, auctions = [], min = 7, route = '', body =
   const byId = Object.fromEntries(auctions.map((a) => [a.id, a]));
   const payload = { auctions, selling: [], bidding: [], won: [{ winner_id: ME }], history: [] };
   const env = createEnv({ fetchImpl: async (u) => {
-    if (String(u).includes('/sales')) return json({ summary: { UR: { average: 20, count: 12, latest: 20 } } }); // moyenne du marché : 20 W
+    if (/\/(sales|price-history)/.test(String(u))) return json({ summary: { UR: { average: 20, count: 12, latest: 20 } } }); // moyenne du marché : 20 W
     const m = String(u).match(/\/api\/marketplace\/([\w-]+)/);
     if (m && delay) await sleep(delay); // jeu lent : chaque lecture d'une enchère prend `delay` ms
     return m ? (byId[m[1]] ? json({ auction: byId[m[1]] }) : json({}, 404)) : json(payload);
@@ -579,7 +579,7 @@ test('marché : badge de moyenne et verdict sous chaque enchère visible', async
   const list = [mk('m1', 'k1', 70), mk('m2', 'k2', 100), mk('m3', 'k3', 300), mk('m4', 'k4', 50)];
   const env = createEnv({ fetchImpl: async (u) => {
     const s = String(u);
-    if (s.includes('/sales')) {
+    if (/\/(sales|price-history)/.test(s)) {
       const id = s.match(/cards\/([^/]+)\//)[1];
       return id === 'k4' ? json({ summary: {} }) : json({ summary: { UR: { average: 100, count: 12, latest: 95 } } });
     }
@@ -601,7 +601,7 @@ test('marché : badge de moyenne et verdict sous chaque enchère visible', async
 
 test('marché : « Miser le minimum » pose le minimum de la page d\'enchère, sans navigation', async () => {
   const list = [{ id: 'q1', card_id: 'k1', snapshot_rarity: 'R', base_amount: 10, current_bid: null, card: { wikipedia_title: 'Carte Q1', rarity: 'R' } }];
-  const env = createEnv({ fetchImpl: async (u) => (String(u).includes('/sales') ? json({ summary: { R: { average: 12, count: 5, latest: 11 } } }) : json({ auctions: list, selling: [], bidding: [], won: [{ winner_id: ME }], history: [] })) });
+  const env = createEnv({ fetchImpl: async (u) => (/\/(sales|price-history)/.test(String(u)) ? json({ summary: { R: { average: 12, count: 5, latest: 11 } } }) : json({ auctions: list, selling: [], bidding: [], won: [{ winner_id: ME }], history: [] })) });
   const { w, WMX } = env;
   const clicks = fakeBidPages(w, 11);
   w.history.pushState({}, '', '/marketplace');
@@ -714,7 +714,7 @@ test('échanges : bilan visible tout de suite, vu de mon côté (je donne / je r
 test('marché : plusieurs « Miser le minimum » de suite se mettent en file et sont misés l\'un après l\'autre', async () => {
   const mk = (id, cid) => ({ id, card_id: cid, snapshot_rarity: 'R', base_amount: 10, current_bid: null, card: { wikipedia_title: `Carte ${id}`, rarity: 'R' } });
   const list = [mk('f1', 'k1'), mk('f2', 'k2'), mk('f3', 'k3')];
-  const env = createEnv({ fetchImpl: async (u) => (String(u).includes('/sales') ? json({ summary: { R: { average: 12, count: 5, latest: 11 } } }) : json({ auctions: list, selling: [], bidding: [], won: [{ winner_id: ME }], history: [] })) });
+  const env = createEnv({ fetchImpl: async (u) => (/\/(sales|price-history)/.test(String(u)) ? json({ summary: { R: { average: 12, count: 5, latest: 11 } } }) : json({ auctions: list, selling: [], bidding: [], won: [{ winner_id: ME }], history: [] })) });
   const { w, WMX } = env;
   const clicks = fakeBidPages(w, 11);
   w.history.pushState({}, '', '/marketplace');
@@ -735,7 +735,7 @@ test('marché : mes ventes n\'ont pas de bouton de mise et affichent bénéfice 
   const mine = (id, cid, price) => ({ id, card_id: cid, seller_id: 'me-1', status: 'active', snapshot_rarity: 'UR', base_amount: price, current_bid: null, end_at: inMin(30), card: { wikipedia_title: id, rarity: 'UR' } });
   const sell = [mine('v1', 'k1', 130), mine('v2', 'k2', 60)];
   const buy = { id: 'b1', card_id: 'k3', seller_id: 'other', status: 'active', snapshot_rarity: 'UR', base_amount: 50, current_bid: null, end_at: inMin(30), card: { wikipedia_title: 'b1', rarity: 'UR' } };
-  const env = createEnv({ fetchImpl: async (u) => (String(u).includes('/sales') ? json({ summary: { UR: { average: 100, count: 9, latest: 90 } } }) : json({ auctions: [buy, ...sell], selling: sell, bidding: [], won: [{ winner_id: 'me-1' }], history: [] })) });
+  const env = createEnv({ fetchImpl: async (u) => (/\/(sales|price-history)/.test(String(u)) ? json({ summary: { UR: { average: 100, count: 9, latest: 90 } } }) : json({ auctions: [buy, ...sell], selling: sell, bidding: [], won: [{ winner_id: 'me-1' }], history: [] })) });
   const { w, WMX } = env;
   w.history.pushState({}, '', '/marketplace');
   w.document.body.innerHTML = ['v1', 'v2', 'b1'].map((id) => `<a class="card-frame" href="/marketplace/${id}"><div>${id}</div></a>`).join('');
@@ -973,7 +973,7 @@ test('assistant de vente : une carte invendue retrouve l’étiquette de vente 3
 
 test('collection du jeu : en mode sélection (pas d\'étoile), les cartes redessinées gardent leur moyenne, et le ⚡ revient avec l\'étoile', async () => {
   const rows = [{ id: 'i1', card_id: 'k1', count: 1, starred: false, tags: [], card: { wikipedia_title: 'Alpha', rarity: 'rare', id: 'k1' } }];
-  const env = createEnv({ fetchImpl: async (u) => (String(u).includes('/sales') ? json({ summary: { R: { average: 42, count: 5, latest: 40 } } })
+  const env = createEnv({ fetchImpl: async (u) => (/\/(sales|price-history)/.test(String(u)) ? json({ summary: { R: { average: 42, count: 5, latest: 40 } } })
     : String(u).includes('/api/my-collection') ? json({ collection: rows }) : json({ selling: [], bidding: [], won: [{ winner_id: ME }], history: [] })) });
   const { w, WMX } = env;
   w.history.pushState({}, '', '/collection');
@@ -997,7 +997,7 @@ test('collection du jeu : prix et bouton ⚡ ajoutés sur les cartes, barre des 
     { id: 'i1', card_id: 'k1', count: 1, starred: false, tags: [], card: { wikipedia_title: 'Alpha', rarity: 'rare', id: 'k1' } },
     { id: 'i2', card_id: 'k2', count: 1, starred: true, tags: [], card: { wikipedia_title: 'Beta', rarity: 'commun', id: 'k2' } },
   ];
-  const env = createEnv({ fetchImpl: async (u) => (String(u).includes('/sales') ? json({ summary: { R: { average: 42, count: 5, latest: 40 }, C: { average: 3, count: 9, latest: 3 } } })
+  const env = createEnv({ fetchImpl: async (u) => (/\/(sales|price-history)/.test(String(u)) ? json({ summary: { R: { average: 42, count: 5, latest: 40 }, C: { average: 3, count: 9, latest: 3 } } })
     : String(u).includes('/api/my-collection') ? json({ collection: rows }) : json({ selling: [], bidding: [], won: [{ winner_id: ME }], history: [] })) });
   const { w, WMX } = env;
   w.history.pushState({}, '', '/collection');
@@ -1848,12 +1848,12 @@ test('marché : une moyenne de plus de 24 h reste affichée (icône « non à jo
   const gate = new Promise((r) => { release = r; });
   const env = createEnv({ fetchImpl: async (u) => {
     const s = String(u);
-    if (s.includes('/sales')) { const id = s.match(/cards\/([^/]+)\//)[1]; asked.push(id); await gate; return json({ summary: { L: { average: 1500, count: 8, latest: 1400 } } }); }
+    if (/\/(sales|price-history)/.test(s)) { const id = s.match(/cards\/([^/]+)\//)[1]; asked.push(id); await gate; return json({ summary: { L: { average: 1500, count: 8, latest: 1400 } } }); }
     return json({ auctions: list });
   } });
   const { w, mem, WMX } = env;
   const H = 3600000;
-  mem.priceCache = { k1: { t: Date.now() - 30 * H, s: { L: { average: 1000, count: 8, latest: 990 } } }, k2: { t: Date.now() - 2 * H, s: { L: { average: 1000, count: 8, latest: 990 } } } };
+  mem.priceCache = { k1: { w: 1, t: Date.now() - 30 * H, s: { L: { average: 1000, count: 8, latest: 990 } } }, k2: { w: 1, t: Date.now() - 2 * H, s: { L: { average: 1000, count: 8, latest: 990 } } } };
   await WMX.prices.load();
   w.history.pushState({}, '', '/marketplace');
   w.document.body.innerHTML = list.map((a) => `<a class="card-frame block" href="/marketplace/${a.id}"><div>${a.id}</div></a>`).join('');
@@ -1913,7 +1913,7 @@ test('réglages : menu de gauche (une page par thème), brouillon gardé d’une
 test('prix du Marché : les cartes à l’écran passent devant les autres demandes, dans l’ordre de la page ; une moyenne chargée dans un autre onglet vaut aussitôt', async () => {
   const asked = [];
   const env = createEnv({ fetchImpl: async (u) => {
-    const m = String(u).match(/\/cards\/([^/]+)\/sales/);
+    const m = String(u).match(/\/cards\/([^/]+)\/(?:sales|price-history)/);
     if (m) { asked.push(m[1]); await sleep(30); return json({ summary: { UR: { average: 50, count: 4, latest: 48 } } }); }
     return json({});
   } });
@@ -1934,7 +1934,7 @@ test('prix du Marché : les cartes à l’écran passent devant les autres deman
   // Un autre onglet a chargé une moyenne : elle est connue ici sans nouvelle requête, et l'affichage est prévenu.
   let told = 0;
   WMX.prices.onProgress(() => { told += 1; });
-  env.fireStorage({ priceCache: { newValue: { autreOnglet: { t: Date.now(), s: { SR: { average: 42, count: 3, latest: 40 } } } } } });
+  env.fireStorage({ priceCache: { newValue: { autreOnglet: { w: 1, t: Date.now(), s: { SR: { average: 42, count: 3, latest: 40 } } } } } });
   assert.equal(WMX.prices.get('autreOnglet', 'SR')?.avg, 42);
   assert.ok(told >= 1, 'les pages se repeignent');
   assert.ok(!asked.includes('autreOnglet'));
@@ -2038,7 +2038,7 @@ test('réglages : « Limiter les remises en vente » (4 par défaut) ; le nombre
 });
 
 test('profil d’un autre joueur : moyenne sur chaque carte de sa collection, valeur des cartes affichées, « vous l’avez » au survol', async () => {
-  const env = createEnv({ fetchImpl: async (u) => (String(u).includes('/sales') ? json({ summary: { L: { average: 2500, count: 4, latest: 2400 }, C: { average: 3, count: 9, latest: 3 } } }) : json({})) });
+  const env = createEnv({ fetchImpl: async (u) => (/\/(sales|price-history)/.test(String(u)) ? json({ summary: { L: { average: 2500, count: 4, latest: 2400 }, C: { average: 3, count: 9, latest: 3 } } }) : json({})) });
   const { w, WMX } = env;
   w.history.pushState({}, '', '/profile/Atsuya');
   const tile = (title, r) => `<div class="relative"><div class="relative rounded-2xl overflow-hidden"><div class="absolute top-2 left-2">${r}</div><h3>${title}</h3></div></div>`;
@@ -2071,7 +2071,7 @@ test('prix : la page affichée passe avant tout (puis les tâches de fond, puis 
     return json({ summary: { C: { average: 5, count: 3, latest: 5 } } });
   } });
   const { w, mem, WMX } = env;
-  mem.priceCache = { vieux: { t: Date.now() - 30 * 3600000, s: { C: { average: 1, count: 1, latest: 1 } } }, recent: { t: Date.now() - 3600000, s: { C: { average: 1, count: 1, latest: 1 } } } };
+  mem.priceCache = { vieux: { w: 1, t: Date.now() - 30 * 3600000, s: { C: { average: 1, count: 1, latest: 1 } } }, recent: { w: 1, t: Date.now() - 3600000, s: { C: { average: 1, count: 1, latest: 1 } } } };
   await WMX.prices.load();
   w.history.pushState({}, '', '/marketplace');
   WMX.prices.fetchOne('x0');
@@ -2091,7 +2091,7 @@ test('prix : la page affichée passe avant tout (puis les tâches de fond, puis 
 });
 
 test('« Toutes les cartes » : moyenne et icône de fraîcheur sur chaque carte visible, « vous l’avez » d’après la liste du jeu', async () => {
-  const env = createEnv({ fetchImpl: async (u) => (String(u).includes('/sales') ? json({ summary: { L: { average: 4200, count: 4, latest: 4000 } } }) : json({})) });
+  const env = createEnv({ fetchImpl: async (u) => (/\/(sales|price-history)/.test(String(u)) ? json({ summary: { L: { average: 4200, count: 4, latest: 4000 } } }) : json({})) });
   const { w, WMX } = env;
   w.history.pushState({}, '', '/global-collection');
   const tile = (title, r) => `<div class="relative"><div class="relative rounded-2xl overflow-hidden"><div class="absolute top-2 left-2">${r}</div><h3>${title}</h3></div></div>`;
@@ -2236,5 +2236,33 @@ test('verrou entre onglets WMX.lock : sans Web Locks, exécuté comme si le verr
   assert.equal(await WMX.lock('b', async () => 7), 7);
   assert.equal(await WMX.lock('c', { steal: true }, async () => 8), 8);
   assert.deepEqual(calls, [['b', '{}'], ['c', '{"steal":true}']], 'Chrome : navigator.locks.request appelé tel quel (pas le détour de Firefox)');
+  env.close();
+});
+
+test('moyenne du marché : historique des prix (moyenne de la semaine) ; refusé (compte gratuit…) : moyenne des dernières ventes, sans pause ; freinage du jeu : pause', async () => {
+  const res = (body, status = 200) => { const r = json(body, status); r.clone = () => r; return r; };
+  const now = new Date().toISOString();
+  let mode = 'history';
+  const asked = [];
+  const env = createEnv({ fetchImpl: async (u) => {
+    const s = String(u);
+    if (/price-history/.test(s)) { asked.push('history'); return mode === 'history' ? res({ by_rarity: { legendaire: { weekly: [{ start: now.slice(0, 10), avg: 4321, count: 3 }] } } }) : res({ error: 'Réservé aux membres Pro' }, 403); }
+    if (/\/sales/.test(s)) { asked.push('sales'); return res({ recent: [{ final_price: 5000, settled_at: now, rarity: 'legendaire' }, { final_price: 4000, settled_at: now, rarity: 'legendaire' }, { final_price: 600, settled_at: now, rarity: 'UR' }] }); }
+    return res({});
+  } });
+  const { WMX } = env;
+  await WMX.prices.load();
+  WMX.prices.keepFresh('k1', 0, { front: true });
+  for (let i = 0; i < 60 && !WMX.prices.get('k1', 'L'); i++) await sleep(100);
+  assert.equal(WMX.prices.get('k1', 'L')?.avg, 4321, 'moyenne de la semaine (historique des prix)');
+  mode = 'refused';
+  WMX.prices.keepFresh('k2', 0, { front: true });
+  for (let i = 0; i < 60 && !WMX.prices.get('k2', 'L'); i++) await sleep(100);
+  assert.equal(WMX.prices.get('k2', 'L')?.avg, 4500, 'refusé : moyenne des dernières ventes de la semaine');
+  assert.equal(WMX.prices.get('k2', 'UR')?.avg, 600);
+  assert.ok(WMX.prices.state().wait === 0, 'un refus n’est pas un freinage : aucune pause');
+  WMX.prices.keepFresh('k3', 0, { front: true });
+  for (let i = 0; i < 60 && !WMX.prices.get('k3', 'L'); i++) await sleep(100);
+  assert.equal(asked.filter((x) => x === 'history').length, 2, 'ensuite, plus d’essai sur l’historique pendant la session');
   env.close();
 });

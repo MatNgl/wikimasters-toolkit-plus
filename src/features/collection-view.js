@@ -164,11 +164,11 @@
     const items = WMX.inventory.items();
     const rowIds = new Set(items.map((it) => it.id));
     const asRows = ids.filter((id) => rowIds.has(id));
-    if (asRows.length) { WMX.inventory.removeIds(asRows); return; }
+    if (asRows.length) { WMX.inventory.removeIds(asRows, { discarded: true }); return; }
     // Identifiants de carte (et non de ligne) : sans ambiguïté seulement si la carte n'est qu'une fois dans la collection ; sinon relecture.
     const rows = items.filter((it) => ids.includes(it.card_id));
     const dup = rows.length !== new Set(rows.map((it) => it.card_id)).size;
-    if (dup) { S.fullAt = 0; WMX.inventory.reload(); } else WMX.inventory.removeIds(rows.map((it) => it.id));
+    if (dup) { S.fullAt = 0; WMX.inventory.reload(); } else WMX.inventory.removeIds(rows.map((it) => it.id), { discarded: true });
   }
   /**
    * Cartes en vente (réponse de /api/marketplace?mine=1, lue par le jeu ou l'extension) : le jeu les retire de la collection le temps de l'enchère.
@@ -350,7 +350,7 @@
     obs.observe(document.body, { childList: true, subtree: true });
   }
 
-  WMX.collView = { serve, parse, sync, listed, state: () => ({ ...S, memo: undefined }), setOn, setSize: (n) => { if (SIZES.includes(n)) { S.size = n; savePrefs(); paintTools(); } }, setPrice: (v) => { S.price = !!v; savePrefs(); } };
+  WMX.collView = { serve, parse, sync, listed, state: () => ({ ...S, memo: undefined }), setOn, setSize: (n, reload = false) => { if (!SIZES.includes(n)) return; S.size = n; savePrefs(); paintTools(); if (reload) nudge(); }, /* reload : la page du jeu relit sa liste */ setPrice: (v) => { S.price = !!v; savePrefs(); } };
 
   WMX.register({
     name: 'collection-view',

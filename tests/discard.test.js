@@ -14,7 +14,7 @@ const RAR = ['L', 'UR', 'SR', 'R', 'PC', 'C'];
  * jamais défaussées, message « N cartes défaussées (+N wikibidous). » qui reste affiché. `failAfterDiscard` : la liste échoue à se recharger une fois
  * (« Le chargement de la collection a échoué ») ; rechoisir une vue la relit.
  */
-function fakeGame(w, cards, { perPage = 50, failAfterDiscard = false, lateReload = 0, blockTimes = 0 } = {}) {
+function fakeGame(w, cards, { perPage = 50, failAfterDiscard = false, lateReload = 0, blockTimes = 0, greyMs = 0 } = {}) {
   const d = w.document;
   const st = { blocks: 0, selecting: false, sel: new Set(), page: 0, list: cards.map((c, i) => ({ ...c, uid: i })), discarded: [], dialogs: 0, view: 'all', rar: new Set(), menuOpen: false, banner: '', fail: false, lie: false };
   const main = d.createElement('main');
@@ -67,7 +67,7 @@ function fakeGame(w, cards, { perPage = 50, failAfterDiscard = false, lateReload
       const bar = d.createElement('div'); bar.className = 'fixed bottom-4 card-frame fake-bar'; // comme le jeu : barre fixée en bas, hors de <main>
       const n = d.createElement('div'); n.innerHTML = `<span>${st.sel.size}</span><span>carte${st.sel.size > 1 ? 's' : ''} sélectionnée${st.sel.size > 1 ? 's' : ''}</span>`;
       const real = st.list.filter((c) => st.sel.has(c.uid) && !c.starred && !c.locked).length;
-      bar.append(n, button('Tout sélectionner (page)', () => { for (const c of pageCards()) st.sel.add(c.uid); render(); }), button(`Défausser (+${real})`, openDialog, real ? {} : { disabled: '' }));
+      bar.append(n, button('Tout sélectionner (page)', () => { for (const c of pageCards()) st.sel.add(c.uid); render(); }), button(`Défausser (+${real})`, openDialog, real && !(Date.now() < (st.greyUntil || 0)) ? {} : { disabled: '' }));
       d.body.append(bar);
     }
   }
@@ -98,6 +98,7 @@ function fakeGame(w, cards, { perPage = 50, failAfterDiscard = false, lateReload
       else st.list = st.list.filter((c) => (c.count ?? 1) > 0);
       st.banner = `${chosen.length} carte${chosen.length > 1 ? 's' : ''} défaussée${chosen.length > 1 ? 's' : ''} (+${chosen.length} wikibidou${chosen.length > 1 ? 's' : ''}).`;
       st.sel.clear(); back.remove();
+      if (greyMs) { st.greyUntil = Date.now() + greyMs; setTimeout(() => render(), greyMs + 20); } // comme le jeu : « Défausser » grisé tant que sa liste se relit
       if (failAfterDiscard && !st.failedOnce) { st.failedOnce = true; st.fail = true; } // la liste ne se recharge pas
       render();
     }));
@@ -246,6 +247,64 @@ test('défausse : « Sans étiquette » sur plusieurs pages, favorites laissées
   assert.equal(game.discarded.length, 35);
   assert.ok(!game.discarded.some((t) => /favorite|animaux|Test/.test(t)), 'ni favorite, ni étiquetée');
   env.close();
+});
+
+test('défausse en mode visible avec la vue étendue : passage à 500 cartes par page, compteur et message lus vite, cartes sans image seulement', async () => {
+  const cards = Array.from({ length: 80 }, (_, i) => ({ title: `Commune ${String(i).padStart(3, '0')}`, rarity: 'C', image: i % 2 ? '' : 'x.jpg' }));
+  const { env, WMX, game } = setup(cards, { perPage: 500 });
+  const sizes = [];
+  WMX.collView = { state: () => ({ on: true, size: 100 }), setSize: (n, reload) => sizes.push([n, reload]) };
+  await WMX.features.find((f) => f.name === 'discard').init();
+  // Compteur trouvé vite.
+  const t0 = Date.now();
+  for (let i = 0; i < 50; i++) WMX.discard.native.count();
+  assert.ok(Date.now() - t0 < 1500, `compteur : ${Date.now() - t0} ms pour 50 lectures`);
+  const p = { rarities: ['C'], onlyNoImage: true, keepUnpriced: true };
+  const pl = WMX.discard.plan(p);
+  assert.equal(pl.copies, 40);
+  await WMX.discard.start(pl, { dry: false, visible: true, prefs: p });
+  assert.deepEqual(sizes, [[500, true]], 'vue étendue : 500 cartes par page demandées au lancement');
+  assert.equal(game.discarded.length, 40, 'toutes les cartes sans image');
+  assert.ok(game.discarded.every((t) => Number(t.slice(-3)) % 2 === 1), 'jamais une carte avec image');
+  env.close();
+});
+
+test('défausse : « Défausser » du jeu grisé quelques secondes après chaque défausse (liste relue, serveur lent) : on attend qu’il s’active, la défausse va au bout', async () => {
+  const cards = Array.from({ length: 70 }, (_, i) => ({ title: `Commune ${i}`, rarity: 'C', image: i % 2 ? '' : 'x.jpg' }));
+  const { env, WMX, game } = setup(cards, { greyMs: 4500 });
+  await WMX.features.find((f) => f.name === 'discard').init();
+  const p = { rarities: ['C'], onlyNoImage: true, keepUnpriced: true };
+  const pl = WMX.discard.plan(p);
+  await WMX.discard.start(pl, { dry: false, visible: true, prefs: p });
+  assert.equal(game.discarded.length, 35, 'toutes les cartes sans image, malgré le bouton grisé');
+  assert.ok(!/introuvable/.test(env.w.document.querySelector('.wmx-dc-run')?.textContent || ''));
+  env.close();
+});
+
+test('défausse : deux exemplaires d’une même carte sur la page (une ligne par exemplaire, comme le jeu) — « Tout sélectionner » puis décocher chaque exemplaire gardé, ou cocher chaque exemplaire', async () => {
+  for (const many of [true, false]) { // plus de la moitié de la page à défausser (« Tout sélectionner ») ou non (carte par carte)
+    const n = many ? 8 : 2;
+    const cards = [
+      ...Array.from({ length: n }, (_, i) => ({ title: `Sans image ${i}`, rarity: 'C', image: '' })),
+      { title: 'Double', rarity: 'C', image: '' }, { title: 'Double', rarity: 'C', image: '' },
+      { title: 'Paire', rarity: 'C' }, { title: 'Paire', rarity: 'C' },
+      ...Array.from({ length: 4 }, (_, i) => ({ title: `Avec image ${i}`, rarity: 'C' })),
+    ];
+    const { env, WMX, game } = setup(cards);
+    // Comme le jeu : deux exemplaires = deux lignes de la même carte.
+    const items = WMX.inventory.items();
+    for (const t of ['Double', 'Paire']) { const rows = items.filter((it) => it.title === t); rows[1].card_id = rows[0].card_id; }
+    await WMX.features.find((f) => f.name === 'discard').init();
+    const p = { rarities: ['C'], onlyNoImage: true, keepUnpriced: true };
+    const pl = WMX.discard.plan(p);
+    assert.equal(pl.copies, n + 2);
+    await WMX.discard.start(pl, { dry: false, visible: true, prefs: p });
+    assert.equal(game.discarded.filter((t) => t === 'Double').length, 2, `les deux exemplaires sans image (${many ? 'tout sélectionner' : 'carte par carte'})`);
+    assert.ok(!game.discarded.some((t) => /Paire|Avec image/.test(t)), 'aucun exemplaire avec image');
+    assert.equal(game.discarded.length, n + 2);
+    assert.doesNotMatch(env.w.document.querySelector('.wmx-dc-run')?.textContent || '', /au lieu de|introuvable|impossible/);
+    env.close();
+  }
 });
 
 test('défausse : une carte cochée = un exemplaire ; « Garder 1 exemplaire » recoche la carte jusqu’au nombre prévu', async () => {

@@ -83,7 +83,7 @@ test('barre de la Collection : valeur estimée en grand, jauge (pourcentage, ét
   env.mem.invCacheV2 = { t: Date.now(), complete: true, items: [
     { id: 'a', card_id: 'c1', title: 'A', rarity: 'L', count: 1, tags: [] }, { id: 'b', card_id: 'c2', title: 'B', rarity: 'C', count: 1, tags: [] },
   ] };
-  env.mem.priceCache = { c1: { t: Date.now(), s: { L: { average: 1234, count: 2, latest: 1200 } } } };
+  env.mem.priceCache = { c1: { w: 1, t: Date.now(), s: { L: { average: 1234, count: 2, latest: 1200 } } } };
   await WMX.inventory.ensure();
   const bar = WMX.inventory.makePriceBar('wmx-nt-bar');
   w.document.body.append(bar);

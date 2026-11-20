@@ -173,7 +173,7 @@ test('plus-values : sans moyenne du jour (historique illisible), la moyenne actu
   } });
   const { w, WMX } = env;
   // Cache des moyennes : Tours (L) 1 300 W, relevée il y a 1 h.
-  env.mem.priceCache = { 'c-Tours': { t: Date.now() - 3600000, s: { L: { average: 1300, count: 9, latest: 1250 } } }, 'c-Louis IX': { t: Date.now() - 3600000, s: { L: { average: 3000, count: 4, latest: 3100 } } } };
+  env.mem.priceCache = { 'c-Tours': { w: 1, t: Date.now() - 3600000, s: { L: { average: 1300, count: 9, latest: 1250 } } }, 'c-Louis IX': { w: 1, t: Date.now() - 3600000, s: { L: { average: 3000, count: 4, latest: 3100 } } } };
   await WMX.prices.load();
   const payload = { won: [won('a-old', 'Tours', 'L', 1500, 24 * 20), won('a-new', 'Louis IX', 'L', 2700, 1)], history: [sold('v-old', 'Tours', 'L', 1742, 24 * 19)], selling: [], bidding: [] };
   await WMX.ledger.ingest(payload);

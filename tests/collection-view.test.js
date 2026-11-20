@@ -21,7 +21,7 @@ function setup(n = 250, prefs = { on: true, size: 100, price: false }, fetchImpl
   env.mem.invCacheV2 = { t: Date.now(), complete: true, v: 3, items: Array.from({ length: n }, (_, i) => item(i)) };
   env.mem.collView = prefs;
   // Moyennes : la carte n°i vaut i W (les plus récentes sont donc les plus chères), sauf la n°3, sans moyenne.
-  env.mem.priceCache = Object.fromEntries(Array.from({ length: n }, (_, i) => [`card-${i}`, { t: Date.now(), s: i === 3 ? {} : { [RAR[i % 6]]: { average: i, count: 3, latest: i } } }]));
+  env.mem.priceCache = Object.fromEntries(Array.from({ length: n }, (_, i) => [`card-${i}`, { w: 1, t: Date.now(), s: i === 3 ? {} : { [RAR[i % 6]]: { average: i, count: 3, latest: i } } }]));
   return env;
 }
 const init = async (env) => { await env.WMX.inventory.ensure(); await env.WMX.prices.load(); await env.WMX.features.find((f) => f.name === 'collection-view').init(); };
@@ -340,5 +340,31 @@ test('icône de l’extension : bouton « Vue étendue », entrée « WikiMaster
   assert.ok(w.document.querySelector('.wmx-modal .wmx-set-title .wmx-logo svg'), 'icône dans l’en-tête des Paramètres');
   const ids = [...w.document.querySelectorAll('.wmx-logo linearGradient')].map((g) => g.id);
   assert.equal(new Set(ids).size, ids.length, 'identifiants de dégradé uniques');
+  env.close();
+});
+
+test('défausse et copie de la collection : un exemplaire de moins par carte défaussée (le doublon reste), sans double retrait après la réponse du jeu, une seule mise à jour pour 100 annonces', async () => {
+  const env = setup(150);
+  const { w, WMX } = env;
+  await init(env);
+  // Doublon : deux lignes (deux exemplaires) de la carte 7.
+  WMX.inventory.upsertRows([{ ...WMX.inventory.toRow(WMX.inventory.items().find((it) => it.id === 'row-7')), id: 'row-7b' }]);
+  const has = (id) => WMX.inventory.items().some((it) => it.id === id);
+  // Défausse annoncée sans réponse du jeu (page invisible) : UN exemplaire de la carte 7.
+  w.dispatchEvent(new w.CustomEvent('wmx:discard', { detail: { card_id: 'card-7' } }));
+  await sleep(20);
+  assert.equal([has('row-7'), has('row-7b')].filter(Boolean).length, 1, 'le doublon reste');
+  // Réponse du jeu (vue étendue) : ligne exacte retirée, puis l'annonce « wmx:discard » de la même carte ne retire rien de plus.
+  WMX.inventory.upsertRows([{ ...WMX.inventory.toRow(WMX.inventory.items().find((it) => it.id === 'row-8')), id: 'row-8b' }]);
+  WMX.inventory.removeIds(['row-8'], { discarded: true });
+  w.dispatchEvent(new w.CustomEvent('wmx:discard', { detail: { card_id: 'card-8' } }));
+  await sleep(20);
+  assert.ok(!has('row-8') && has('row-8b'), 'pas de double retrait');
+  // 100 annonces d'affilée : une seule mise à jour de la copie.
+  const v0 = WMX.inventory.version();
+  for (let i = 20; i < 120; i++) w.dispatchEvent(new w.CustomEvent('wmx:discard', { detail: { card_id: `card-${i}` } }));
+  await sleep(30);
+  assert.equal(WMX.inventory.version() - v0, 1, 'une seule mise à jour');
+  assert.equal(WMX.inventory.items().length, 150 + 2 - 1 - 1 - 100);
   env.close();
 });

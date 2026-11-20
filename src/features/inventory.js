@@ -247,11 +247,29 @@
     }
     emit();
   });
+  // Un exemplaire parti (défausse, mise en vente) : UN exemplaire de moins pour cette carte (une ligne de la copie = un exemplaire ; avant, toutes
+  // les lignes de la carte perdaient un exemplaire : un doublon disparaissait aussi). Si la réponse du jeu a déjà retiré la ligne exacte (vue
+  // étendue : removeIds(…, { discarded: true })), rien de plus. Les départs sont regroupés : une défausse de 100 cartes envoie 100 événements, la
+  // copie (≈ 20 000 cartes) est mise à jour et enregistrée UNE fois (l'enregistrer à chaque événement figeait la page plusieurs minutes).
+  const relayGone = new Map(); // card_id -> [heures] des exemplaires déjà retirés par la réponse du jeu, pas encore annoncés par « wmx:discard » (valables 2 min)
+  let goneFlush = null;
+  /** Retire UN exemplaire de la carte, tout de suite (la suite du code relit l'inventaire aussitôt) ; écouteurs prévenus et copie enregistrée une fois. */
+  function dropOne(cid) {
+    const pre = (relayGone.get(cid) || []).filter((t) => Date.now() - t < 120000);
+    if (pre.length) { pre.shift(); if (pre.length) relayGone.set(cid, pre); else relayGone.delete(cid); return; }
+    relayGone.delete(cid);
+    const i = S.items.findIndex((x) => x.card_id === cid && x.count > 0);
+    if (i < 0) return;
+    const it = S.items[i];
+    if (it.count > 1) it.count -= 1; else S.items = [...S.items.slice(0, i), ...S.items.slice(i + 1)];
+    index = null;
+    if (!goneFlush) goneFlush = setTimeout(() => { goneFlush = null; S.ver += 1; emit(); if (!S.loading) saveSoon(); }, 0);
+  }
   window.addEventListener('wmx:discard', (e) => {
-    S.gone.set(e.detail.card_id, [...(S.gone.get(e.detail.card_id) || []), Date.now()]);
-    for (const it of S.items) if (it.card_id === e.detail.card_id) it.count -= 1;
-    setItems(S.items.filter((i) => i.count > 0));
-    if (!S.loading) saveCache(true); // le cache ne réaffiche plus les cartes défaussées (jamais une liste partielle)
+    const cid = e.detail?.card_id;
+    if (!cid) return;
+    S.gone.set(cid, [...(S.gone.get(cid) || []), Date.now()]);
+    dropOne(cid);
   });
 
   function totals() {
@@ -448,9 +466,11 @@
       return added;
     },
     /** Cartes défaussées (identifiants de ligne) : retirées de la copie. */
-    removeIds(ids) {
+    removeIds(ids, { discarded = false } = {}) {
       const gone = new Set(ids || []);
       if (!gone.size) return 0;
+      // Défausse vue dans la réponse du jeu (lignes exactes) : l'annonce « wmx:discard » qui suit pour ces cartes ne retire rien de plus.
+      if (discarded) for (const it of S.items) if (gone.has(it.id)) relayGone.set(it.card_id, [...(relayGone.get(it.card_id) || []), Date.now()]);
       const before = S.items.length;
       setItems(S.items.filter((it) => !gone.has(it.id)));
       saveSoon();

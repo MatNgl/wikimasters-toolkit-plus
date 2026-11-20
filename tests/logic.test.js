@@ -307,6 +307,11 @@ test('défausse par critères : raretés, étiquette, cartes étiquetées, doubl
   const one = L.discardPlan(items, { ...base, unpriced: 'discard', keepOne: true });
   assert.deepEqual(one.cards.map((c) => [c.card_id, c.copies]), [['c2', 2]], 'garder 1 exemplaire : seuls les doublons, un exemplaire reste');
   assert.equal(one.kept.single, 3, 'c1, c5 et c6 n’ont qu’un exemplaire');
+  // Comme le jeu (une ligne par exemplaire, count = 1) : trois lignes de la même carte → deux défaussées, une gardée.
+  const rows3 = [card('d1', 'C'), card('d1', 'C'), card('d1', 'C'), card('s1', 'C')];
+  const one3 = L.discardPlan(rows3, { ...base, unpriced: 'discard', keepOne: true });
+  assert.equal(one3.copies, 2, 'garder 1 exemplaire : compté sur toutes les lignes de la carte');
+  assert.equal(one3.kept.single, 2, 'la 3e ligne de d1 et s1 (exemplaire unique) gardées');
   const all = L.discardPlan(items, { ...base, unpriced: 'discard', busy: new Set(['c6']) });
   assert.equal(all.copies, 5, 'c1 + 3×c2 + c5 (c6 en vente)');
   assert.deepEqual(all.byRar, { C: 5 });
@@ -444,4 +449,31 @@ test('plus-values : moyenne du marché au jour d’une opération (ventes de la 
   assert.deepEqual(L.avgBefore([s('a', 1000, 1 * D), s('b', 1200, 2 * D), s('c', 1400, 3 * D), s('vieille', 9000, 20 * D)], e), { v: 1200, n: 3, w: 7 }, '3 ventes dans la semaine : leur moyenne');
   assert.deepEqual(L.avgBefore([s('a', 1000, 1 * D), s('b', 2000, 10 * D), s('c', 3000, 12 * D)], e), { v: 2000, n: 3, w: 30 }, 'moins de 3 dans la semaine : les 5 dernières sur 30 jours');
   assert.equal(L.avgBefore([s('apres', 1000, -H), s('moi', 5000, 0), s('ur', 300, D, 'UR'), s('shiny', 8000, D, 'L', true), s('trop-vieille', 100, 40 * D)], e), null, 'jamais : après, elle-même, autre rareté, autre version, plus de 30 jours');
+});
+
+test('moyenne de la semaine (historique des prix du jeu) : semaine en cours, sinon la dernière semaine avec des ventes (prix reporté) ; raretés sans vente absentes', () => {
+  const now = Date.parse('2026-11-20T18:00:00Z'); // vendredi : la semaine commence le lundi 16
+  const h = { by_rarity: {
+    L: { weekly: [{ start: '2026-11-09', avg: 4200, min: 4000, max: 4500, count: 6 }, { start: '2026-11-16', avg: 5012.4, min: 4750, max: 5200, count: 4 }] },
+    UR: { weekly: [{ start: '2026-11-02', avg: 650, count: 3 }, { start: '2026-11-09', avg: 666, count: 1 }] },
+    SR: { weekly: [] },
+  } };
+  const s = L.weeklySummary(h, now);
+  assert.deepEqual(s.L, { average: 5012, count: 4, latest: 5012, carried: false, week: '2026-11-16' }, 'semaine en cours');
+  assert.equal(s.UR.average, 666, 'pas de vente cette semaine : moyenne de la dernière semaine avec des ventes');
+  assert.equal(s.UR.carried, true);
+  assert.equal(s.UR.count, 0);
+  assert.ok(!('SR' in s), 'aucune vente : absente (« Sans vente »)');
+  assert.deepEqual(L.weeklySummary({ by_rarity: { legendaire: [{ start: '2026-11-16T00:00:00Z', avg: 10, count: 1 }] } }, now, (r) => (r === 'legendaire' ? 'L' : r)), { L: { average: 10, count: 1, latest: 10, carried: false, week: '2026-11-16' } }, 'rareté normalisée, liste directe');
+});
+
+test('moyenne de repli (dernières ventes) : ventes de la semaine en cours, sinon les dernières connues (reportée)', () => {
+  const now = Date.parse('2026-11-20T18:00:00Z');
+  const s = L.recentSummary({ recent: [
+    { final_price: 5200, settled_at: '2026-11-20T10:00:00Z', rarity: 'L' }, { final_price: 4800, settled_at: '2026-11-18T10:00:00Z', rarity: 'L' },
+    { final_price: 3000, settled_at: '2026-11-10T10:00:00Z', rarity: 'L' }, { final_price: 700, settled_at: '2026-11-12T10:00:00Z', rarity: 'UR' },
+    { final_price: 500, settled_at: '2026-11-11T10:00:00Z', rarity: 'UR' },
+  ] }, now);
+  assert.deepEqual(s.L, { average: 5000, count: 2, latest: 5200, carried: false, recent: true }, 'semaine en cours seulement');
+  assert.deepEqual(s.UR, { average: 600, count: 0, latest: 700, carried: true, recent: true }, 'aucune vente cette semaine : les dernières');
 });

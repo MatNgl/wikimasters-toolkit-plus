@@ -274,6 +274,62 @@
      * }.
      * Jamais une favorite, jamais une carte en vente ou en file. Rend { cards: [{ ...carte, copies, avg }], copies, value, byRar: { R: exemplaires }, kept: { raison: n } }.
      */
+    /**
+     * Moyenne de la semaine, comme le jeu l'affiche depuis sa mise à jour du marché (nov. 2026, GET /api/marketplace/cards/{id}/price-history :
+     * { by_rarity: { RARETÉ: { weekly: [{ start, avg, min, max, count }, …] } } }). La valeur affichée par le jeu est celle de la semaine en cours
+     * (depuis lundi) ; sans vente cette semaine, celle de la dernière semaine qui en a eu (« prix reporté »). Rend { RARETÉ: { average, count,
+     * latest, carried, week } } (format de l'ancien « résumé », que le reste de l'extension lit), sans les raretés sans aucune vente.
+     * `norm` : normalise le nom de rareté du jeu (« legendaire » → « L »).
+     */
+    weeklySummary(history, now = Date.now(), norm = (r) => r) {
+      const out = {};
+      const by = history?.by_rarity || history?.byRarity || {};
+      // Lundi de la semaine en cours, heure de Paris (le jeu compte ses semaines du lundi).
+      const day = new Date(new Date(now).toLocaleString('en-US', { timeZone: 'Europe/Paris' }));
+      day.setHours(0, 0, 0, 0);
+      day.setDate(day.getDate() - ((day.getDay() + 6) % 7));
+      const monday = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+      for (const [rk, v] of Object.entries(by)) {
+        const rows = (Array.isArray(v) ? v : v?.weekly || v?.weeks || [])
+          .map((w) => ({ start: String(w.start ?? w.week ?? w.week_start ?? w.period_start ?? ''), avg: Number(w.avg ?? w.average ?? w.mean), count: Number(w.count ?? w.sales ?? w.n ?? 0) || 0 }))
+          .filter((w) => w.start && Number.isFinite(w.avg) && w.avg > 0)
+          .sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
+        const last = rows[rows.length - 1];
+        if (!last) continue;
+        const carried = last.start.slice(0, 10) < monday;
+        const r = norm(rk) || rk;
+        out[r] = { average: Math.round(last.avg), count: carried ? 0 : last.count, latest: Math.round(last.avg), carried, week: last.start.slice(0, 10) };
+      }
+      return out;
+    },
+    /**
+     * Repli quand l'historique des prix n'est pas accessible (compte gratuit, refus du jeu) : dernières ventes de la carte (GET …/sales :
+     * { recent: [{ final_price, settled_at, rarity }] }, la liste du formulaire « Mettre aux enchères », ouverte à tous). Par rareté : moyenne des
+     * ventes de la semaine en cours (depuis lundi), sinon des dernières ventes connues (carried). Même format que weeklySummary.
+     */
+    recentSummary(data, now = Date.now(), norm = (r) => r) {
+      const list = Array.isArray(data) ? data : data?.recent || data?.sales || [];
+      const day = new Date(new Date(now).toLocaleString('en-US', { timeZone: 'Europe/Paris' }));
+      day.setHours(0, 0, 0, 0);
+      day.setDate(day.getDate() - ((day.getDay() + 6) % 7));
+      const monday = now - (new Date(new Date(now).toLocaleString('en-US', { timeZone: 'Europe/Paris' })) - day);
+      const by = new Map();
+      for (const s of list) {
+        const p = Number(s?.final_price ?? s?.price);
+        const r = norm(s?.rarity ?? s?.snapshot_rarity) || s?.rarity;
+        if (!r || !(p > 0)) continue;
+        if (!by.has(r)) by.set(r, []);
+        by.get(r).push({ p, t: Date.parse(s.settled_at || s.sold_at || '') || 0 });
+      }
+      const out = {};
+      for (const [r, sales] of by) {
+        sales.sort((a, b) => b.t - a.t);
+        const week = sales.filter((x) => x.t >= monday);
+        const use = week.length ? week : sales;
+        out[r] = { average: Math.round(use.reduce((a, x) => a + x.p, 0) / use.length), count: week.length, latest: sales[0].p, carried: !week.length, recent: true };
+      }
+      return out;
+    },
     discardPlan(items, o = {}) {
       const key = (s) => String(s || '').trim().toLowerCase();
       const rar = new Set((o.rarities || []).map((r) => String(r).trim().toUpperCase()));
@@ -282,6 +338,11 @@
       const avg = (it) => (o.avg && o.avg(it)) || 0;
       const plan = { cards: [], copies: 0, value: 0, byRar: {}, kept: {}, unpricedCards: [] }; // unpricedCards : gardées faute de prix (à charger)
       const keep = (why) => { plan.kept[why] = (plan.kept[why] || 0) + 1; };
+      // « Garder 1 exemplaire » : compté sur TOUS les exemplaires de la carte. La collection du jeu a une ligne par exemplaire (count = 1) :
+      // compter ligne par ligne ne voyait jamais de doublon (rien n'était défaussé).
+      const owned = new Map();
+      for (const it of items || []) if (it.count > 0) owned.set(it.card_id, (owned.get(it.card_id) || 0) + it.count);
+      const planned = new Map();
       for (const it of items || []) {
         if (!(it.count > 0) || (rar.size ? !rar.has(it.rarity) : !want.size)) continue; // aucune rareté cochée : toutes celles des étiquettes choisies
         const names = (it.tags || []).map((t) => key(t.name));
@@ -296,9 +357,11 @@
         else if (o.onlyNoImage && it.image) why = 'image';
         else if (o.maxAvg > 0 && a >= o.maxAvg) why = 'value';
         else if (o.unpriced !== 'discard' && o.priced && !o.priced(it)) why = 'unpriced';
-        else if (o.keepOne && it.count < 2) why = 'single';
+        const spare = o.keepOne ? Math.min(it.count, (owned.get(it.card_id) || it.count) - (planned.get(it.card_id) || 0) - 1) : it.count; // exemplaires en trop
+        if (!why && o.keepOne && spare < 1) why = 'single';
         if (why) { keep(why); if (why === 'unpriced') plan.unpricedCards.push(it); continue; }
-        const copies = o.keepOne ? it.count - 1 : it.count;
+        const copies = spare;
+        planned.set(it.card_id, (planned.get(it.card_id) || 0) + copies);
         plan.cards.push({ ...it, copies, avg: a });
         plan.copies += copies;
         plan.value += a * copies;

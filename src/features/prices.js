@@ -1,6 +1,6 @@
-// Prix par carte : moyenne du marché lue via l'appel « résumé » du jeu
-// (GET /api/marketplace/cards/{id}/sales?scope=summary, le même que le formulaire « Mettre aux enchères »,
-// sans compte Pro). Réponse : { summary: { RARETÉ: { average, count, latest } } } — un prix par rareté.
+// Prix par carte : moyenne du marché, celle de la semaine comme le jeu l'affiche (GET /api/marketplace/cards/{id}/price-history, l'appel de
+// la fiche de la carte), convertie au format de l'ancien « résumé » : { RARETÉ: { average, count, latest } } — un prix par rareté
+// (logic.weeklySummary). Avant la mise à jour du marché (nov. 2026) : GET …/sales?scope=summary, qui ne donne plus de moyenne.
 //
 // Toutes les requêtes passent par UN ordonnanceur : une seule à la fois, espacées, avec une pause qui s'allonge à chaque
 // refus du jeu (429 ou 403 par rafales) puis repart de zéro. Ordre de service :
@@ -44,30 +44,64 @@
   }
 
   async function load() {
-    if (!cache) cache = await WMX.store.get('priceCache', {});
+    if (!cache) {
+      cache = await WMX.store.get('priceCache', {});
+      // « Sans vente » lu avec l'ancien résumé (depuis la mise à jour du marché, il ne donnait plus de moyenne) : oublié, la carte est relue.
+      // Moyenne lue avec l'ancien résumé (toutes ventes confondues, ou rareté manquante) : gardée à l'écran mais considérée comme ancienne, relue
+      // dès que la carte est affichée (moyenne de la semaine).
+      for (const [id, e] of Object.entries(cache)) {
+        if (e?.w) continue;
+        if (!Object.keys(e?.s || {}).length) delete cache[id];
+        else e.t = Math.min(e.t || 0, Date.now() - 7 * 24 * 3600000);
+      }
+    }
     return cache;
   }
 
+  // Depuis la mise à jour du marché (nov. 2026), le « résumé » des ventes ne donne plus de moyenne : on lit l'historique des prix (le même appel
+  // que la fiche de la carte, « Moyenne de la semaine ») et on garde la moyenne de la semaine en cours (ou reportée), rareté par rareté.
+  // Compte gratuit comme compte Pro : si l'historique des prix est refusé pour une autre raison qu'un freinage du jeu (réservé à certains comptes,
+  // adresse retirée…), on se rabat, pour toute la session, sur les dernières ventes de la carte (liste du formulaire « Mettre aux enchères »).
+  let historyOff = false;
+  const norm = (r) => WMX.normRarity?.(r) || r;
   async function fetchSummary(cardId) {
-    const u = new URL(`/api/marketplace/cards/${cardId}/sales`, location.origin);
-    u.searchParams.set('scope', 'summary');
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), TIMEOUT); // sans cela, une requête restée suspendue bloquerait un ouvrier indéfiniment
+    const get = (path) => fetch(new URL(`/api/marketplace/cards/${cardId}/${path}`, location.origin), { signal: ctl.signal });
+    /** Freinage du jeu (429, 403 « automatisation », pare-feu) : on attend puis on réessaie. null : pas un freinage. */
+    const limitOf = async (res) => {
+      if (res.status !== 429 && res.status !== 403) return null;
+      let body = '';
+      try { body = (await res.clone().text()).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160); } catch (_) { /* corps illisible */ }
+      let json = null;
+      try { json = JSON.parse(body); } catch (_) { json = null; }
+      // 403 avec un message JSON qui n'est pas un freinage (« réservé aux membres Pro »…) : un refus, pas une pause.
+      if (res.status === 403 && json && !/automat|trop de requ|rate|limit/i.test(`${json.code || ''} ${json.error || ''} ${json.message || ''}`)) return null;
+      // Qui refuse (le jeu ou un pare-feu devant lui) et pourquoi : serveur, message — gardé pour le journal.
+      const who = [res.headers.get('server') && `serveur ${res.headers.get('server')}`, res.headers.get('cf-mitigated') && `cf-mitigated ${res.headers.get('cf-mitigated')}`, body && `« ${body.slice(0, 100)} »`].filter(Boolean).join(' · ');
+      return { limited: true, status: res.status, retryAfter: Number(res.headers.get('retry-after')) || 0, who };
+    };
     try {
-      const res = await fetch(u, { signal: ctl.signal });
-      // Le jeu freine par rafales : 429, mais aussi 403 sur ce point d'accès. On attend puis on réessaie.
-      if (res.status === 429 || res.status === 403) {
-        // Qui refuse (le jeu ou un pare-feu devant lui) et pourquoi : serveur, message — gardé pour le journal.
-        let who = '';
-        try {
-          const body = (await res.clone().text()).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100);
-          who = [res.headers.get('server') && `serveur ${res.headers.get('server')}`, res.headers.get('cf-mitigated') && `cf-mitigated ${res.headers.get('cf-mitigated')}`, body && `« ${body} »`].filter(Boolean).join(' · ');
-        } catch (_) { /* corps illisible */ }
-        return { limited: true, status: res.status, retryAfter: Number(res.headers.get('retry-after')) || 0, who };
+      if (!historyOff) {
+        const res = await get('price-history');
+        const lim = await limitOf(res);
+        if (lim) return lim;
+        if (res.ok) {
+          const j = await res.json();
+          if (j && j.summary) return { summary: j.summary }; // ancien format
+          if (j && (j.by_rarity || j.byRarity)) return { summary: L.weeklySummary(j, Date.now(), norm) };
+        }
+        if (res.status >= 500) return { error: res.status }; // jeu surchargé : nouvel essai plus tard
+        historyOff = true; // refusé (ou format inconnu) : dernières ventes, pour toute la session
+        WMX.journal?.add('Prix', `historique des prix indisponible (${res.status}) : moyenne calculée sur les dernières ventes de chaque carte`, 'warn');
       }
+      const res = await get('sales');
+      const lim = await limitOf(res);
+      if (lim) return lim;
       if (!res.ok) return { error: res.status };
       const j = await res.json();
-      return { summary: j.summary || {} };
+      if (j && j.summary) return { summary: j.summary };
+      return { summary: L.recentSummary(j, Date.now(), norm) };
     } finally { clearTimeout(timer); }
   }
 
@@ -117,7 +151,7 @@
       sched.blocks = 0; // un succès : la pause repart de sa valeur de base
       gap = L.nextGap(gap, false, BASE_GAP);
       if (r.error != null) lastStatus = r.error;
-      if (r.summary) { cache[item.cardId] = { t: Date.now(), s: r.summary }; scheduleSave(); }
+      if (r.summary) { cache[item.cardId] = { t: Date.now(), s: r.summary, w: 1 }; scheduleSave(); } // w : moyenne de la semaine (historique des prix)
       sched.pending.delete(item.cardId);
       item.resolve(r);
       emit();
