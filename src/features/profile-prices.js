@@ -47,11 +47,12 @@
   /** Pastille « Moy. X W » sur une carte (mêmes règles d'affichage que la collection), avec la fraîcheur et « vous l'avez » au survol. */
   function paint(card) {
     const info = infoOf(card);
-    let chip = card.querySelector(':scope > .wmx-nt-price');
+    let chip = card.querySelector('.wmx-nt-price');
     if (!info) { chip?.remove(); return; }
     if (!chip) { chip = el('span', { class: 'wmx-nt-price wmx-pp-price' }); card.append(chip); }
     const extra = [isOwn() ? '' : info.mine ? 'Vous avez aussi cette carte' : 'Vous n’avez pas cette carte', isProfile() && !isOwn() && info.count > 1 ? `${info.count} exemplaires chez ce joueur` : ''].filter(Boolean).join('\n');
     WMX.prices.fillChip(chip, info.card_id, info.rarity, { unloaded: '…', extra }); // même contenu que la collection (pastille ou étiquette)
+    WMX.prices.placeChip(card, chip);
     chip.dataset.state = WMX.prices.has(info.card_id) ? WMX.prices.freshness(info.card_id).state : '';
     chip.classList.toggle('wmx-pp-mine', info.mine);
   }

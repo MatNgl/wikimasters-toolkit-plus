@@ -37,7 +37,7 @@
     card._wmxItem = item;
     const chip = card.querySelector('.wmx-nt-price');
     // Moyenne, icône de fraîcheur (✓ à jour, ! en retard, ↻ actualisation) et tendance de la semaine ; sans réécriture si rien n'a changé.
-    if (chip) WMX.prices.fillChip(chip, item?.card_id, item?.rarity || rarity);
+    if (chip) { WMX.prices.fillChip(chip, item?.card_id, item?.rarity || rarity); WMX.prices.placeChip(card, chip); }
     // Carte À L'ÉCRAN (ou presque) : moyenne jamais chargée ou de plus de 24 h relue, avant les tâches de fond, dans l'ordre de la page. Avec la vue
     // étendue (jusqu'à 500 cartes par page), les cartes plus bas sont relues quand on y arrive : pas 500 demandes au jeu d'un coup.
     if (item && card._wmxSeen && WMX.avgOn('avgCollection')) WMX.prices.keepFresh(item.card_id, Number(card.dataset.wmxIdx) || 0, { front: true });
@@ -121,7 +121,7 @@
       WMX.inventory.onChange(() => { clearTimeout(window.__wmxNtRepaint); window.__wmxNtRepaint = setTimeout(repaintAll, 150); });
       WMX.quick?.onChange(() => { clearTimeout(window.__wmxNtRepaint); window.__wmxNtRepaint = setTimeout(repaintAll, 150); });
       window.addEventListener('wmx:fav', repaintAll);
-      window.addEventListener('wmx:settings', scan);
+      window.addEventListener('wmx:settings', () => { scan(); setTimeout(repaintAll, 300); }); // forme des moyennes changée : pastilles replacées
       schedule();
       // Détection d'une page du jeu qui aurait changé : des cartes sont là mais aucune n'a pu recevoir prix et ⚡.
       setTimeout(() => {

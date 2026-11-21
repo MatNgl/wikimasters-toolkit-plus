@@ -244,8 +244,21 @@
     ].filter(Boolean).join('\n');
   }
 
+  /**
+   * Place la pastille sur la carte : forme « pastille » → sur la carte (en haut) ; forme « étiquette » → dans le bloc du titre, juste au-dessus
+   * du titre (bas de l'illustration) : elle ne cache pas le visage ou le sujet de l'image.
+   */
+  function placeChip(card, chip) {
+    const tag = document.documentElement.classList.contains('wmx-avg-tag');
+    const info = tag ? card.querySelector(':scope > div[class*="top-[45%]"]') : null;
+    const host = info || card;
+    if (chip.parentElement !== host) host.append(chip);
+    chip.classList.toggle('wmx-in-info', !!info);
+  }
+
   WMX.prices = {
     fillChip,
+    placeChip,
     load,
     onProgress(cb) { listeners.add(cb); return () => listeners.delete(cb); },
     /** Moyenne, dernière vente et nombre de ventes pour la rareté donnée de la carte, ou null si inconnus. */
