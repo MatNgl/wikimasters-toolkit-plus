@@ -104,7 +104,8 @@
       const rows = list(f, true);
       const counts = Object.fromEntries(WMX.RARITIES.map((r) => [r, 0]));
       for (const it of WMX.inventory.items()) if (match(f, it, false)) counts[it.rarity] += 1;
-      if (Array.isArray(real?.tagOptions)) S.tagOptions = real.tagOptions;
+      if (Array.isArray(real?.tagOptions)) { S.tagOptions = real.tagOptions; nameTags(); }
+      if (f.tags.size === 1 && Array.isArray(real?.tagOptions)) checkTag([...f.tags][0]);
       // La page du jeu compte ses pages par 50 : le total annoncé donne le bon nombre de pages pour la taille choisie.
       const pages = Math.ceil(rows.length / S.size);
       return JSON.stringify({ ...(real || {}), total: S.size === 50 ? rows.length : pages * 50, rarityCounts: counts });
@@ -184,6 +185,36 @@
     WMX.inventory.reload();
   }
 
+  /**
+   * Vue d'une étiquette : la copie compte-t-elle autant de cartes que le jeu (« #TEST (2) ») ? Sinon (étiquette posée pendant une relecture
+   * complète, qui l'a écrasée ; posée dans un autre onglet…), les cartes de cette étiquette sont relues auprès du jeu, puis la page relancée.
+   */
+  const tagSynced = new Map(); // id d'étiquette -> heure de la dernière relecture
+  function checkTag(id) {
+    const opt = S.tagOptions.find((o) => o.id === id);
+    if (!opt || !Number.isFinite(opt.cardCount) || Date.now() - (tagSynced.get(id) || 0) < 60000) return;
+    const mine = WMX.inventory.items().filter((it) => it.tags.some((t) => t.id === id)).length;
+    if (mine === opt.cardCount) return;
+    tagSynced.set(id, Date.now());
+    WMX.journal?.add('Collection', `vue étendue : étiquette « ${opt.name} » : ${mine} carte(s) dans la copie, ${opt.cardCount} pour le jeu : relue`);
+    WMX.inventory.refreshTagged?.([opt.name], new Map([[String(opt.name).trim().toLowerCase(), id]])).then((ok) => { if (ok && isPage()) { S.memo.key = ''; nudge(); } }).catch(() => {});
+  }
+
+  /** Étiquettes posées sans nom connu (« … », étiquette pas encore dans la liste du jeu) : nommées dès que le jeu donne sa liste d'étiquettes. */
+  const unnamed = new Set();
+  let scanned = false;
+  function nameTags() {
+    if (!scanned) { scanned = true; for (const it of WMX.inventory.items()) for (const t of it.tags) if (t.name === '…') unnamed.add(t.id); } // anciennes étiquettes sans nom
+    if (!unnamed.size) return;
+    const byId = new Map(S.tagOptions.map((o) => [o.id, o]));
+    const ids = [...unnamed].filter((id) => byId.has(id));
+    if (!ids.length) return;
+    ids.forEach((id) => unnamed.delete(id));
+    const want = new Set(ids);
+    const rows = WMX.inventory.items().filter((it) => it.tags.some((t) => want.has(t.id))).map((it) => it.id);
+    WMX.inventory.patch(rows, (it) => { it.tags = it.tags.map((t) => { const o = want.has(t.id) && byId.get(t.id); return o ? { id: o.id, name: o.name, color: o.color, user_id: o.user_id, created_at: o.created_at } : t; }); });
+  }
+
   // Écritures de la page du jeu : appliquées à la copie dès leur succès (la page relit ensuite sa liste, servie à jour).
   const okStatus = (s) => s >= 200 && s < 300;
   const idsOf = (v) => { const m = String(v || '').match(/^(?:eq\.(.+)|in\.\((.*)\))$/); return m ? (m[1] != null ? [m[1]] : m[2].split(',')).map((x) => x.replace(/^"|"$/g, '').trim()).filter(Boolean) : []; };
@@ -230,7 +261,8 @@
       } else if (/\/rest\/v1\/user_card_tags$/.test(path) && method === 'POST') {
         for (const x of [].concat(req || [])) {
           if (!x?.user_card_id || !x.tag_id) continue;
-          const t = S.tagOptions.find((o) => o.id === x.tag_id) || WMX.inventory.items().flatMap((it) => it.tags).find((o) => o.id === x.tag_id) || { id: x.tag_id, name: '…', color: null };
+          const t = S.tagOptions.find((o) => o.id === x.tag_id) || WMX.inventory.items().flatMap((it) => it.tags).find((o) => o.id === x.tag_id && o.name !== '…') || { id: x.tag_id, name: '…', color: null };
+          if (t.name === '…') unnamed.add(x.tag_id); // nommée à la prochaine lecture des nombres du jeu (nameTags)
           WMX.inventory.patch([x.user_card_id], (it) => { if (!it.tags.some((o) => o.id === x.tag_id)) it.tags = [...it.tags, { id: t.id, name: t.name, color: t.color, user_id: t.user_id, created_at: t.created_at }]; });
         }
       } else if (/\/rest\/v1\/user_card_tags$/.test(path) && method === 'DELETE') {

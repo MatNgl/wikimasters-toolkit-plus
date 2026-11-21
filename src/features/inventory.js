@@ -157,6 +157,7 @@
       if (!fetched.has(it.id) && it.tags.some((t) => wanted.includes(tagKey(t.name)))) byId.set(it.id, { ...it, tags: it.tags.filter((t) => !wanted.includes(tagKey(t.name))) });
     }
     setItems(withoutDiscarded([...byId.values()], startedAt)); // cartes fraîchement lues : seuls les départs survenus pendant cette lecture comptent
+    saveSoon(); // copie enregistrée (avant : seulement en mémoire, perdue au rechargement)
     return true;
   }
 

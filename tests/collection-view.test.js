@@ -382,3 +382,38 @@ test('tri « Moyenne (plus chères) » : une moyenne reçue après l’affichage
   assert.equal(top(), 'card-5', 'nouvel ordre avec la moyenne reçue, sans attendre une nouvelle recherche');
   env.close();
 });
+
+test('étiquette posée depuis la vue étendue : copie à jour AVANT que la page du jeu relise sa liste (les cartes quittent « Sans étiquette ») ; nom de l’étiquette retrouvé si inconnu', async () => {
+  const env = setup(30);
+  const { w, WMX } = env;
+  await init(env);
+  stats(env, 'sort=rarity&untagged=1', { totalUnique: null, rarityCounts: {}, tagOptions: [] }); // liste des étiquettes du jeu pas encore connue
+  const NEW = { id: 'tag-new', name: 'TEST', color: '#d10000' };
+  const untagged = () => list(env, 'sort=rarity&untagged=1&page=0&stats=0').collection.map((r) => r.id);
+  assert.ok(untagged().includes('row-1'));
+  // Réponse du jeu à l'ajout : la page relit sa liste aussitôt (même tâche), sans attendre.
+  w.dispatchEvent(new w.CustomEvent('wmx:api', { detail: { url: 'https://abc.supabase.co/rest/v1/user_card_tags', method: 'POST', status: 201, data: null, req: [{ user_card_id: 'row-1', tag_id: NEW.id }, { user_card_id: 'row-2', tag_id: NEW.id }] } }));
+  const now = untagged();
+  assert.ok(!now.includes('row-1') && !now.includes('row-2'), 'les cartes étiquetées quittent tout de suite « Sans étiquette »');
+  const tagOf = () => WMX.inventory.items().find((it) => it.id === 'row-1').tags.find((t) => t.id === NEW.id);
+  assert.equal(tagOf().name, '…', 'nom pas encore connu');
+  stats(env, 'sort=rarity', { totalUnique: null, rarityCounts: {}, tagOptions: [NEW] }); // le jeu donne sa liste d'étiquettes
+  assert.equal(tagOf().name, 'TEST', 'nom retrouvé');
+  env.close();
+});
+
+test('vue d’une étiquette : la copie n’a pas le même nombre de cartes que le jeu → les cartes de l’étiquette sont relues auprès du jeu (une fois par minute)', async () => {
+  const env = setup(40);
+  const { WMX } = env;
+  await init(env);
+  const asked = [];
+  WMX.inventory.refreshTagged = async (names, ids) => { asked.push([names, [...ids]]); return true; };
+  const real = (n) => ({ totalUnique: null, rarityCounts: {}, tagOptions: [{ ...TAG, cardCount: n }] });
+  stats(env, `sort=rarity&tag_id=${TAG.id}`, real(4)); // la copie en a 4 (cartes 0, 10, 20, 30) : rien à relire
+  assert.equal(asked.length, 0);
+  stats(env, `sort=rarity&tag_id=${TAG.id}`, real(6)); // le jeu en compte 6
+  assert.equal(JSON.stringify(asked), JSON.stringify([[['VENTE'], [['vente', TAG.id]]]]), 'étiquette relue');
+  stats(env, `sort=rarity&tag_id=${TAG.id}`, real(6));
+  assert.equal(asked.length, 1, 'pas deux fois de suite');
+  env.close();
+});
