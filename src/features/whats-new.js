@@ -7,7 +7,7 @@
   // Nouveautés, de la plus récente à la plus ancienne. Écrites pour les joueurs : ce qu'ils voient et ce que ça change pour eux.
   // kind : 'new' (nouveau), 'better' (amélioré), 'fix' (corrigé). highlights : les grandes nouveautés, mises en avant en tête de la fenêtre.
   const CHANGES = [
-    { v: '1.1.18', title: 'Moyenne de la semaine, défausse et vue étendue', items: [
+    { v: '1.1.19', title: 'Moyenne de la semaine, défausse et vue étendue', items: [
       ['better', 'La ligne « Valeur des cartes affichées » (profils, Toutes les cartes) est retirée : seules les moyennes sur chaque carte restent.'],
       ['fix', 'Vue étendue : les cartes qui viennent d’arriver (paquets, enchères gagnées, échanges) apparaissent tout de suite, même pendant une relecture de la collection ; la page 1 se met à jour d’elle-même.'],
       ['fix', 'Vue étendue : une carte étiquetée (ou désétiquetée) quitte tout de suite la vue « Sans étiquette » (ou celle de l’étiquette), comme sur la page du jeu, et son étiquette s’affiche avec son nom.'],
@@ -16,12 +16,12 @@
       ['better', 'Défausse : elle passe toujours par la vue étendue à 500 cartes par page, même si vous ne l’aviez pas activée, en mode visible comme en arrière-plan ; votre vue est remise comme avant à la fin.'],
       ['fix', 'Paramètres : « Voir les nouveautés » s’ouvre toujours ; après une mise à jour de l’extension sans actualiser la page, un message demande d’actualiser (F5).'],
       ['better', 'Garde-fou : une super rare, ultra rare ou légendaire sans aucune vente connue n’est jamais mise en vente au prix par défaut (10 W), ni par ⚡ ni par l’assistant ; une rareté sans vente récente garde sa dernière moyenne connue.'],
-      ['new', 'Votre profil : la moyenne s’affiche aussi sur les cartes de votre vitrine, avec la valeur des cartes affichées.'],
+      ['new', 'Votre profil : la moyenne s’affiche aussi sur les cartes de votre vitrine.'],
       ['fix', 'Moyennes du marché : depuis la mise à jour du jeu, l’extension affiche la moyenne de la semaine, comme la fiche de la carte (sans vente cette semaine : celle de la dernière semaine avec des ventes). Plus de « Sans vente » à tort.'],
       ['fix', 'Défausse : plusieurs exemplaires d’une même carte sur la page sont cochés ou décochés un par un (plus d’arrêt « le jeu compte N cartes au lieu de N−1 »).'],
       ['fix', '« Garder 1 exemplaire » garde bien un exemplaire de chaque carte et défausse les autres (avant : aucun doublon reconnu).'],
       ['fix', 'Défausse avec la vue étendue : elle ne s’arrête plus sur « bouton Défausser introuvable » ; elle attend que le jeu ait relu sa liste.'],
-      ['better', 'La défausse ne fige plus la page après chaque lot de cartes, et passe la vue étendue à 500 cartes par page en mode visible.'],
+      ['better', 'La défausse ne fige plus la page après chaque lot de cartes.'],
       ['fix', 'Le doublon d’une carte défaussée ne disparaît plus de la vue étendue.'],
     ] },
     { v: '1.0.96', title: 'Cadran des paquets et tableau de bord', items: [
