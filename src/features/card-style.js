@@ -110,7 +110,7 @@
     const off = (k) => s[k] === false;
     const path = location.pathname;
     const html = document.documentElement.classList;
-    html.toggle('wmx-avg-tag', s.avgStyle === 'tag');
+    for (const st of ['compact', 'tab', 'strip', 'preview']) html.toggle(`wmx-avg-${st}`, s.avgStyle === st);
     html.toggle('wmx-noavg-coll', off('avgCollection'));
     html.toggle('wmx-noavg-market', off('avgMarket'));
     html.toggle('wmx-noavg-bubble', off('avgBubble'));

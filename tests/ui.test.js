@@ -143,10 +143,10 @@ test('moyennes : zones masquées et forme « étiquette » (Paramètres → Moye
   await WMX.prices.load();
   WMX.features.find((f) => f.name === 'card-style').init();
   const html = w.document.documentElement.classList;
-  assert.ok(!html.contains('wmx-avg-tag') && !html.contains('wmx-noavg-coll'), 'par défaut : pastille, partout');
-  await WMX.updateSettings({ avgStyle: 'tag', avgCollection: false, avgMarket: false });
+  assert.ok(!html.contains('wmx-avg-strip') && !html.contains('wmx-noavg-coll'), 'par défaut : pastille, partout');
+  await WMX.updateSettings({ avgStyle: 'strip', avgCollection: false, avgMarket: false });
   await sleep(50);
-  assert.ok(html.contains('wmx-avg-tag'), 'forme étiquette');
+  assert.ok(html.contains('wmx-avg-strip'), 'forme ruban');
   assert.ok(html.contains('wmx-noavg-coll') && html.contains('wmx-noavg-market') && !html.contains('wmx-noavg-trades'), 'seulement les zones décochées');
   assert.equal(WMX.avgOn('avgCollection'), false, 'zone masquée : plus de demande au jeu pour l’afficher');
   const chip = w.document.createElement('span');
@@ -158,5 +158,11 @@ test('moyennes : zones masquées et forme « étiquette » (Paramètres → Moye
   WMX.prices.fillChip(chip, 'c2', 'L');
   assert.equal(chip.querySelector('.wmx-ptr').textContent, '↗ +4,0 %');
   assert.match(chip.textContent, /^Moy\. 800 W/, 'pastille : « Moy. » + valeur (la tendance est cachée par le CSS)');
+  // Aperçu : une nouvelle forme sur chacune des trois premières cartes, la pastille ailleurs ; toujours posée sur la carte elle-même.
+  await WMX.updateSettings({ avgStyle: 'preview' });
+  await sleep(50);
+  const cards = [0, 1, 2, 3].map((i) => { const c = w.document.createElement('div'); c.dataset.wmxIdx = String(i); const ch = w.document.createElement('span'); WMX.prices.placeChip(c, ch); return c; });
+  assert.deepEqual(cards.map((c) => c.dataset.avgp || null), ['compact', 'tab', 'strip', null]);
+  assert.ok(cards.every((c) => c.lastElementChild.parentElement === c), 'pastille sur la carte (place fixe)');
   env.close();
 });

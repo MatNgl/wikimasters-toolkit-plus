@@ -19,6 +19,7 @@
     // Styles d'ouverture et tiroir à cartes retirés (1.0.91) : une seule ouverture, en parallèle par défaut.
     // Le réglage d'ouverture en parallèle s'appelle openParallel (activé par défaut pour tous, y compris ceux qui avaient testé packParallel).
     if (s) { delete s.revealStyle; delete s.packDrawer; delete s.packParallel; }
+    if (s && s.avgStyle === 'tag') s.avgStyle = 'preview'; // forme « étiquette » retirée (1.1.9) : aperçu des nouvelles formes
     return s || {};
   };
 
@@ -113,8 +114,8 @@
       title: 'Moyennes du marché',
       desc: 'La moyenne de la semaine (celle de la vue du marché du jeu) affichée sur les cartes : choisissez où, et sous quelle forme. Masquée quelque part, elle n’y est plus demandée au jeu ; l’enchère rapide ⚡ et l’assistant de vente s’en servent toujours.',
       items: [
-        { key: 'avgStyle', type: 'select', label: 'Forme sur les cartes', desc: 'Pastille : « Moy. 1 577 W » en haut de la carte. Étiquette : la valeur en grand et sa tendance sur la semaine (↗ / ↘), à droite de la carte.',
-          options: [['pill', 'Pastille'], ['tag', 'Étiquette avec tendance']] },
+        { key: 'avgStyle', type: 'select', label: 'Forme sur les cartes', desc: 'Toujours au même endroit de la carte. Pastille : « Moy. 1 577 W ». Compacte : « 1 577 ↗ ». Onglet : en haut au centre, avec la tendance de la semaine. Ruban : bande fine en bas de la carte. Aperçu : les trois nouvelles formes sur les trois premières cartes.',
+          options: [['pill', 'Pastille'], ['compact', 'Pastille compacte'], ['tab', 'Onglet'], ['strip', 'Ruban'], ['preview', 'Aperçu des 3 nouvelles formes']] },
         { key: 'avgCollection', type: 'toggle', label: 'Collection', desc: 'Sur chaque carte de votre collection (vue du jeu et vue étendue).' },
         { key: 'avgMarket', type: 'toggle', label: 'Marché', desc: 'Sous chaque enchère : moyenne et verdict (bonne affaire, prix correct, trop cher), et sur la page d’une enchère.' },
         { key: 'avgBubble', type: 'toggle', label: 'Bulle des enchères', desc: 'Dans la liste de vos mises et de vos ventes.' },

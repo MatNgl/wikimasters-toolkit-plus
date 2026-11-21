@@ -230,13 +230,13 @@
     const ch = p?.change;
     const dir = ch == null ? '' : ch > 0.005 ? 'up' : ch < -0.005 ? 'down' : 'flat';
     const pct = ch == null ? '' : `${ch > 0 ? '+' : ch < 0 ? '−' : ''}${Math.abs(ch * 100).toFixed(Math.abs(ch) < 0.1 ? 1 : 0).replace('.', ',')} %`;
-    const trend = ch == null ? (p?.carried ? 'sem. passée' : '') : `${{ up: '↗', down: '↘', flat: '→' }[dir]} ${pct}`;
+    const arrow = ch == null ? '' : { up: '↗', down: '↘', flat: '→' }[dir];
     const value = p ? `${fmtW(p.avg)} W` : has ? 'Sans vente' : cardId ? unloaded : wait;
-    const sig = `${value}|${trend}|${f?.state || ''}|${f?.line || ''}|${extra}`;
+    const sig = `${value}|${arrow}${pct}|${f?.state || ''}|${f?.line || ''}|${extra}`;
     if (chip.dataset.sig === sig) return;
     chip.dataset.sig = sig;
     chip.dataset.trend = dir;
-    chip.replaceChildren(el('span', { class: 'wmx-pl' }, p || !has ? 'Moy. ' : ''), el('span', { class: 'wmx-pv' }, value), ...(f ? [' ', WMX.prices.icon(cardId)] : []), el('span', { class: `wmx-ptr ${dir}` }, trend));
+    chip.replaceChildren(el('span', { class: 'wmx-pl' }, p || !has ? 'Moy. ' : ''), el('span', { class: 'wmx-pv' }, value), ...(f ? [' ', WMX.prices.icon(cardId)] : []), el('span', { class: `wmx-ptr ${dir}` }, ...(arrow ? [el('b', { class: 'wmx-pa' }, arrow), el('span', { class: 'wmx-pc' }, ` ${pct}`)] : [])));
     chip.title = [
       p ? `Moyenne de la semaine : ${fmtW(p.avg)} W${p.carried ? ' (aucune vente cette semaine : celle de la dernière semaine avec des ventes)' : ''}` : '',
       ch != null ? `Tendance : ${pct} par rapport à la semaine de ventes précédente` : '',
@@ -245,15 +245,14 @@
   }
 
   /**
-   * Place la pastille sur la carte : forme « pastille » → sur la carte (en haut) ; forme « étiquette » → dans le bloc du titre, juste au-dessus
-   * du titre (bas de l'illustration) : elle ne cache pas le visage ou le sujet de l'image.
+   * Place la pastille sur la carte elle-même (jamais dans le bloc du titre : sa place ne dépend ni du titre, ni de la description, ni des
+   * étiquettes). Aperçu (Paramètres → Moyennes → « Aperçu ») : les trois premières cartes de la page montrent chacune une des nouvelles formes.
    */
   function placeChip(card, chip) {
-    const tag = document.documentElement.classList.contains('wmx-avg-tag');
-    const info = tag ? card.querySelector(':scope > div[class*="top-[45%]"]') : null;
-    const host = info || card;
-    if (chip.parentElement !== host) host.append(chip);
-    chip.classList.toggle('wmx-in-info', !!info);
+    if (chip.parentElement !== card) card.append(chip);
+    chip.classList.remove('wmx-in-info');
+    const pv = document.documentElement.classList.contains('wmx-avg-preview') ? ['compact', 'tab', 'strip'][Number(card.dataset.wmxIdx)] : null;
+    if (pv) card.dataset.avgp = pv; else delete card.dataset.avgp;
   }
 
   WMX.prices = {
