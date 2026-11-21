@@ -2298,3 +2298,23 @@ test('garde-fou prix : rareté absente de l’historique → dernière moyenne c
   assert.match(WMX.quick.hint({ card_id: 'neuve', rarity: 'C' }), /10 W .*aucune vente/, 'commune : prix par défaut (inchangé)');
   env.close();
 });
+
+test('mon profil : la ligne « Valeur des cartes affichées » disparaît pendant la modification d’une vitrine (elle cassait la grille d’édition) et revient ensuite', async () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  const { w, WMX } = env;
+  w.history.pushState({}, '', '/profile');
+  const tile = (title, edit) => `<div class="${edit ? 'group/slot ' : ''}relative"><div class="relative rounded-2xl overflow-hidden"><div class="absolute top-2 left-2">L</div><h3>${title}</h3></div>${edit ? '<button aria-label="Retirer de la vitrine">x</button>' : ''}</div>`;
+  const grid = (edit) => `<main><div class="flex flex-wrap justify-center">${tile('Pologne', edit)}</div></main>`;
+  w.document.body.innerHTML = grid(false);
+  for (const f of WMX.features) if (f.name === 'profile-prices') f.init();
+  w.dispatchEvent(new w.CustomEvent('wmx:api', { detail: { url: '/api/showcase', method: 'GET', status: 200, data: { showcase: [{ id: 's1', snapshot_rarity: 'L', card: { id: 'p1', wikipedia_title: 'Pologne', rarity: 'L' } }], galleries: [] } } }));
+  for (let i = 0; i < 40 && !w.document.querySelector('.wmx-pp-bar'); i++) await sleep(100);
+  assert.ok(w.document.querySelector('.wmx-pp-bar'), 'affichage normal : la ligne est là');
+  w.document.body.innerHTML = grid(true); // l'éditeur de vitrine s'ouvre
+  for (let i = 0; i < 40 && w.document.querySelector('.wmx-pp-bar'); i++) await sleep(100);
+  assert.ok(!w.document.querySelector('.wmx-pp-bar'), 'en cours de modification : pas de ligne dans la grille d’édition');
+  w.document.body.innerHTML = grid(false); // « Terminé »
+  for (let i = 0; i < 40 && !w.document.querySelector('.wmx-pp-bar'); i++) await sleep(100);
+  assert.ok(w.document.querySelector('.wmx-pp-bar'), 'revenue après « Terminé »');
+  env.close();
+});

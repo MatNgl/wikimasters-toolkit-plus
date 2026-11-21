@@ -63,6 +63,9 @@
     const grid = list[0]?.closest('[class*="flex-wrap"]') || list[0]?.parentElement?.parentElement;
     let bar = document.querySelector('.wmx-pp-bar');
     if (!list.length || !grid) { bar?.remove(); return; }
+    // Vitrine en cours de modification (cartes avec leur croix « Retirer de la vitrine ») : la ligne de valeur n'y a pas sa place, elle
+    // s'insérait dans la grille d'édition et en cassait la mise en page. Elle revient au clic sur « Terminé ».
+    if (list[0].closest('[class*="group/slot"]') || grid.querySelector('button[aria-label="Retirer de la vitrine"]')) { bar?.remove(); return; }
     let sum = 0; let priced = 0; let n = 0; let mine = 0;
     for (const c of list) {
       const info = infoOf(c);
