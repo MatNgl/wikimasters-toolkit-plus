@@ -1338,22 +1338,22 @@ html.wmx-noavg-reveal .wmx-ct-price { display: none !important; }
 /* 1.1.9 : trois formes de moyenne, à une place FIXE de la carte (ni le titre, ni la description, ni les étiquettes ne la déplacent).
    Choisie dans Paramètres → Moyennes, ou « Aperçu » : une forme sur chacune des trois premières cartes de la Collection (data-avgp). */
 /* A · Pastille compacte : même place que la pastille, plus petite : « 1 960 W » seulement (ni « Moy. », ni icône, ni tendance). */
-html.wmx-avg-compact .wmx-nt-price, [data-avgp="compact"] .wmx-nt-price { padding: 1px 6px; font: 800 10.5px Outfit, system-ui, sans-serif; display: inline-flex; align-items: center; gap: 3px; }
-html.wmx-avg-compact .wmx-nt-price .wmx-pl, [data-avgp="compact"] .wmx-nt-price .wmx-pl,
-html.wmx-avg-compact .wmx-nt-price .wmx-age, [data-avgp="compact"] .wmx-nt-price .wmx-age { display: none; }
-html.wmx-avg-compact .wmx-nt-price .wmx-ptr, [data-avgp="compact"] .wmx-nt-price .wmx-ptr { display: none; }
+html.wmx-avg-compact .wmx-nt-price:not(.wmx-sample), [data-avgp="compact"] .wmx-nt-price { padding: 1px 6px; font: 800 10.5px Outfit, system-ui, sans-serif; display: inline-flex; align-items: center; gap: 3px; }
+html.wmx-avg-compact .wmx-nt-price:not(.wmx-sample) .wmx-pl, [data-avgp="compact"] .wmx-nt-price .wmx-pl,
+html.wmx-avg-compact .wmx-nt-price:not(.wmx-sample) .wmx-age, [data-avgp="compact"] .wmx-nt-price .wmx-age { display: none; }
+html.wmx-avg-compact .wmx-nt-price:not(.wmx-sample) .wmx-ptr, [data-avgp="compact"] .wmx-nt-price .wmx-ptr { display: none; }
 /* B · Onglet : suspendu au bord du haut, au centre ; valeur, et la tendance en petit dessous. */
-html.wmx-avg-tab .wmx-nt-price, [data-avgp="tab"] .wmx-nt-price { top: 0; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 0;
+html.wmx-avg-tab .wmx-nt-price:not(.wmx-sample), [data-avgp="tab"] .wmx-nt-price { top: 0; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 0;
   padding: 2px 8px 3px; border-radius: 0 0 9px 9px; border-top: 0; line-height: 1.15; font: 800 10.5px Outfit, system-ui, sans-serif; }
-html.wmx-avg-tab .wmx-nt-price .wmx-pl, [data-avgp="tab"] .wmx-nt-price .wmx-pl,
-html.wmx-avg-tab .wmx-nt-price .wmx-age, [data-avgp="tab"] .wmx-nt-price .wmx-age { display: none; }
-html.wmx-avg-tab .wmx-nt-price .wmx-ptr, [data-avgp="tab"] .wmx-nt-price .wmx-ptr { display: block; font: 700 8.5px Outfit, system-ui, sans-serif; }
-html.wmx-avg-tab .wmx-nt-price .wmx-ptr:empty, [data-avgp="tab"] .wmx-nt-price .wmx-ptr:empty { display: none; }
+html.wmx-avg-tab .wmx-nt-price:not(.wmx-sample) .wmx-pl, [data-avgp="tab"] .wmx-nt-price .wmx-pl,
+html.wmx-avg-tab .wmx-nt-price:not(.wmx-sample) .wmx-age, [data-avgp="tab"] .wmx-nt-price .wmx-age { display: none; }
+html.wmx-avg-tab .wmx-nt-price:not(.wmx-sample) .wmx-ptr, [data-avgp="tab"] .wmx-nt-price .wmx-ptr { display: block; font: 700 8.5px Outfit, system-ui, sans-serif; }
+html.wmx-avg-tab .wmx-nt-price:not(.wmx-sample) .wmx-ptr:empty, [data-avgp="tab"] .wmx-nt-price .wmx-ptr:empty { display: none; }
 /* C · Ruban : bande fine tout en bas de la carte ; le bloc du titre remonte d'autant (rien n'est caché). */
-html.wmx-avg-strip .wmx-nt-price, [data-avgp="strip"] .wmx-nt-price { top: auto; left: 0; right: 0; bottom: 0; transform: none; display: flex; justify-content: center; align-items: center; gap: 4px;
+html.wmx-avg-strip .wmx-nt-price:not(.wmx-sample), [data-avgp="strip"] .wmx-nt-price { top: auto; left: 0; right: 0; bottom: 0; transform: none; display: flex; justify-content: center; align-items: center; gap: 4px;
   height: 17px; padding: 0 6px; border-radius: 0; border: 0; border-top: 1px solid rgb(var(--wmx-rgb, 45 212 160) / .55); background: rgb(6 9 8 / .9); font: 700 10px Outfit, system-ui, sans-serif; }
-html.wmx-avg-strip .wmx-nt-price .wmx-ptr, [data-avgp="strip"] .wmx-nt-price .wmx-ptr { display: inline; }
-html.wmx-avg-strip .wmx-nt-price .wmx-ptr:not(:empty)::before, [data-avgp="strip"] .wmx-nt-price .wmx-ptr:not(:empty)::before { content: '·'; color: #6f8a7d; margin-right: 4px; }
+html.wmx-avg-strip .wmx-nt-price:not(.wmx-sample) .wmx-ptr, [data-avgp="strip"] .wmx-nt-price .wmx-ptr { display: inline; }
+html.wmx-avg-strip .wmx-nt-price:not(.wmx-sample) .wmx-ptr:not(:empty)::before, [data-avgp="strip"] .wmx-nt-price .wmx-ptr:not(:empty)::before { content: '·'; color: #6f8a7d; margin-right: 4px; }
 html.wmx-avg-strip [class*="rounded-2xl"]:has(> .wmx-nt-price) > div[class*="top-[45%]"], [data-avgp="strip"] > div[class*="top-[45%]"] { bottom: 17px !important; }
 
 /* Paramètres → Moyennes : liste de la forme + carte d'exemple (les formes s'y appliquent comme sur les vraies cartes). */
@@ -1363,3 +1363,19 @@ html.wmx-avg-strip [class*="rounded-2xl"]:has(> .wmx-nt-price) > div[class*="top
 .wmx-avgprev-rar { position: absolute; top: 8px; left: 8px; z-index: 30; padding: 1px 6px; border-radius: 6px; background: #facc15; color: #1a1300; font: 800 10px Outfit, system-ui, sans-serif; }
 .wmx-avgprev-info { position: absolute; left: 0; right: 0; bottom: 0; z-index: 20; display: flex; flex-direction: column; gap: 1px; padding: 26px 9px 8px; background: linear-gradient(to top, rgb(0 0 0 / .92), rgb(0 0 0 / .55) 60%, transparent); }
 .wmx-avgprev-info strong { color: #fff; font-size: 11px; } .wmx-avgprev-info small { color: #cfd8d3; font-size: 9px; }
+
+/* 1.1.20 : fenêtre des nouveautés plus visuelle — icônes à la place des mots, aperçus, corrections regroupées, lien vers un réglage. */
+.wmx-wn-featicon svg { color: var(--acc, #2dd4a0); }
+.wmx-wn-kind { display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; border-radius: 7px; }
+.wmx-wn-kind.check { color: #2dd4a0; background: #2dd4a01a; border: 1px solid #2dd4a055; }
+.wmx-wn-item { align-items: center; }
+.wmx-wn-grp { display: flex; flex-direction: column; gap: 6px; }
+.wmx-wn-grp > small { display: inline-flex; align-items: center; gap: 6px; color: #9db5a8; font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.wmx-wn-vis { display: flex; flex-wrap: wrap; gap: 10px; margin: 10px 0 2px; }
+.wmx-wn-fig { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.wmx-wn-fig .wmx-avgprev { zoom: .74; }
+.wmx-wn-feat + .wmx-wn-feat { margin-top: 8px; }
+.wmx-wn-fig figcaption { color: #9db5a8; font-size: 11px; font-weight: 700; }
+.wmx-wn-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding: 6px 12px; border-radius: 999px; border: 1px solid #2dd4a066; background: #2dd4a014; color: #d9f5ea; font: 700 12.5px Outfit, system-ui, sans-serif; cursor: pointer; }
+.wmx-wn-link:hover { background: #2dd4a02e; border-color: var(--acc, #2dd4a0); }
+.wmx-wn-link svg { color: var(--acc, #2dd4a0); }

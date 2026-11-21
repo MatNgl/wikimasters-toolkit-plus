@@ -178,3 +178,25 @@ test('moyennes : zones masquées et forme « étiquette » (Paramètres → Moye
   assert.ok(sample.querySelector('.wmx-nt-price .wmx-pv'), 'mêmes éléments qu’une vraie pastille');
   env.close();
 });
+
+test('nouveautés 1.1.20 : points forts avec icône, aperçu des formes de la moyenne et lien vers le réglage ; corrections regroupées (pas de mots « Corrigé » / « Amélioré »)', async () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  env.w.chrome.runtime.getManifest = () => ({ version: '1.1.21', version_name: '1.1.21' });
+  let opened = null;
+  env.WMX.openSettings = (section) => { opened = section; };
+  env.WMX.whatsNew.showChanges('1.1.20');
+  const box = env.w.document.querySelector('.wmx-wn');
+  assert.ok(box, 'fenêtre affichée');
+  assert.equal(box.querySelectorAll('.wmx-wn-top .wmx-wn-feat').length, 3, 'trois points forts');
+  assert.ok(box.querySelectorAll('.wmx-wn-featicon svg').length === 3, 'une icône par point fort');
+  assert.equal(box.querySelectorAll('.wmx-wn-fig').length, 4, 'aperçu : pastille, compacte, onglet, ruban');
+  assert.deepEqual([...box.querySelectorAll('.wmx-wn-fig .wmx-avgprev')].map((c) => c.dataset.avgp || 'pill'), ['pill', 'compact', 'tab', 'strip']);
+  assert.match(box.querySelector('.wmx-wn-grp').textContent, /Corrections/);
+  assert.ok(box.querySelectorAll('.wmx-wn-grp li').length >= 3 && box.querySelectorAll('.wmx-wn-grp li').length <= 5, 'quelques corrections courtes');
+  assert.doesNotMatch(box.textContent, /\b(Corrigé|Amélioré|Nouveau)\b/, 'des icônes, pas des mots');
+  assert.ok(box.textContent.length < 900, `peu de texte (${box.textContent.length} caractères)`);
+  box.querySelector('.wmx-wn-link').click();
+  assert.equal(opened, 'Moyennes du marché', 'le lien ouvre le réglage');
+  assert.ok(!env.w.document.querySelector('.wmx-wn'), 'la fenêtre des nouveautés se ferme');
+  env.close();
+});

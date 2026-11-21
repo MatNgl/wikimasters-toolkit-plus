@@ -7,22 +7,18 @@
   // Nouveautés, de la plus récente à la plus ancienne. Écrites pour les joueurs : ce qu'ils voient et ce que ça change pour eux.
   // kind : 'new' (nouveau), 'better' (amélioré), 'fix' (corrigé). highlights : les grandes nouveautés, mises en avant en tête de la fenêtre.
   const CHANGES = [
-    { v: '1.1.19', title: 'Moyenne de la semaine, défausse et vue étendue', items: [
-      ['better', 'La ligne « Valeur des cartes affichées » (profils, Toutes les cartes) est retirée : seules les moyennes sur chaque carte restent.'],
-      ['fix', 'Vue étendue : les cartes qui viennent d’arriver (paquets, enchères gagnées, échanges) apparaissent tout de suite, même pendant une relecture de la collection ; la page 1 se met à jour d’elle-même.'],
-      ['fix', 'Vue étendue : une carte étiquetée (ou désétiquetée) quitte tout de suite la vue « Sans étiquette » (ou celle de l’étiquette), comme sur la page du jeu, et son étiquette s’affiche avec son nom.'],
-      ['fix', 'Vue étendue, tri « Moyenne (plus chères) » : l’ordre suit les moyennes à jour, même quand elles arrivent après l’affichage (la page 1 se remet dans l’ordre d’elle-même).'],
-      ['new', 'Paramètres → Moyennes : choisissez où afficher la moyenne des cartes (Collection, Marché, bulle des enchères, Toutes les cartes, profils, échanges, ouverture des paquets), et sa forme : pastille, pastille compacte, onglet ou ruban (ces deux-là avec la tendance de la semaine, ↗ / ↘), avec un aperçu sur une carte d’exemple.'],
-      ['better', 'Défausse : elle passe toujours par la vue étendue à 500 cartes par page, même si vous ne l’aviez pas activée, en mode visible comme en arrière-plan ; votre vue est remise comme avant à la fin.'],
-      ['fix', 'Paramètres : « Voir les nouveautés » s’ouvre toujours ; après une mise à jour de l’extension sans actualiser la page, un message demande d’actualiser (F5).'],
-      ['better', 'Garde-fou : une super rare, ultra rare ou légendaire sans aucune vente connue n’est jamais mise en vente au prix par défaut (10 W), ni par ⚡ ni par l’assistant ; une rareté sans vente récente garde sa dernière moyenne connue.'],
-      ['new', 'Votre profil : la moyenne s’affiche aussi sur les cartes de votre vitrine.'],
-      ['fix', 'Moyennes du marché : depuis la mise à jour du jeu, l’extension affiche la moyenne de la semaine, comme la fiche de la carte (sans vente cette semaine : celle de la dernière semaine avec des ventes). Plus de « Sans vente » à tort.'],
-      ['fix', 'Défausse : plusieurs exemplaires d’une même carte sur la page sont cochés ou décochés un par un (plus d’arrêt « le jeu compte N cartes au lieu de N−1 »).'],
-      ['fix', '« Garder 1 exemplaire » garde bien un exemplaire de chaque carte et défausse les autres (avant : aucun doublon reconnu).'],
-      ['fix', 'Défausse avec la vue étendue : elle ne s’arrête plus sur « bouton Défausser introuvable » ; elle attend que le jeu ait relu sa liste.'],
-      ['better', 'La défausse ne fige plus la page après chaque lot de cartes.'],
-      ['fix', 'Le doublon d’une carte défaussée ne disparaît plus de la vue étendue.'],
+    { v: '1.1.21', title: 'Moyennes, vue étendue et défausse', highlights: [
+      { icon: 'chart', title: 'La moyenne de la semaine', text: 'Les prix suivent la vue du marché du jeu, avec la tendance de la semaine.', visual: 'avg',
+        settings: { label: 'Choisir où et comment', section: 'Moyennes du marché' } },
+      { icon: 'layers', title: 'Une vue étendue toujours à jour', text: 'Vos cartes sont mises à jour dès que vous les obtenez, les étiquetez ou les supprimez.' },
+      { icon: 'trash', title: 'Une défausse plus rapide', text: 'Jusqu’à 500 cartes par page, sans figer la page.' },
+    ], groups: [
+      { icon: 'fix', title: 'Corrections', items: [
+        'Tri par moyenne toujours dans le bon ordre',
+        'Plus de mise en vente à 10 W pour une carte rare sans moyenne',
+        '« Garder 1 exemplaire » et doublons mieux gérés',
+        'Le bouton « Voir les nouveautés » fonctionne de nouveau',
+      ] },
     ] },
     { v: '1.0.96', title: 'Cadran des paquets et tableau de bord', items: [
       ['better', 'Le cadran des paquets reste affiché quand son menu est ouvert : un clic l’ouvre, un autre le referme (comme la bulle des enchères).'],
@@ -68,6 +64,38 @@
   ];
   const KIND = { new: 'Nouveau', better: 'Amélioré', fix: 'Corrigé' };
 
+  // Petites icônes (traits fins, couleur du texte) : une icône vaut mieux qu'un mot. Un nom inconnu (ex. un émoji) est affiché tel quel.
+  const ICONS = {
+    chart: '<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m19 9-5 5-4-4-3 3"/>',
+    layers: '<path d="m12 2 10 5-10 5L2 7z"/><path d="m2 12 10 5 10-5"/><path d="m2 17 10 5 10-5"/>',
+    trash: '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+    gear: '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
+    new: '<path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/>',
+    better: '<path d="M16 7h6v6"/><path d="m22 7-8.5 8.5-5-5L2 17"/>',
+    fix: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94z"/>',
+    check: '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
+  };
+  const ico = (name, size = 18) => {
+    if (!ICONS[name]) return String(name || '');
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    for (const [k, v] of Object.entries({ viewBox: '0 0 24 24', width: size, height: size, fill: 'none', stroke: 'currentColor', 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' })) svg.setAttribute(k, String(v));
+    WMX.dom.svg(svg, ICONS[name]);
+    return svg;
+  };
+  /** Aperçu des quatre formes de la moyenne : de petites cartes d'exemple (mêmes classes que les vraies pastilles, le CSS des formes s'y applique). */
+  function avgVisual() {
+    const card = (form, label) => el('figure', { class: 'wmx-wn-fig' },
+      el('div', { class: 'wmx-avgprev', style: '--wmx-rgb:250 204 21', ...(form ? { 'data-avgp': form } : {}), 'aria-hidden': 'true' },
+        el('span', { class: 'wmx-avgprev-art' }), el('b', { class: 'wmx-avgprev-rar' }, 'L'),
+        el('div', { class: 'wmx-avgprev-info top-[45%]' }, el('strong', {}, 'Henri IV'), el('small', {}, 'roi de France')),
+        el('span', { class: 'wmx-nt-price wmx-sample', 'data-trend': 'up' }, el('span', { class: 'wmx-pl' }, 'Moy. '), el('span', { class: 'wmx-pv' }, '3 247 W'), ' ',
+          el('i', { class: 'wmx-age fresh' }, '✓'), el('span', { class: 'wmx-ptr up' }, el('b', { class: 'wmx-pa' }, '↗'), el('span', { class: 'wmx-pc' }, ' +11 %')))),
+      el('figcaption', {}, label));
+    return el('div', { class: 'wmx-wn-vis' }, card('', 'Pastille'), card('compact', 'Compacte'), card('tab', 'Onglet'), card('strip', 'Ruban'));
+  }
+  /** Ouvre les Paramètres sur une rubrique : la fenêtre des nouveautés se ferme d'abord (elle est au-dessus). */
+  const toSettings = (section) => { close(); try { WMX.openSettings?.(section); } catch (_) { /* Paramètres indisponibles */ } };
+
   // Présentation (première installation).
   const TOUR = [
     { icon: '🎁', title: 'Bienvenue dans WikiMasters Toolkit+', text: 'L’extension s’ajoute au jeu sans le remplacer : prix du marché sur vos cartes, ouverture des paquets en un clic, enchères suivies et ventes automatiques. Voici l’essentiel en quatre étapes.' },
@@ -109,13 +137,18 @@
   function showChanges(since) {
     const groups = changesSince(since);
     if (!groups.length) return false;
-    // Grandes nouveautés en tête (« À la une »), en cartes ; puis le détail, version par version.
+    // Grandes nouveautés en tête (« À la une ») : icône, titre, une phrase ; un aperçu et un lien vers le réglage concerné quand il y en a.
     const tops = groups.flatMap((g) => g.highlights || []);
     const featured = tops.length ? el('section', { class: 'wmx-wn-top' }, el('small', { class: 'wmx-wn-eyebrow' }, 'À la une'),
-      ...tops.map((h) => el('div', { class: 'wmx-wn-feat' }, el('div', { class: 'wmx-wn-featicon', 'aria-hidden': 'true' }, h.icon), el('div', {}, el('b', {}, h.title), el('p', {}, h.text))))) : '';
+      ...tops.map((h) => el('div', { class: 'wmx-wn-feat' }, el('div', { class: 'wmx-wn-featicon', 'aria-hidden': 'true' }, ico(h.icon, 22)),
+        el('div', {}, el('b', {}, h.title), el('p', {}, h.text), h.visual === 'avg' ? avgVisual() : '',
+          h.settings ? el('button', { type: 'button', class: 'wmx-wn-link', onclick: () => toSettings(h.settings.section) }, ico('gear', 14), h.settings.label) : '')))) : '';
+    // Corrections et petites améliorations : lignes courtes, une icône par ligne (pas de mots « Corrigé » / « Amélioré »).
+    const row = (kind, text) => el('li', { class: `wmx-wn-item ${kind}` }, el('span', { class: `wmx-wn-kind ${kind}`, title: KIND[kind] || '' }, ico(kind === 'check' ? 'check' : kind, 14)), el('span', {}, text));
     const body = el('div', { class: 'wmx-wn-body' }, featured, ...groups.map((g) => el('section', { class: 'wmx-wn-ver' },
       el('div', { class: 'wmx-wn-verhead' }, el('b', {}, g.title), el('span', { class: 'wmx-wn-vtag' }, `v${g.v}`)),
-      el('ul', {}, ...g.items.map(([k, t]) => el('li', { class: `wmx-wn-item ${k}` }, el('span', { class: `wmx-wn-kind ${k}` }, KIND[k] || k), el('span', {}, t)))))));
+      ...(g.groups || []).map((grp) => el('div', { class: 'wmx-wn-grp' }, el('small', {}, ico(grp.icon, 13), grp.title), el('ul', {}, ...grp.items.map((t) => row('check', t))))),
+      (g.items || []).length ? el('ul', {}, ...g.items.map(([k, t]) => row(k, t))) : '')));
     shell([
       el('header', { class: 'wmx-wn-head' }, WMX.dom.logo(40), el('div', {}, el('small', {}, 'WikiMasters Toolkit+'), el('h2', {}, `Nouveautés de la version ${current()}`)),
         el('button', { type: 'button', class: 'wmx-close', title: 'Fermer', 'aria-label': 'Fermer', onclick: close }, '×')),

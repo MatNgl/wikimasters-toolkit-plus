@@ -241,7 +241,7 @@
     const avgSample = () => el('div', { class: 'wmx-avgprev', style: '--wmx-rgb:250 204 21', 'aria-hidden': 'true' },
       el('span', { class: 'wmx-avgprev-art' }), el('b', { class: 'wmx-avgprev-rar' }, 'L'),
       el('div', { class: 'wmx-avgprev-info top-[45%]' }, el('strong', {}, 'Henri IV'), el('small', {}, 'roi de France')),
-      el('span', { class: 'wmx-nt-price', 'data-trend': 'up' }, el('span', { class: 'wmx-pl' }, 'Moy. '), el('span', { class: 'wmx-pv' }, '3 247 W'), ' ',
+      el('span', { class: 'wmx-nt-price wmx-sample', 'data-trend': 'up' }, el('span', { class: 'wmx-pl' }, 'Moy. '), el('span', { class: 'wmx-pv' }, '3 247 W'), ' ',
         el('i', { class: 'wmx-age fresh' }, '✓'), el('span', { class: 'wmx-ptr up' }, el('b', { class: 'wmx-pa' }, '↗'), el('span', { class: 'wmx-pc' }, ' +11 %'))));
     const control = (it) => {
       if (it.type === 'avgStyle') { // liste + aperçu sur une carte d'exemple, mis à jour dès le choix (avant « Appliquer »)
