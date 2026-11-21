@@ -158,11 +158,23 @@ test('moyennes : zones masquées et forme « étiquette » (Paramètres → Moye
   WMX.prices.fillChip(chip, 'c2', 'L');
   assert.equal(chip.querySelector('.wmx-ptr').textContent, '↗ +4,0 %');
   assert.match(chip.textContent, /^Moy\. 800 W/, 'pastille : « Moy. » + valeur (la tendance est cachée par le CSS)');
-  // Aperçu : une nouvelle forme sur chacune des trois premières cartes, la pastille ailleurs ; toujours posée sur la carte elle-même.
-  await WMX.updateSettings({ avgStyle: 'preview' });
-  await sleep(50);
-  const cards = [0, 1, 2, 3].map((i) => { const c = w.document.createElement('div'); c.dataset.wmxIdx = String(i); const ch = w.document.createElement('span'); WMX.prices.placeChip(c, ch); return c; });
-  assert.deepEqual(cards.map((c) => c.dataset.avgp || null), ['compact', 'tab', 'strip', null]);
-  assert.ok(cards.every((c) => c.lastElementChild.parentElement === c), 'pastille sur la carte (place fixe)');
+  // Pastille toujours posée sur la carte elle-même (place fixe).
+  const card = w.document.createElement('div');
+  const ch2 = w.document.createElement('span');
+  WMX.prices.placeChip(card, ch2);
+  assert.equal(ch2.parentElement, card);
+  // Paramètres → Moyennes : aperçu sur une carte d'exemple, qui suit le choix de la forme avant « Appliquer ».
+  WMX.openSettings();
+  [...w.document.querySelectorAll('.wmx-set-navbtn')].find((b) => /^Moyennes/.test(b.textContent)).click();
+  const sel = w.document.querySelector('.wmx-avgprev-ctl select');
+  const sample = w.document.querySelector('.wmx-avgprev');
+  assert.ok(sel && sample, 'liste et carte d’exemple');
+  assert.deepEqual([...sel.options].map((o) => o.value), ['pill', 'compact', 'tab', 'strip']);
+  for (const v of ['compact', 'tab', 'pill']) {
+    sel.value = v;
+    sel.dispatchEvent(new w.Event('change'));
+    assert.equal(sample.dataset.avgp || 'pill', v, `aperçu : ${v}`);
+  }
+  assert.ok(sample.querySelector('.wmx-nt-price .wmx-pv'), 'mêmes éléments qu’une vraie pastille');
   env.close();
 });

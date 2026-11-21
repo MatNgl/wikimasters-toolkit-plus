@@ -1337,12 +1337,11 @@ html.wmx-noavg-reveal .wmx-ct-price { display: none !important; }
 .wmx-ptr.up { color: #34d399; } .wmx-ptr.down { color: #f87171; } .wmx-ptr.flat { color: #9db5a8; }
 /* 1.1.9 : trois formes de moyenne, à une place FIXE de la carte (ni le titre, ni la description, ni les étiquettes ne la déplacent).
    Choisie dans Paramètres → Moyennes, ou « Aperçu » : une forme sur chacune des trois premières cartes de la Collection (data-avgp). */
-/* A · Pastille compacte : même place que la pastille, « 1 960 ↗ » (le W et « Moy. » retirés, la flèche colorée). */
+/* A · Pastille compacte : même place que la pastille, plus petite : « 1 960 W » seulement (ni « Moy. », ni icône, ni tendance). */
 html.wmx-avg-compact .wmx-nt-price, [data-avgp="compact"] .wmx-nt-price { padding: 1px 6px; font: 800 10.5px Outfit, system-ui, sans-serif; display: inline-flex; align-items: center; gap: 3px; }
 html.wmx-avg-compact .wmx-nt-price .wmx-pl, [data-avgp="compact"] .wmx-nt-price .wmx-pl,
 html.wmx-avg-compact .wmx-nt-price .wmx-age, [data-avgp="compact"] .wmx-nt-price .wmx-age { display: none; }
-html.wmx-avg-compact .wmx-nt-price .wmx-ptr, [data-avgp="compact"] .wmx-nt-price .wmx-ptr { display: inline; font-size: 11px; }
-html.wmx-avg-compact .wmx-nt-price .wmx-pc, [data-avgp="compact"] .wmx-nt-price .wmx-pc { display: none; }
+html.wmx-avg-compact .wmx-nt-price .wmx-ptr, [data-avgp="compact"] .wmx-nt-price .wmx-ptr { display: none; }
 /* B · Onglet : suspendu au bord du haut, au centre ; valeur, et la tendance en petit dessous. */
 html.wmx-avg-tab .wmx-nt-price, [data-avgp="tab"] .wmx-nt-price { top: 0; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 0;
   padding: 2px 8px 3px; border-radius: 0 0 9px 9px; border-top: 0; line-height: 1.15; font: 800 10.5px Outfit, system-ui, sans-serif; }
@@ -1356,3 +1355,11 @@ html.wmx-avg-strip .wmx-nt-price, [data-avgp="strip"] .wmx-nt-price { top: auto;
 html.wmx-avg-strip .wmx-nt-price .wmx-ptr, [data-avgp="strip"] .wmx-nt-price .wmx-ptr { display: inline; }
 html.wmx-avg-strip .wmx-nt-price .wmx-ptr:not(:empty)::before, [data-avgp="strip"] .wmx-nt-price .wmx-ptr:not(:empty)::before { content: '·'; color: #6f8a7d; margin-right: 4px; }
 html.wmx-avg-strip [class*="rounded-2xl"]:has(> .wmx-nt-price) > div[class*="top-[45%]"], [data-avgp="strip"] > div[class*="top-[45%]"] { bottom: 17px !important; }
+
+/* Paramètres → Moyennes : liste de la forme + carte d'exemple (les formes s'y appliquent comme sur les vraies cartes). */
+.wmx-avgprev-ctl { display: flex; align-items: center; gap: 14px; }
+.wmx-avgprev { position: relative; flex: none; width: 132px; height: 184px; border-radius: 14px; overflow: hidden; background: radial-gradient(ellipse 45% 32% at 50% 36%, #d9b48a 0 55%, transparent 56%), radial-gradient(ellipse 70% 40% at 50% 92%, #3b2f22 0 60%, transparent 61%), linear-gradient(165deg, #6b5530, #241b12 70%);
+  box-shadow: inset 0 0 0 1.5px rgb(var(--wmx-rgb) / .95), 0 0 16px rgb(var(--wmx-rgb) / .3); font-family: Outfit, system-ui, sans-serif; }
+.wmx-avgprev-rar { position: absolute; top: 8px; left: 8px; z-index: 30; padding: 1px 6px; border-radius: 6px; background: #facc15; color: #1a1300; font: 800 10px Outfit, system-ui, sans-serif; }
+.wmx-avgprev-info { position: absolute; left: 0; right: 0; bottom: 0; z-index: 20; display: flex; flex-direction: column; gap: 1px; padding: 26px 9px 8px; background: linear-gradient(to top, rgb(0 0 0 / .92), rgb(0 0 0 / .55) 60%, transparent); }
+.wmx-avgprev-info strong { color: #fff; font-size: 11px; } .wmx-avgprev-info small { color: #cfd8d3; font-size: 9px; }

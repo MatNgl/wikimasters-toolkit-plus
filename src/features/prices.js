@@ -246,13 +246,12 @@
 
   /**
    * Place la pastille sur la carte elle-même (jamais dans le bloc du titre : sa place ne dépend ni du titre, ni de la description, ni des
-   * étiquettes). Aperçu (Paramètres → Moyennes → « Aperçu ») : les trois premières cartes de la page montrent chacune une des nouvelles formes.
+   * étiquettes). La forme (pastille, compacte, onglet, ruban) vient d'une classe de la page (Paramètres → Moyennes).
    */
   function placeChip(card, chip) {
     if (chip.parentElement !== card) card.append(chip);
     chip.classList.remove('wmx-in-info');
-    const pv = document.documentElement.classList.contains('wmx-avg-preview') ? ['compact', 'tab', 'strip'][Number(card.dataset.wmxIdx)] : null;
-    if (pv) card.dataset.avgp = pv; else delete card.dataset.avgp;
+    delete card.dataset.avgp;
   }
 
   WMX.prices = {

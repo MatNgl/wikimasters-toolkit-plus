@@ -19,7 +19,7 @@
     // Styles d'ouverture et tiroir à cartes retirés (1.0.91) : une seule ouverture, en parallèle par défaut.
     // Le réglage d'ouverture en parallèle s'appelle openParallel (activé par défaut pour tous, y compris ceux qui avaient testé packParallel).
     if (s) { delete s.revealStyle; delete s.packDrawer; delete s.packParallel; }
-    if (s && s.avgStyle === 'tag') s.avgStyle = 'preview'; // forme « étiquette » retirée (1.1.9) : aperçu des nouvelles formes
+    if (s && (s.avgStyle === 'tag' || s.avgStyle === 'preview')) s.avgStyle = 'pill'; // « étiquette » et aperçu sur les cartes retirés (1.1.10) : l'aperçu est dans les Paramètres
     return s || {};
   };
 
@@ -114,8 +114,8 @@
       title: 'Moyennes du marché',
       desc: 'La moyenne de la semaine (celle de la vue du marché du jeu) affichée sur les cartes : choisissez où, et sous quelle forme. Masquée quelque part, elle n’y est plus demandée au jeu ; l’enchère rapide ⚡ et l’assistant de vente s’en servent toujours.',
       items: [
-        { key: 'avgStyle', type: 'select', label: 'Forme sur les cartes', desc: 'Toujours au même endroit de la carte. Pastille : « Moy. 1 577 W ». Compacte : « 1 577 ↗ ». Onglet : en haut au centre, avec la tendance de la semaine. Ruban : bande fine en bas de la carte. Aperçu : les trois nouvelles formes sur les trois premières cartes.',
-          options: [['pill', 'Pastille'], ['compact', 'Pastille compacte'], ['tab', 'Onglet'], ['strip', 'Ruban'], ['preview', 'Aperçu des 3 nouvelles formes']] },
+        { key: 'avgStyle', type: 'avgStyle', label: 'Forme sur les cartes', desc: 'Toujours au même endroit de la carte, quels que soient le titre, la description et les étiquettes. Pastille : « Moy. 1 577 W ». Compacte : « 1 577 W », plus petite. Onglet : en haut au centre, avec la tendance de la semaine. Ruban : bande fine en bas de la carte, avec la tendance. L’aperçu montre la forme choisie.',
+          options: [['pill', 'Pastille'], ['compact', 'Pastille compacte'], ['tab', 'Onglet'], ['strip', 'Ruban']] },
         { key: 'avgCollection', type: 'toggle', label: 'Collection', desc: 'Sur chaque carte de votre collection (vue du jeu et vue étendue).' },
         { key: 'avgMarket', type: 'toggle', label: 'Marché', desc: 'Sous chaque enchère : moyenne et verdict (bonne affaire, prix correct, trop cher), et sur la page d’une enchère.' },
         { key: 'avgBubble', type: 'toggle', label: 'Bulle des enchères', desc: 'Dans la liste de vos mises et de vos ventes.' },
@@ -175,7 +175,7 @@
     { id: 'packs', label: 'Paquets', hint: 'Révélation, ouverture en parallèle, ouverture auto', sections: ['Révélation', 'Ouverture des paquets', 'Ouverture automatique'] },
     { id: 'auctions', label: 'Enchères', hint: 'Bulle, alertes, mises automatiques, surveillance', sections: ['Enchères', 'Mises automatiques'] },
     { id: 'sell', label: 'Vente', hint: 'Enchère rapide ⚡, assistant de vente', sections: ['Enchère rapide', 'Assistant de vente'] },
-    { id: 'prices', label: 'Moyennes', hint: 'Où les afficher, pastille ou étiquette', sections: ['Moyennes du marché'] },
+    { id: 'prices', label: 'Moyennes', hint: 'Où les afficher, et sous quelle forme', sections: ['Moyennes du marché'] },
     { id: 'cards', label: 'Aspect des cartes', hint: 'Style, description, attaque et défense', sections: ['Aspect des cartes'] },
     { id: 'data', label: 'Journal et données', hint: 'Journal d’activité, diagnostic, historique', sections: ['Présentation et nouveautés', 'Journal d’activité', 'Données', 'Extension'] },
   ];
@@ -237,7 +237,22 @@
       return b;
     };
 
+    /** Carte d'exemple pour l'aperçu de la forme des moyennes (mêmes classes que les vraies pastilles : le CSS des formes s'y applique). */
+    const avgSample = () => el('div', { class: 'wmx-avgprev', style: '--wmx-rgb:250 204 21', 'aria-hidden': 'true' },
+      el('span', { class: 'wmx-avgprev-art' }), el('b', { class: 'wmx-avgprev-rar' }, 'L'),
+      el('div', { class: 'wmx-avgprev-info top-[45%]' }, el('strong', {}, 'Henri IV'), el('small', {}, 'roi de France')),
+      el('span', { class: 'wmx-nt-price', 'data-trend': 'up' }, el('span', { class: 'wmx-pl' }, 'Moy. '), el('span', { class: 'wmx-pv' }, '3 247 W'), ' ',
+        el('i', { class: 'wmx-age fresh' }, '✓'), el('span', { class: 'wmx-ptr up' }, el('b', { class: 'wmx-pa' }, '↗'), el('span', { class: 'wmx-pc' }, ' +11 %'))));
     const control = (it) => {
+      if (it.type === 'avgStyle') { // liste + aperçu sur une carte d'exemple, mis à jour dès le choix (avant « Appliquer »)
+        const card = avgSample();
+        const s = el('select', { class: 'wmx-input wmx-select wmx-dd', 'data-key': it.key }, ...it.options.map(([v, l]) => el('option', { value: String(v) }, l)));
+        const paint = () => { if (draft[it.key] && draft[it.key] !== 'pill') card.dataset.avgp = draft[it.key]; else delete card.dataset.avgp; };
+        s.value = String(draft[it.key] || 'pill');
+        s.addEventListener('change', () => { draft[it.key] = s.value; paint(); });
+        paint();
+        return el('div', { class: 'wmx-avgprev-ctl' }, s, card);
+      }
       if (it.type === 'select') {
         const s = el('select', { class: 'wmx-input wmx-select wmx-dd', 'data-key': it.key }, ...it.options.map(([v, l]) => el('option', { value: String(v) }, l)));
         s.value = String(draft[it.key]);
