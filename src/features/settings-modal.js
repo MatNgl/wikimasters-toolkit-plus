@@ -9,6 +9,7 @@
     stopOn: 'off', reserve: 0, fullStockOpen: true, anticipate: true,
     quickPct: -10, quickDuration: '1h', quickPrudent: false, auctionBubble: true, auctionNotify: true, autoReload: true,
     autoDefaultMode: 'time', autoDefaultSecs: 35, autoCapMode: 'avg', autoCapW: 100, autoCapPct: 20, autoDefaultOn: false, watchMax: 12, autoSell: false, autoSellTags: 'VENTE', autoSellMax: 5, autoSellCap: 500, autoSellOrder: 'avg', autoSellPriorityRar: '', autoSellStrict: true, autoSellRelistLimit: true, autoSellRelistMax: 4, quickNoSalePrice: 10, cardStyle: true, cardShowDesc: true, cardShowStats: true,
+    avgStyle: 'pill', avgCollection: true, avgMarket: true, avgBubble: true, avgGlobal: true, avgProfiles: true, avgTrades: true, avgReveal: true,
   };
 
   /** Réglages d'anciennes versions : le coefficient du prix de départ (0,9) devient un pourcentage (−10). */
@@ -109,6 +110,21 @@
       ],
     },
     {
+      title: 'Moyennes du marché',
+      desc: 'La moyenne de la semaine (celle de la vue du marché du jeu) affichée sur les cartes : choisissez où, et sous quelle forme. Masquée quelque part, elle n’y est plus demandée au jeu ; l’enchère rapide ⚡ et l’assistant de vente s’en servent toujours.',
+      items: [
+        { key: 'avgStyle', type: 'select', label: 'Forme sur les cartes', desc: 'Pastille : « Moy. 1 577 W » en haut de la carte. Étiquette : la valeur en grand et sa tendance sur la semaine (↗ / ↘), à droite de la carte.',
+          options: [['pill', 'Pastille'], ['tag', 'Étiquette avec tendance']] },
+        { key: 'avgCollection', type: 'toggle', label: 'Collection', desc: 'Sur chaque carte de votre collection (vue du jeu et vue étendue).' },
+        { key: 'avgMarket', type: 'toggle', label: 'Marché', desc: 'Sous chaque enchère : moyenne et verdict (bonne affaire, prix correct, trop cher), et sur la page d’une enchère.' },
+        { key: 'avgBubble', type: 'toggle', label: 'Bulle des enchères', desc: 'Dans la liste de vos mises et de vos ventes.' },
+        { key: 'avgGlobal', type: 'toggle', label: 'Toutes les cartes', desc: 'Sur chaque carte de la page « Toutes les cartes », avec la valeur des cartes affichées.' },
+        { key: 'avgProfiles', type: 'toggle', label: 'Profils', desc: 'Votre vitrine et la collection des autres joueurs (amis compris), avec la valeur des cartes affichées.' },
+        { key: 'avgTrades', type: 'toggle', label: 'Échanges', desc: 'Sur les cartes d’un échange et le bilan (ce que vous donnez, ce que vous recevez).' },
+        { key: 'avgReveal', type: 'toggle', label: 'Ouverture des paquets', desc: 'Sur les cartes tirées, au moment de la révélation.' },
+      ],
+    },
+    {
       title: 'Aspect des cartes',
       desc: 'Apparence des cartes dans la page Collection.',
       items: [
@@ -158,6 +174,7 @@
     { id: 'packs', label: 'Paquets', hint: 'Révélation, ouverture en parallèle, ouverture auto', sections: ['Révélation', 'Ouverture des paquets', 'Ouverture automatique'] },
     { id: 'auctions', label: 'Enchères', hint: 'Bulle, alertes, mises automatiques, surveillance', sections: ['Enchères', 'Mises automatiques'] },
     { id: 'sell', label: 'Vente', hint: 'Enchère rapide ⚡, assistant de vente', sections: ['Enchère rapide', 'Assistant de vente'] },
+    { id: 'prices', label: 'Moyennes', hint: 'Où les afficher, pastille ou étiquette', sections: ['Moyennes du marché'] },
     { id: 'cards', label: 'Aspect des cartes', hint: 'Style, description, attaque et défense', sections: ['Aspect des cartes'] },
     { id: 'data', label: 'Journal et données', hint: 'Journal d’activité, diagnostic, historique', sections: ['Présentation et nouveautés', 'Journal d’activité', 'Données', 'Extension'] },
   ];

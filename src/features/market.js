@@ -159,7 +159,7 @@
     // Carte à l'écran : sa moyenne passe devant toutes les autres demandes, dans l'ordre de la page (du haut vers le bas).
     let top = Infinity;
     try { top = a.getBoundingClientRect().top + (window.scrollY || 0); } catch (_) { /* hors page */ }
-    WMX.prices.keepFresh(info.card_id, top, { front: true }); // jamais chargée ou de plus de 24 h : relue (repeinte à l'arrivée du prix)
+    if (WMX.avgOn('avgMarket')) WMX.prices.keepFresh(info.card_id, top, { front: true }); // jamais chargée ou de plus de 24 h : relue (repeinte à l'arrivée du prix)
   }
 
   // --- Page d'UNE enchère (/marketplace/{id}) : moyenne du marché et verdict sous « Mise actuelle » ---------------------------
@@ -183,7 +183,7 @@
     const role = roleOf(id, info) === 'sale' ? 'sale' : 'buy';
     const p = WMX.prices.get(info.card_id, info.rarity);
     const waiting = !p && !WMX.prices.has(info.card_id);
-    WMX.prices.keepFresh(info.card_id, 0, { front: true }); // la carte qu'on regarde : en tête de file ; jamais chargée ou de plus de 24 h : relue, l'ancienne reste affichée
+    if (WMX.avgOn('avgMarket')) WMX.prices.keepFresh(info.card_id, 0, { front: true }); // la carte qu'on regarde : en tête de file ; jamais chargée ou de plus de 24 h : relue, l'ancienne reste affichée
     const f = WMX.prices.freshness(info.card_id);
     const n = waiting ? null : WMX.logic.priceNote(role, price, p);
     const sig = waiting ? 'wait' : [n.kind, n.avg, n.verdict, freshSig(info.card_id, f)].join('|');

@@ -50,16 +50,9 @@
     let chip = card.querySelector(':scope > .wmx-nt-price');
     if (!info) { chip?.remove(); return; }
     if (!chip) { chip = el('span', { class: 'wmx-nt-price wmx-pp-price' }); card.append(chip); }
-    const p = WMX.prices.get(info.card_id, info.rarity);
-    const f = WMX.prices.freshness?.(info.card_id);
-    const text = p ? `Moy. ${fmt(p.avg)} W` : WMX.prices.has(info.card_id) ? 'Sans vente' : 'Moy. …';
-    const title = [f?.line, isOwn() ? '' : info.mine ? 'Vous avez aussi cette carte' : 'Vous n’avez pas cette carte', isProfile() && !isOwn() && info.count > 1 ? `${info.count} exemplaires chez ce joueur` : ''].filter(Boolean).join('\n');
-    const sig = `${text}|${f?.state || ''}|${info.mine}`;
-    if (chip.dataset.sig === sig) return; // rien n'a changé : pas de réécriture
-    chip.dataset.sig = sig;
-    chip.dataset.state = f?.state || '';
-    chip.replaceChildren(text, ...(WMX.prices.has(info.card_id) ? [' ', WMX.prices.icon(info.card_id)] : []));
-    chip.title = title;
+    const extra = [isOwn() ? '' : info.mine ? 'Vous avez aussi cette carte' : 'Vous n’avez pas cette carte', isProfile() && !isOwn() && info.count > 1 ? `${info.count} exemplaires chez ce joueur` : ''].filter(Boolean).join('\n');
+    WMX.prices.fillChip(chip, info.card_id, info.rarity, { unloaded: '…', extra }); // même contenu que la collection (pastille ou étiquette)
+    chip.dataset.state = WMX.prices.has(info.card_id) ? WMX.prices.freshness(info.card_id).state : '';
     chip.classList.toggle('wmx-pp-mine', info.mine);
   }
 
@@ -121,7 +114,7 @@
           if (!e.isIntersecting) continue;
           io.unobserve(e.target);
           const info = infoOf(e.target);
-          if (info) WMX.prices.keepFresh(info.card_id, order++, { front: true });
+          if (info && WMX.avgOn(WMX.avgZoneOfPage())) WMX.prices.keepFresh(info.card_id, order++, { front: true });
         }
       }, { rootMargin: '200px' });
       new MutationObserver((muts) => { if (WMX.dom.foreign(muts)) schedule(); }).observe(document.body, { childList: true, subtree: true });

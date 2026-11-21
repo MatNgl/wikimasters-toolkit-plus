@@ -7,7 +7,8 @@
   // Nouveautés, de la plus récente à la plus ancienne. Écrites pour les joueurs : ce qu'ils voient et ce que ça change pour eux.
   // kind : 'new' (nouveau), 'better' (amélioré), 'fix' (corrigé). highlights : les grandes nouveautés, mises en avant en tête de la fenêtre.
   const CHANGES = [
-    { v: '1.1.6', title: 'Moyenne de la semaine, défausse et vue étendue', items: [
+    { v: '1.1.7', title: 'Moyenne de la semaine, défausse et vue étendue', items: [
+      ['new', 'Paramètres → Moyennes : choisissez où afficher la moyenne des cartes (Collection, Marché, bulle des enchères, Toutes les cartes, profils, échanges, ouverture des paquets), et sa forme : pastille, ou étiquette avec la tendance de la semaine (↗ / ↘).'],
       ['better', 'Défausse : elle passe toujours par la vue étendue à 500 cartes par page, même si vous ne l’aviez pas activée, en mode visible comme en arrière-plan ; votre vue est remise comme avant à la fin.'],
       ['fix', 'Paramètres : « Voir les nouveautés » s’ouvre toujours ; après une mise à jour de l’extension sans actualiser la page, un message demande d’actualiser (F5).'],
       ['better', 'Garde-fou : une super rare, ultra rare ou légendaire sans aucune vente connue n’est jamais mise en vente au prix par défaut (10 W), ni par ⚡ ni par l’assistant ; une rareté sans vente récente garde sa dernière moyenne connue.'],

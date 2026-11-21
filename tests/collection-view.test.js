@@ -21,7 +21,7 @@ function setup(n = 250, prefs = { on: true, size: 100, price: false }, fetchImpl
   env.mem.invCacheV2 = { t: Date.now(), complete: true, v: 3, items: Array.from({ length: n }, (_, i) => item(i)) };
   env.mem.collView = prefs;
   // Moyennes : la carte n°i vaut i W (les plus récentes sont donc les plus chères), sauf la n°3, sans moyenne.
-  env.mem.priceCache = Object.fromEntries(Array.from({ length: n }, (_, i) => [`card-${i}`, { w: 1, t: Date.now(), s: i === 3 ? {} : { [RAR[i % 6]]: { average: i, count: 3, latest: i } } }]));
+  env.mem.priceCache = Object.fromEntries(Array.from({ length: n }, (_, i) => [`card-${i}`, { w: 2, t: Date.now(), s: i === 3 ? {} : { [RAR[i % 6]]: { average: i, count: 3, latest: i } } }]));
   return env;
 }
 const init = async (env) => { await env.WMX.inventory.ensure(); await env.WMX.prices.load(); await env.WMX.features.find((f) => f.name === 'collection-view').init(); };

@@ -298,7 +298,10 @@
         if (!last) continue;
         const carried = last.start.slice(0, 10) < monday;
         const r = norm(rk) || rk;
-        out[r] = { average: Math.round(last.avg), count: carried ? 0 : last.count, latest: Math.round(last.avg), carried, week: last.start.slice(0, 10) };
+        // Tendance, comme la vue du marché : la moyenne affichée comparée à celle de la semaine de ventes précédente (−15,2 % → -0.152).
+        const prev = rows[rows.length - 2];
+        const change = prev && prev.avg > 0 ? Math.round(((last.avg - prev.avg) / prev.avg) * 1000) / 1000 : null;
+        out[r] = { average: Math.round(last.avg), count: carried ? 0 : last.count, latest: Math.round(last.avg), carried, week: last.start.slice(0, 10), change };
       }
       return out;
     },

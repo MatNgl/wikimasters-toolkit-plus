@@ -36,20 +36,11 @@
     const item = WMX.inventory.find(title, rarity);
     card._wmxItem = item;
     const chip = card.querySelector('.wmx-nt-price');
-    if (chip) {
-      // Moyenne et icône de fraîcheur (✓ à jour, ! en retard, ↻ actualisation) ; sans réécriture si rien n'a changé.
-      const text = item ? WMX.inventory.priceText(item) : 'Moy. …';
-      const f = item && WMX.prices.has(item.card_id) ? WMX.prices.freshness(item.card_id) : null;
-      const sig = `${text}|${f?.state || ''}|${f?.line || ''}`;
-      if (chip.dataset.sig !== sig) {
-        chip.dataset.sig = sig;
-        chip.replaceChildren(text, ...(f ? [' ', WMX.prices.icon(item.card_id)] : []));
-        chip.title = f?.line || '';
-      }
-    }
+    // Moyenne, icône de fraîcheur (✓ à jour, ! en retard, ↻ actualisation) et tendance de la semaine ; sans réécriture si rien n'a changé.
+    if (chip) WMX.prices.fillChip(chip, item?.card_id, item?.rarity || rarity);
     // Carte À L'ÉCRAN (ou presque) : moyenne jamais chargée ou de plus de 24 h relue, avant les tâches de fond, dans l'ordre de la page. Avec la vue
     // étendue (jusqu'à 500 cartes par page), les cartes plus bas sont relues quand on y arrive : pas 500 demandes au jeu d'un coup.
-    if (item && card._wmxSeen) WMX.prices.keepFresh(item.card_id, Number(card.dataset.wmxIdx) || 0, { front: true });
+    if (item && card._wmxSeen && WMX.avgOn('avgCollection')) WMX.prices.keepFresh(item.card_id, Number(card.dataset.wmxIdx) || 0, { front: true });
     boltFor(card);
   }
 

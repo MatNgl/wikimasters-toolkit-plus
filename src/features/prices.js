@@ -50,7 +50,8 @@
       // Moyenne lue avec l'ancien résumé (toutes ventes confondues, ou rareté manquante) : gardée à l'écran mais considérée comme ancienne, relue
       // dès que la carte est affichée (moyenne de la semaine).
       for (const [id, e] of Object.entries(cache)) {
-        if (e?.w) continue;
+        if (e?.w >= 2) continue;
+        if (e?.w === 1) { e.t = Math.min(e.t || 0, Date.now() - 25 * 3600000); e.w = 2; continue; } // moyenne de la semaine sans la tendance (1.1.1 à 1.1.6) : relue à l'affichage
         if (!Object.keys(e?.s || {}).length) delete cache[id];
         else e.t = Math.min(e.t || 0, Date.now() - 7 * 24 * 3600000);
       }
@@ -156,7 +157,7 @@
         // pour cette rareté (marquée « kept »), plutôt que « Sans vente » — qui ferait mettre la carte en vente au prix par défaut (10 W).
         const s = { ...r.summary };
         for (const [k, v] of Object.entries(cache[item.cardId]?.s || {})) if (!s[k] && v && v.average > 0) s[k] = { ...v, count: 0, kept: true };
-        cache[item.cardId] = { t: Date.now(), s, w: 1 }; // w : moyenne de la semaine (historique des prix)
+        cache[item.cardId] = { t: Date.now(), s, w: 2 }; // w : moyenne de la semaine (historique des prix) ; 2 : avec la tendance
         scheduleSave();
       }
       sched.pending.delete(item.cardId);
@@ -210,14 +211,48 @@
     if (token === job.token && job.failed) WMX.reportError?.('prices', lastStatus, `${job.failed} prix à réessayer`);
   }
 
+  /** La moyenne est-elle affichée dans cette zone (réglage avgCollection, avgMarket…) ? Masquée : pas de demande au jeu pour l'afficher. */
+  WMX.avgOn = (key) => WMX.settings?.[key] !== false;
+  /** Zone des pages « profil » et « Toutes les cartes » selon la page affichée. */
+  WMX.avgZoneOfPage = () => (/^\/global-collection/.test(location.pathname) ? 'avgGlobal' : 'avgProfiles');
+
+  /**
+   * Remplit la pastille de moyenne d'une carte (.wmx-nt-price) : « Moy. » + valeur + icône de fraîcheur + tendance de la semaine. Les deux formes
+   * (Paramètres → Moyennes) utilisent le même contenu : la pastille cache la tendance, l'étiquette cache « Moy. » et montre la tendance.
+   * `wait` : texte tant que la carte n'est pas reconnue (« … »).
+   */
+  function fillChip(chip, cardId, rarity, { wait = '…', unloaded = '—', extra = '' } = {}) {
+    const { el } = WMX.dom;
+    const p = cardId ? WMX.prices.get(cardId, rarity) : null;
+    const has = !!cardId && WMX.prices.has(cardId);
+    const f = has ? WMX.prices.freshness(cardId) : null;
+    const fmtW = (n) => Math.round(n).toLocaleString('fr-FR');
+    const ch = p?.change;
+    const dir = ch == null ? '' : ch > 0.005 ? 'up' : ch < -0.005 ? 'down' : 'flat';
+    const pct = ch == null ? '' : `${ch > 0 ? '+' : ch < 0 ? '−' : ''}${Math.abs(ch * 100).toFixed(Math.abs(ch) < 0.1 ? 1 : 0).replace('.', ',')} %`;
+    const trend = ch == null ? (p?.carried ? 'sem. passée' : '') : `${{ up: '↗', down: '↘', flat: '→' }[dir]} ${pct}`;
+    const value = p ? `${fmtW(p.avg)} W` : has ? 'Sans vente' : cardId ? unloaded : wait;
+    const sig = `${value}|${trend}|${f?.state || ''}|${f?.line || ''}|${extra}`;
+    if (chip.dataset.sig === sig) return;
+    chip.dataset.sig = sig;
+    chip.dataset.trend = dir;
+    chip.replaceChildren(el('span', { class: 'wmx-pl' }, p || !has ? 'Moy. ' : ''), el('span', { class: 'wmx-pv' }, value), ...(f ? [' ', WMX.prices.icon(cardId)] : []), el('span', { class: `wmx-ptr ${dir}` }, trend));
+    chip.title = [
+      p ? `Moyenne de la semaine : ${fmtW(p.avg)} W${p.carried ? ' (aucune vente cette semaine : celle de la dernière semaine avec des ventes)' : ''}` : '',
+      ch != null ? `Tendance : ${pct} par rapport à la semaine de ventes précédente` : '',
+      f?.line || '', extra,
+    ].filter(Boolean).join('\n');
+  }
+
   WMX.prices = {
+    fillChip,
     load,
     onProgress(cb) { listeners.add(cb); return () => listeners.delete(cb); },
     /** Moyenne, dernière vente et nombre de ventes pour la rareté donnée de la carte, ou null si inconnus. */
     get(cardId, rarity) {
       const e = cache?.[cardId];
       const s = e?.s?.[rarity];
-      return s ? { avg: s.average, last: s.latest, count: s.count, t: e.t } : null;
+      return s ? { avg: s.average, last: s.latest, count: s.count, t: e.t, change: Number.isFinite(s.change) ? s.change : null, carried: !!s.carried, kept: !!s.kept } : null;
     },
     /** Un prix (ou « sans vente ») a déjà été chargé pour cette carte, même ancien. */
     has(cardId) { return !!cache?.[cardId]; },

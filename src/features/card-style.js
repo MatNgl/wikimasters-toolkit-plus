@@ -106,7 +106,19 @@
     document.documentElement.classList.toggle('wmx-calm', !tiltPage()); // pages calmes : on coupe aussi le zoom au survol que le jeu applique lui-même (hover:scale-105)
     document.documentElement.classList.toggle('wmx-hide-desc', s.cardShowDesc === false);
     document.documentElement.classList.toggle('wmx-hide-stats', s.cardShowStats === false);
+    // Moyennes du marché : forme (pastille / étiquette) et zones où elles sont masquées (Paramètres → Moyennes).
+    const off = (k) => s[k] === false;
+    const path = location.pathname;
+    const html = document.documentElement.classList;
+    html.toggle('wmx-avg-tag', s.avgStyle === 'tag');
+    html.toggle('wmx-noavg-coll', off('avgCollection'));
+    html.toggle('wmx-noavg-market', off('avgMarket'));
+    html.toggle('wmx-noavg-bubble', off('avgBubble'));
+    html.toggle('wmx-noavg-pp', /^\/global-collection/.test(path) ? off('avgGlobal') : /^\/profile/.test(path) ? off('avgProfiles') : false);
+    html.toggle('wmx-noavg-trades', off('avgTrades'));
+    html.toggle('wmx-noavg-reveal', off('avgReveal'));
   };
+  WMX.syncCardFlags = () => { try { syncFlags(); } catch (_) { /* page fermée */ } };
 
   let timer = null;
   function scan() {

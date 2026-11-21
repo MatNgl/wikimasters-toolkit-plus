@@ -459,12 +459,13 @@ test('moyenne de la semaine (historique des prix du jeu) : semaine en cours, sin
     SR: { weekly: [] },
   } };
   const s = L.weeklySummary(h, now);
-  assert.deepEqual(s.L, { average: 5012, count: 4, latest: 5012, carried: false, week: '2026-11-16' }, 'semaine en cours');
+  assert.deepEqual(s.L, { average: 5012, count: 4, latest: 5012, carried: false, week: '2026-11-16', change: 0.193 }, 'semaine en cours, tendance +19,3 % sur la semaine précédente');
+assert.equal(s.UR.change, 0.025, 'reportée : la dernière semaine de ventes comparée à la précédente');
   assert.equal(s.UR.average, 666, 'pas de vente cette semaine : moyenne de la dernière semaine avec des ventes');
   assert.equal(s.UR.carried, true);
   assert.equal(s.UR.count, 0);
   assert.ok(!('SR' in s), 'aucune vente : absente (« Sans vente »)');
-  assert.deepEqual(L.weeklySummary({ by_rarity: { legendaire: [{ start: '2026-11-16T00:00:00Z', avg: 10, count: 1 }] } }, now, (r) => (r === 'legendaire' ? 'L' : r)), { L: { average: 10, count: 1, latest: 10, carried: false, week: '2026-11-16' } }, 'rareté normalisée, liste directe');
+  assert.deepEqual(L.weeklySummary({ by_rarity: { legendaire: [{ start: '2026-11-16T00:00:00Z', avg: 10, count: 1 }] } }, now, (r) => (r === 'legendaire' ? 'L' : r)), { L: { average: 10, count: 1, latest: 10, carried: false, week: '2026-11-16', change: null } }, 'rareté normalisée, liste directe');
 });
 
 test('moyenne de repli (dernières ventes) : ventes de la semaine en cours, sinon les dernières connues (reportée)', () => {

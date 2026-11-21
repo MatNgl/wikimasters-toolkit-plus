@@ -698,7 +698,7 @@
    */
   function avgChip(a, role) {
     const p = WMX.prices.get(a.card_id, rarityOf(a));
-    WMX.prices.keepFresh(a.card_id, a.end_at ? new Date(a.end_at).getTime() : Infinity);
+    if (WMX.avgOn('avgBubble')) WMX.prices.keepFresh(a.card_id, a.end_at ? new Date(a.end_at).getTime() : Infinity);
     if (!p && !WMX.prices.has(a.card_id)) {
       if (!S.avgHooked) { S.avgHooked = true; WMX.prices.onProgress(() => { if (S.bubbleOpen) renderSoon(); }); }
       return el('div', { class: 'wmx-auc-mk wait' }, 'Moy. …');

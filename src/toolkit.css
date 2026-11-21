@@ -1325,3 +1325,22 @@ button.wmx-tc-cancel:hover { background: rgb(239 68 68 / .18) !important; color:
 .wmx-dash-bal:hover { border-color: var(--acc,#2dd4a0); }
 .wmx-dash-bal[hidden] { display: none; }
 .wmx-dash-bal small { font: 600 11px Outfit, system-ui, sans-serif; color: #9db5a8; }
+
+/* 1.1.7 : Moyennes du marché (Paramètres → Moyennes) — zones masquées, et forme « étiquette » (valeur en grand + tendance de la semaine). */
+html.wmx-noavg-coll .wmx-nt-price:not(.wmx-pp-price):not(.wmx-tc-price),
+html.wmx-noavg-market .wmx-mk, html.wmx-noavg-market .wmx-dk,
+html.wmx-noavg-bubble .wmx-auc-mk,
+html.wmx-noavg-pp .wmx-pp-price, html.wmx-noavg-pp .wmx-pp-bar,
+html.wmx-noavg-trades .wmx-tc-price, html.wmx-noavg-trades .wmx-tv-wrap,
+html.wmx-noavg-reveal .wmx-ct-price { display: none !important; }
+.wmx-nt-price .wmx-ptr { display: none; }
+.wmx-ptr.up { color: #34d399; } .wmx-ptr.down { color: #f87171; } .wmx-ptr.flat { color: #9db5a8; }
+html.wmx-avg-tag .wmx-nt-price { top: 66px; left: auto; right: 7px; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; column-gap: 4px; row-gap: 1px;
+  max-width: 112px; padding: 5px 8px 4px 9px; border-radius: 10px 4px 10px 10px; border: 1px solid rgb(var(--wmx-rgb, 45 212 160) / .55); border-left: 3px solid rgb(var(--wmx-rgb, 45 212 160) / .95);
+  background: rgb(8 12 10 / .8); backdrop-filter: blur(6px); box-shadow: 0 6px 18px #0009; line-height: 1.1; }
+html.wmx-avg-tag .wmx-nt-price .wmx-pl { display: none; }
+html.wmx-avg-tag .wmx-nt-price .wmx-pv { font: 800 14px Outfit, system-ui, sans-serif; color: #fff; letter-spacing: -.01em; }
+html.wmx-avg-tag .wmx-nt-price .wmx-ptr { display: block; flex-basis: 100%; text-align: right; font: 700 10px Outfit, system-ui, sans-serif; }
+html.wmx-avg-tag .wmx-nt-price .wmx-ptr:empty { display: none; }
+html.wmx-avg-tag .wmx-nt-price[data-trend="up"] { box-shadow: 0 6px 18px #0009, inset 0 -2px 0 #34d39955; }
+html.wmx-avg-tag .wmx-nt-price[data-trend="down"] { box-shadow: 0 6px 18px #0009, inset 0 -2px 0 #f8717155; }

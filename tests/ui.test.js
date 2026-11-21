@@ -83,7 +83,7 @@ test('barre de la Collection : valeur estimée en grand, jauge (pourcentage, ét
   env.mem.invCacheV2 = { t: Date.now(), complete: true, items: [
     { id: 'a', card_id: 'c1', title: 'A', rarity: 'L', count: 1, tags: [] }, { id: 'b', card_id: 'c2', title: 'B', rarity: 'C', count: 1, tags: [] },
   ] };
-  env.mem.priceCache = { c1: { w: 1, t: Date.now(), s: { L: { average: 1234, count: 2, latest: 1200 } } } };
+  env.mem.priceCache = { c1: { w: 2, t: Date.now(), s: { L: { average: 1234, count: 2, latest: 1200 } } } };
   await WMX.inventory.ensure();
   const bar = WMX.inventory.makePriceBar('wmx-nt-bar');
   w.document.body.append(bar);
@@ -133,5 +133,30 @@ test('« Voir les nouveautés » (Paramètres) : toujours les dernières nouveau
   const box = env.w.document.querySelector('.wmx-wn');
   assert.ok(box, 'fenêtre affichée');
   assert.ok(box.querySelectorAll('.wmx-wn-ver').length >= 1, 'au moins une version listée');
+  env.close();
+});
+
+test('moyennes : zones masquées et forme « étiquette » (Paramètres → Moyennes) ; étiquette = valeur + tendance de la semaine', async () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  const { w, WMX } = env;
+  env.mem.priceCache = { c1: { w: 2, t: Date.now(), s: { L: { average: 5170, count: 90, latest: 5170, change: -0.152 } } }, c2: { w: 2, t: Date.now(), s: { L: { average: 800, count: 2, latest: 800, change: 0.04 } } } };
+  await WMX.prices.load();
+  WMX.features.find((f) => f.name === 'card-style').init();
+  const html = w.document.documentElement.classList;
+  assert.ok(!html.contains('wmx-avg-tag') && !html.contains('wmx-noavg-coll'), 'par défaut : pastille, partout');
+  await WMX.updateSettings({ avgStyle: 'tag', avgCollection: false, avgMarket: false });
+  await sleep(50);
+  assert.ok(html.contains('wmx-avg-tag'), 'forme étiquette');
+  assert.ok(html.contains('wmx-noavg-coll') && html.contains('wmx-noavg-market') && !html.contains('wmx-noavg-trades'), 'seulement les zones décochées');
+  assert.equal(WMX.avgOn('avgCollection'), false, 'zone masquée : plus de demande au jeu pour l’afficher');
+  const chip = w.document.createElement('span');
+  WMX.prices.fillChip(chip, 'c1', 'L');
+  assert.match(chip.querySelector('.wmx-pv').textContent, /^5\s170 W$/);
+  assert.equal(chip.querySelector('.wmx-ptr').textContent, '↘ −15 %');
+  assert.equal(chip.dataset.trend, 'down');
+  assert.match(chip.title, /Moyenne de la semaine : 5\s170 W[\s\S]*−15 % par rapport à la semaine de ventes précédente/);
+  WMX.prices.fillChip(chip, 'c2', 'L');
+  assert.equal(chip.querySelector('.wmx-ptr').textContent, '↗ +4,0 %');
+  assert.match(chip.textContent, /^Moy\. 800 W/, 'pastille : « Moy. » + valeur (la tendance est cachée par le CSS)');
   env.close();
 });

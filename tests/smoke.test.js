@@ -1853,7 +1853,7 @@ test('marché : une moyenne de plus de 24 h reste affichée (icône « non à jo
   } });
   const { w, mem, WMX } = env;
   const H = 3600000;
-  mem.priceCache = { k1: { w: 1, t: Date.now() - 30 * H, s: { L: { average: 1000, count: 8, latest: 990 } } }, k2: { w: 1, t: Date.now() - 2 * H, s: { L: { average: 1000, count: 8, latest: 990 } } } };
+  mem.priceCache = { k1: { w: 2, t: Date.now() - 30 * H, s: { L: { average: 1000, count: 8, latest: 990 } } }, k2: { w: 2, t: Date.now() - 2 * H, s: { L: { average: 1000, count: 8, latest: 990 } } } };
   await WMX.prices.load();
   w.history.pushState({}, '', '/marketplace');
   w.document.body.innerHTML = list.map((a) => `<a class="card-frame block" href="/marketplace/${a.id}"><div>${a.id}</div></a>`).join('');
@@ -1889,7 +1889,7 @@ test('réglages : menu de gauche (une page par thème), brouillon gardé d’une
   const modal = w.document.querySelector('.wmx-modal--nav');
   assert.ok(modal, 'les paramètres s’ouvrent');
   const navBtns = [...modal.querySelectorAll('.wmx-set-navbtn')];
-  assert.deepEqual(navBtns.map((b) => b.querySelector('b').textContent), ['Paquets', 'Enchères', 'Vente', 'Aspect des cartes', 'Journal et données']);
+  assert.deepEqual(navBtns.map((b) => b.querySelector('b').textContent), ['Paquets', 'Enchères', 'Vente', 'Moyennes', 'Aspect des cartes', 'Journal et données']);
   const titles = () => [...modal.querySelectorAll('.wmx-sec h3')].map((h) => h.textContent);
   assert.deepEqual(titles(), ['Révélation', 'Ouverture des paquets', 'Ouverture automatique'], 'une seule page à la fois');
   // Un réglage changé sur une page reste en brouillon quand on passe à une autre.
@@ -1934,7 +1934,7 @@ test('prix du Marché : les cartes à l’écran passent devant les autres deman
   // Un autre onglet a chargé une moyenne : elle est connue ici sans nouvelle requête, et l'affichage est prévenu.
   let told = 0;
   WMX.prices.onProgress(() => { told += 1; });
-  env.fireStorage({ priceCache: { newValue: { autreOnglet: { w: 1, t: Date.now(), s: { SR: { average: 42, count: 3, latest: 40 } } } } } });
+  env.fireStorage({ priceCache: { newValue: { autreOnglet: { w: 2, t: Date.now(), s: { SR: { average: 42, count: 3, latest: 40 } } } } } });
   assert.equal(WMX.prices.get('autreOnglet', 'SR')?.avg, 42);
   assert.ok(told >= 1, 'les pages se repeignent');
   assert.ok(!asked.includes('autreOnglet'));
@@ -2071,7 +2071,7 @@ test('prix : la page affichée passe avant tout (puis les tâches de fond, puis 
     return json({ summary: { C: { average: 5, count: 3, latest: 5 } } });
   } });
   const { w, mem, WMX } = env;
-  mem.priceCache = { vieux: { w: 1, t: Date.now() - 30 * 3600000, s: { C: { average: 1, count: 1, latest: 1 } } }, recent: { w: 1, t: Date.now() - 3600000, s: { C: { average: 1, count: 1, latest: 1 } } } };
+  mem.priceCache = { vieux: { w: 2, t: Date.now() - 30 * 3600000, s: { C: { average: 1, count: 1, latest: 1 } } }, recent: { w: 2, t: Date.now() - 3600000, s: { C: { average: 1, count: 1, latest: 1 } } } };
   await WMX.prices.load();
   w.history.pushState({}, '', '/marketplace');
   WMX.prices.fetchOne('x0');
