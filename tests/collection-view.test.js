@@ -368,3 +368,17 @@ test('défausse et copie de la collection : un exemplaire de moins par carte dé
   assert.equal(WMX.inventory.items().length, 150 + 2 - 1 - 1 - 100);
   env.close();
 });
+
+test('tri « Moyenne (plus chères) » : une moyenne reçue après l’affichage est prise en compte (l’ordre suit les dernières moyennes)', async () => {
+  const env = setup(120, { on: true, size: 50, price: true }, async (u) => (/price-history/.test(String(u)) ? json({ by_rarity: { C: { weekly: [{ start: new Date().toISOString().slice(0, 10), avg: 9999, count: 3 }] } } }) : json({ collection: [] })));
+  const { WMX } = env;
+  await init(env);
+  stats(env, 'sort=rarity');
+  const top = () => list(env, 'sort=rarity&page=0&stats=0').collection[0].card_id;
+  assert.equal(top(), 'card-119', 'la plus chère d’abord');
+  // La carte n°5 (une commune, moyenne 5 W) reçoit sa moyenne de la semaine : 9 999 W.
+  await WMX.prices.fetchOne('card-5');
+  assert.equal(WMX.prices.get('card-5', 'C')?.avg, 9999);
+  assert.equal(top(), 'card-5', 'nouvel ordre avec la moyenne reçue, sans attendre une nouvelle recherche');
+  env.close();
+});

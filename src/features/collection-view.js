@@ -54,18 +54,43 @@
     starred: (a, b) => (b.starred ? 1 : 0) - (a.starred ? 1 : 0) || byAt(a, b),
     added: byAt,
   };
+  // --- Tri par moyenne toujours juste -------------------------------------------------------------------------------------------------
+  // Une moyenne relue après l'affichage (carte à l'écran, moyenne de plus de 24 h ou d'avant la mise à jour du marché) peut changer beaucoup :
+  // la page affichée n'était plus dans l'ordre. Quand les moyennes de la page 1 ne sont plus décroissantes, la page est relancée (nouvel ordre),
+  // au plus une fois toutes les 10 s (même si des moyennes arrivent sans arrêt). Les autres pages sont retriées à la navigation.
+  let priceVer = 0;
+  let orderTimer = null;
+  let lastReorder = 0;
+  const inOrder = (items) => { let prev = Infinity; for (const it of items) { const a = avg(it); if (a > prev) return false; prev = a; } return true; };
+  function watchOrder() {
+    priceVer += 1;
+    if (orderTimer || !S.on || !S.price || !S.served || S.served.page !== 0 || !isPage()) return;
+    // Vérification au plus toutes les 10 s, même si des moyennes arrivent sans arrêt (cartes à l'écran relues une à une).
+    orderTimer = setTimeout(() => {
+      orderTimer = null;
+      if (!S.on || !S.price || !S.served || S.served.page !== 0 || !isPage() || inOrder(S.served.items)) return;
+      if (Date.now() - lastReorder < 10000) { watchOrder(); return; }
+      lastReorder = Date.now();
+      S.memo.key = ''; // nouvel ordre avec les moyennes à jour
+      nudge();
+    }, 2500);
+  }
+  WMX.prices?.onProgress?.(watchOrder);
+
   function list(f, fresh) {
     const key = JSON.stringify([f.sort, f.q, [...f.rar].sort(), [...f.tags].sort(), f.untagged, S.price]);
     const ver = WMX.inventory.version();
     // Même recherche (changement de page) : même ordre, même si des moyennes sont arrivées entre-temps (sinon des cartes sauteraient d'une page à
     // l'autre). L'ordre par moyenne est recalculé à chaque nouvelle recherche (fresh : demande des nombres de la page, au changement de tri ou de filtre).
-    if (!fresh && S.memo.key === key && S.memo.ver === ver) return S.memo.list;
+    // Tri par moyenne : les moyennes arrivent après coup (cartes à l'écran relues) ; l'ordre est recalculé avec les dernières connues dès
+    // qu'une a changé (pv), à chaque page ou filtre. Les autres tris gardent leur ordre tant que la copie ne change pas.
+    if (!fresh && S.memo.key === key && S.memo.ver === ver && (!S.price || S.memo.pv === priceVer)) return S.memo.list;
     const rows = WMX.inventory.items().filter((it) => match(f, it));
     if (S.price) {
       const v = new Map(rows.map((it) => [it, avg(it)]));
       rows.sort((a, b) => v.get(b) - v.get(a) || RANK[b.rarity] - RANK[a.rarity] || byAt(a, b));
     } else rows.sort(SORTS[f.sort] || SORTS.rarity);
-    S.memo = { key, ver, list: rows };
+    S.memo = { key, ver, pv: priceVer, list: rows };
     return rows;
   }
   /** Réponse à la page du jeu (chaîne JSON), ou null pour la laisser demander au serveur. */
@@ -86,7 +111,9 @@
     }
     if (f.stats === '1') return null; // lecture avec les nombres : laissée au jeu
     const rows = list(f, false);
-    const page = rows.slice(f.page * S.size, (f.page + 1) * S.size).map(WMX.inventory.toRow);
+    const slice = rows.slice(f.page * S.size, (f.page + 1) * S.size);
+    S.served = S.price ? { page: f.page, items: slice } : null; // page affichée, triée par moyenne : surveillée (voir watchOrder)
+    const page = slice.map(WMX.inventory.toRow);
     return JSON.stringify({ collection: page, total: null, rarityCounts: {}, tagOptions: [], pendingTradeCardIds: S.pending });
   }
 
