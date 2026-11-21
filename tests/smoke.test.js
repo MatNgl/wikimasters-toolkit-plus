@@ -2055,8 +2055,8 @@ test('profil d’un autre joueur : moyenne sur chaque carte de sa collection, va
   assert.equal(chip('Inconnue'), null, 'carte non reconnue : pas de pastille');
   assert.match(chip('Planète').title, /Vous avez aussi cette carte/);
   assert.match(chip('Thomas Pesquet').title, /2 exemplaires chez ce joueur/);
-  for (let i = 0; i < 20 && !/5\s003/.test(w.document.querySelector('.wmx-pp-bar')?.textContent || ''); i++) await sleep(150);
-  assert.match(w.document.querySelector('.wmx-pp-bar').textContent, /Valeur des cartes affichées : 5\s003 W · 2 cartes · 1 que vous avez aussi/, '2 × 2 500 + 3');
+  await sleep(300);
+  assert.ok(!w.document.querySelector('.wmx-pp-bar'), 'plus de ligne « Valeur des cartes affichées »');
   env.close();
 });
 
@@ -2106,7 +2106,7 @@ test('« Toutes les cartes » : moyenne et icône de fraîcheur sur chaque carte
   assert.match(chip('1984 (roman)').textContent, /^Moy\. 4\s200 W ✓$/, 'moyenne et icône « à jour »');
   assert.match(chip('.xxx').title, /Vous avez aussi cette carte/);
   assert.match(chip('1984 (roman)').title, /Vous n’avez pas cette carte/);
-  assert.match(w.document.querySelector('.wmx-pp-bar').textContent, /2 cartes · 1 que vous avez aussi/);
+  assert.ok(!w.document.querySelector('.wmx-pp-bar'), 'plus de ligne « Valeur des cartes affichées »');
   env.close();
 });
 
@@ -2279,8 +2279,7 @@ test('mon profil (ma vitrine, GET /api/showcase) : moyenne sur chaque carte et v
   for (let i = 0; i < 80 && !/1\s615/.test(chip()?.textContent || ''); i++) await sleep(150);
   assert.match(chip().textContent, /Moy\. 1\s615 W/, 'moyenne de la semaine sur ma carte');
   assert.doesNotMatch(chip().title, /chez ce joueur|Vous n’avez pas/);
-  assert.match(w.document.querySelector('.wmx-pp-bar')?.textContent || '', /1\s615 W · 1 carte/);
-  assert.doesNotMatch(w.document.querySelector('.wmx-pp-bar').textContent, /que vous avez aussi/, 'mon profil : pas de « que vous avez aussi »');
+  assert.ok(!w.document.querySelector('.wmx-pp-bar'), 'mon profil : plus de ligne « Valeur des cartes affichées »');
   env.close();
 });
 
@@ -2296,25 +2295,5 @@ test('garde-fou prix : rareté absente de l’historique → dernière moyenne c
   assert.equal(WMX.prices.get('neuve', 'L'), null);
   assert.match(WMX.quick.hint({ card_id: 'neuve', rarity: 'L' }), /Aucune vente connue .* pas d’enchère rapide au prix par défaut/, 'légendaire sans moyenne : pas de prix par défaut');
   assert.match(WMX.quick.hint({ card_id: 'neuve', rarity: 'C' }), /10 W .*aucune vente/, 'commune : prix par défaut (inchangé)');
-  env.close();
-});
-
-test('mon profil : la ligne « Valeur des cartes affichées » disparaît pendant la modification d’une vitrine (elle cassait la grille d’édition) et revient ensuite', async () => {
-  const env = createEnv({ fetchImpl: async () => json({}) });
-  const { w, WMX } = env;
-  w.history.pushState({}, '', '/profile');
-  const tile = (title, edit) => `<div class="${edit ? 'group/slot ' : ''}relative"><div class="relative rounded-2xl overflow-hidden"><div class="absolute top-2 left-2">L</div><h3>${title}</h3></div>${edit ? '<button aria-label="Retirer de la vitrine">x</button>' : ''}</div>`;
-  const grid = (edit) => `<main><div class="flex flex-wrap justify-center">${tile('Pologne', edit)}</div></main>`;
-  w.document.body.innerHTML = grid(false);
-  for (const f of WMX.features) if (f.name === 'profile-prices') f.init();
-  w.dispatchEvent(new w.CustomEvent('wmx:api', { detail: { url: '/api/showcase', method: 'GET', status: 200, data: { showcase: [{ id: 's1', snapshot_rarity: 'L', card: { id: 'p1', wikipedia_title: 'Pologne', rarity: 'L' } }], galleries: [] } } }));
-  for (let i = 0; i < 40 && !w.document.querySelector('.wmx-pp-bar'); i++) await sleep(100);
-  assert.ok(w.document.querySelector('.wmx-pp-bar'), 'affichage normal : la ligne est là');
-  w.document.body.innerHTML = grid(true); // l'éditeur de vitrine s'ouvre
-  for (let i = 0; i < 40 && w.document.querySelector('.wmx-pp-bar'); i++) await sleep(100);
-  assert.ok(!w.document.querySelector('.wmx-pp-bar'), 'en cours de modification : pas de ligne dans la grille d’édition');
-  w.document.body.innerHTML = grid(false); // « Terminé »
-  for (let i = 0; i < 40 && !w.document.querySelector('.wmx-pp-bar'); i++) await sleep(100);
-  assert.ok(w.document.querySelector('.wmx-pp-bar'), 'revenue après « Terminé »');
   env.close();
 });

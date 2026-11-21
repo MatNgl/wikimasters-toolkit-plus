@@ -57,29 +57,8 @@
     chip.classList.toggle('wmx-pp-mine', info.mine);
   }
 
-  /** Ligne au-dessus de la grille : valeur des cartes affichées (exemplaires compris) et nombre de prix encore attendus. */
-  function paintBar() {
-    const list = cards();
-    const grid = list[0]?.closest('[class*="flex-wrap"]') || list[0]?.parentElement?.parentElement;
-    let bar = document.querySelector('.wmx-pp-bar');
-    if (!list.length || !grid) { bar?.remove(); return; }
-    // Vitrine en cours de modification (cartes avec leur croix « Retirer de la vitrine ») : la ligne de valeur n'y a pas sa place, elle
-    // s'insérait dans la grille d'édition et en cassait la mise en page. Elle revient au clic sur « Terminé ».
-    if (list[0].closest('[class*="group/slot"]') || grid.querySelector('button[aria-label="Retirer de la vitrine"]')) { bar?.remove(); return; }
-    let sum = 0; let priced = 0; let n = 0; let mine = 0;
-    for (const c of list) {
-      const info = infoOf(c);
-      if (!info) continue;
-      n += 1;
-      if (info.mine) mine += 1;
-      const p = WMX.prices.get(info.card_id, info.rarity);
-      if (p) { sum += p.avg * info.count; priced += 1; } else if (WMX.prices.has(info.card_id)) priced += 1;
-    }
-    if (!n) { bar?.remove(); return; }
-    if (!bar || bar.nextElementSibling !== grid) { bar?.remove(); bar = el('div', { class: 'wmx-pp-bar', role: 'status' }); grid.before(bar); }
-    const text = `Valeur des cartes affichées : ${priced < n ? '≈ ' : ''}${fmt(sum)} W · ${n} carte${n > 1 ? 's' : ''}${priced < n ? ` · ${n - priced} prix en cours de chargement` : ''}${mine && !isOwn() ? ` · ${mine} que vous avez aussi` : ''}`;
-    if (bar.textContent !== text) bar.textContent = text;
-  }
+  /** Plus de ligne « Valeur des cartes affichées » (retirée en 1.1.18) : une ancienne ligne encore à l'écran est enlevée. */
+  function paintBar() { document.querySelector('.wmx-pp-bar')?.remove(); }
 
   // « Toutes les cartes » chargée directement : le jeu livre sa première page déjà rendue par son serveur, sans requête à lire. Si des cartes sont
   // à l'écran sans être reconnues, on fait UNE fois la même lecture que lui (première page, tri par rareté), comme le Marché le fait déjà.
