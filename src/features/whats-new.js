@@ -7,7 +7,8 @@
   // Nouveautés, de la plus récente à la plus ancienne. Écrites pour les joueurs : ce qu'ils voient et ce que ça change pour eux.
   // kind : 'new' (nouveau), 'better' (amélioré), 'fix' (corrigé). highlights : les grandes nouveautés, mises en avant en tête de la fenêtre.
   const CHANGES = [
-    { v: '1.1.15', title: 'Moyenne de la semaine, défausse et vue étendue', items: [
+    { v: '1.1.16', title: 'Moyenne de la semaine, défausse et vue étendue', items: [
+      ['fix', 'Vue étendue : les cartes qui viennent d’arriver (paquets, enchères gagnées, échanges) apparaissent tout de suite, même pendant une relecture de la collection ; la page 1 se met à jour d’elle-même.'],
       ['fix', 'Vue étendue : une carte étiquetée (ou désétiquetée) quitte tout de suite la vue « Sans étiquette » (ou celle de l’étiquette), comme sur la page du jeu, et son étiquette s’affiche avec son nom.'],
       ['fix', 'Vue étendue, tri « Moyenne (plus chères) » : l’ordre suit les moyennes à jour, même quand elles arrivent après l’affichage (la page 1 se remet dans l’ordre d’elle-même).'],
       ['new', 'Paramètres → Moyennes : choisissez où afficher la moyenne des cartes (Collection, Marché, bulle des enchères, Toutes les cartes, profils, échanges, ouverture des paquets), et sa forme : pastille, pastille compacte, onglet ou ruban (ces deux-là avec la tendance de la semaine, ↗ / ↘), avec un aperçu sur une carte d’exemple.'],

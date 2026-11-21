@@ -10,6 +10,7 @@
   const S = {
     items: [], loading: false, loadedCount: 0, loadedAt: 0, started: false, gone: new Map(), ext: false, ver: 0, complete: false,
     priceRar: new Set(['L', 'UR', 'SR', 'R']), priceMode: 'rar', priceTags: new Set(), tagsTouched: false,
+    addedAt: new Map(), // carte (ligne) -> heure d'arrivée dans la copie (upsertRows) : gardée si une relecture complète en cours ne l'a pas vue
   };
   const listeners = new Set();
   const emit = () => listeners.forEach((cb) => { try { cb(); } catch (_) { /* écouteur obsolète */ } });
@@ -116,6 +117,9 @@
     }
     S.loading = false;
     if (complete) { S.loadedAt = Date.now(); S.ext = true; S.complete = true; } // AVANT setItems : ceux qui écoutent la copie (vue étendue) la voient complète
+    // Cartes arrivées PENDANT la relecture (paquets, achats, échanges : ajoutées par la vue étendue) et absentes des pages déjà lues : gardées
+    // (avant : la relecture remplaçait la copie par ses pages, et les cartes du jour disparaissaient jusqu'à la relecture suivante).
+    if (complete) for (const it of S.items) if (!byId.has(it.id) && (S.addedAt.get(it.id) || 0) >= startedAt) byId.set(it.id, it);
     if (complete || !S.items.length) setItems(withoutDiscarded([...byId.values()], startedAt));
     // Une relecture complète lit ses pages pendant plusieurs minutes : une carte étiquetée entre-temps peut y apparaître sans son étiquette.
     // Les cartes étiquetées seront donc relues au prochain contrôle (syncTagged), même si leur nombre n'a pas changé.
@@ -461,7 +465,7 @@
       if (!rows?.length) return 0;
       const byId = new Map(S.items.map((it) => [it.id, it]));
       let added = 0;
-      for (const r of rows) { if (!r?.id) continue; if (!byId.has(r.id)) added += 1; byId.set(r.id, compact(r)); }
+      for (const r of rows) { if (!r?.id) continue; if (!byId.has(r.id)) { added += 1; S.addedAt.set(r.id, Date.now()); } byId.set(r.id, compact(r)); }
       setItems([...byId.values()]);
       saveSoon();
       return added;

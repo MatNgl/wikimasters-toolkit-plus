@@ -417,3 +417,30 @@ test('vue d’une étiquette : la copie n’a pas le même nombre de cartes que 
   assert.equal(asked.length, 1, 'pas deux fois de suite');
   env.close();
 });
+
+test('nouvelles cartes pendant une relecture complète : gardées à la fin (avant : effacées) ; petit écart avec le jeu (≤ 3 cartes) : pas de relecture complète', async () => {
+  let gate = null;
+  const pageRows = Array.from({ length: 10 }, (_, i) => WMX_ROW(i));
+  function WMX_ROW(i) { return { id: `row-${i}`, card_id: `card-${i}`, count: 1, starred: false, tags: [], obtained_at: '2026-10-01T00:00:00Z', card: { id: `card-${i}`, wikipedia_title: `Carte ${String(i).padStart(3, '0')}`, rarity: 'C' } }; }
+  const env = setup(10, undefined, async (u) => {
+    const s = String(u);
+    if (/my-collection\?/.test(s) && /sort=name/.test(s)) { const p = Number(new URL(s, 'https://x').searchParams.get('page')); if (p === 0) await gate; return json({ collection: p === 0 ? pageRows : [] }); }
+    return json({ collection: [] });
+  });
+  const { WMX } = env;
+  await init(env);
+  let open;
+  gate = new Promise((r) => { open = r; });
+  const done = WMX.inventory.reload(); // relecture complète (pages lues avant l'arrivée de la nouvelle carte)
+  await sleep(30);
+  WMX.inventory.upsertRows([{ ...WMX_ROW(99), id: 'row-new', obtained_at: new Date().toISOString() }]); // carte gagnée aux enchères, pendant la relecture
+  open();
+  await done;
+  assert.ok(WMX.inventory.items().some((it) => it.id === 'row-new'), 'la carte arrivée pendant la relecture est toujours là');
+  // Le jeu compte 2 cartes de plus que la copie : pas de relecture complète.
+  let reloads = 0;
+  WMX.inventory.reload = () => { reloads += 1; };
+  stats(env, 'sort=rarity', { total: WMX.inventory.items().length + 2, rarityCounts: {}, tagOptions: [] });
+  assert.equal(reloads, 0, 'petit écart : lectures légères seulement');
+  env.close();
+});

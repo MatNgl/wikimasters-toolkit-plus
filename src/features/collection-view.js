@@ -113,6 +113,7 @@
     if (f.stats === '1') return null; // lecture avec les nombres : laissée au jeu
     const rows = list(f, false);
     const slice = rows.slice(f.page * S.size, (f.page + 1) * S.size);
+    S.servedAt = Date.now(); S.lastPage = f.page; // page servie (voir sync : nouvelles cartes arrivées après l'affichage)
     S.served = S.price ? { page: f.page, items: slice } : null; // page affichée, triée par moyenne : surveillée (voir watchOrder)
     const page = slice.map(WMX.inventory.toRow);
     return JSON.stringify({ collection: page, total: null, rarityCounts: {}, tagOptions: [], pendingTradeCardIds: S.pending });
@@ -143,7 +144,9 @@
   // --- Copie toujours à jour --------------------------------------------------------------------------------------------------------
   /** Nouvelles cartes (paquets, achats, échanges) : le tri « Date d'ajout » du jeu les donne en tête ; on lit jusqu'à retrouver une carte connue. */
   async function sync(force = false) {
-    if (S.syncing || !ready() || WMX.inventory.isLoading() || (!force && Date.now() - S.syncAt < 60000)) return; // jamais pendant une relecture complète
+    // Aussi pendant une relecture complète (qui peut durer longtemps quand le jeu la freine) : les cartes reçues entre-temps sont gardées à la fin
+    // de la relecture (inventory : addedAt). Au plus toutes les 20 s.
+    if (S.syncing || !ready() || (!force && Date.now() - S.syncAt < 20000)) return;
     S.syncing = true;
     S.syncAt = Date.now();
     try {
@@ -163,6 +166,9 @@
       if (fresh.length) {
         const n = WMX.inventory.upsertRows(fresh);
         if (n) WMX.journal?.add('Collection', `vue étendue : ${n} nouvelle${n > 1 ? 's' : ''} carte${n > 1 ? 's' : ''} ajoutée${n > 1 ? 's' : ''} à la copie`);
+        // Page 1 affichée AVANT l'arrivée de ces cartes (lecture de la minute, ou trop lente pour la page) : relancée pour les montrer ; les
+        // autres pages les verront à la navigation.
+        if (n) { const t = Date.now(); setTimeout(() => { if (S.on && (S.servedAt || 0) < t && S.lastPage === 0 && isPage()) { S.memo.key = ''; nudge(); } }, 1600); }
       }
       if (S.lastReal != null) reconcile(S.lastReal);
     } catch (_) { /* jeu injoignable : nouvel essai à la prochaine visite */ } finally { S.syncing = false; }
@@ -179,7 +185,9 @@
       window.dispatchEvent(new CustomEvent('wmx:coll-reset'));
       announce();
     }
-    if (mine === realTotal || WMX.inventory.isLoading() || Date.now() - S.fullAt < 30 * 60000) return;
+    // Petit écart (1 à 3 cartes : vente, achat en cours de lecture…) : les lectures légères (nouvelles cartes, cartes en vente) s'en chargent ;
+    // une relecture complète (plusieurs minutes, freinée par le jeu) seulement au-delà, au plus toutes les 30 min.
+    if (Math.abs(mine - realTotal) <= 3 || WMX.inventory.isLoading() || Date.now() - S.fullAt < 30 * 60000) return;
     S.fullAt = Date.now();
     WMX.journal?.add('Collection', `vue étendue : la copie compte ${mine} cartes, le jeu ${realTotal} : relecture complète en arrière-plan`);
     WMX.inventory.reload();
