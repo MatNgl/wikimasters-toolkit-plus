@@ -2147,7 +2147,6 @@ test('« Toutes les cartes » chargée directement (page déjà rendue, aucune r
   env.close();
 });
 
-test.done();
 
 test('paquets : « Tout ouvrir » ne reste plus figé sur une erreur du jeu (502 : nouvel essai) ; « Passer » arrête l’ouverture, garde les paquets restants et montre aussitôt les cartes tirées', async () => {
   const env = createEnv({ fetchImpl: async () => json({}) });
@@ -2174,6 +2173,7 @@ test('paquets : « Tout ouvrir » ne reste plus figé sur une erreur du jeu (502
   });
   await WMX.features.find((x) => x.name === 'boosters').init();
   WMX.settings.speed = 'instant';
+  WMX.settings.openParallel = false; // ces essais pilotent la page Paquets elle-même (ouverture en parallèle : page invisible)
   WMX.settings.images = false;
   [...w.document.querySelectorAll('button')].find((b) => b.textContent === 'Tout ouvrir').click();
   for (let i = 0; i < 100 && stock > 11; i++) await sleep(100);
@@ -2216,6 +2216,7 @@ test('paquets : une ouverture restée sans réponse du jeu est signalée puis re
   });
   await WMX.features.find((x) => x.name === 'boosters').init();
   WMX.settings.speed = 'instant';
+  WMX.settings.openParallel = false; // idem : la page Paquets elle-même
   WMX.settings.images = false;
   WMX.packNoAnswerMs = 1500;
   [...w.document.querySelectorAll('button')].find((b) => b.textContent === 'Tout ouvrir').click();
@@ -2297,3 +2298,91 @@ test('garde-fou prix : rareté absente de l’historique → dernière moyenne c
   assert.match(WMX.quick.hint({ card_id: 'neuve', rarity: 'C' }), /10 W .*aucune vente/, 'commune : prix par défaut (inchangé)');
   env.close();
 });
+
+/** Fausse page « Succès » du jeu : un bouton « Réclamer » par succès à réclamer ; « Réclamation... » pendant la demande, puis il disparaît (ou revient si le jeu refuse). */
+function achievementsPage(w, defs, { refuse = new Set() } = {}) {
+  w.history.pushState({}, '', '/achievements');
+  w.document.body.innerHTML = `<main><div class="flex-1 p-4"><div><h1>Succès</h1><p>35 / 51 débloqués</p></div><div id="grid"></div></div></main>`;
+  const grid = w.document.querySelector('#grid');
+  const claimed = [];
+  claimed.clicks = 0;
+  for (const d of defs) {
+    const card = w.document.createElement('div');
+    card.innerHTML = `<div><h3>${d.title}</h3><p>desc</p><p>+${d.reward} wikibidous</p></div>`;
+    grid.append(card);
+    if (!d.claim) continue;
+    const b = w.document.createElement('button');
+    b.type = 'button'; b.textContent = 'Réclamer';
+    b.addEventListener('click', () => {
+      claimed.clicks += 1;
+      b.textContent = 'Réclamation...'; b.disabled = true;
+      setTimeout(() => { if (refuse.has(d.title)) { b.textContent = 'Réclamer'; b.disabled = false; } else { b.remove(); claimed.push(d.title); } }, 250);
+    });
+    card.firstChild.append(b);
+  }
+  return claimed;
+}
+
+test('succès : bandeau « Tout réclamer » — compte les récompenses, les réclame une à une, annonce le total ; rien à réclamer : pas de bandeau', async () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  const { w, WMX } = env;
+  const claimed = achievementsPage(w, [
+    { title: 'Stockeur', reward: 500, claim: true }, { title: 'Wiki Légende', reward: 1000, claim: true }, { title: 'Débutant', reward: 10 }, { title: 'Day trader', reward: 150, claim: true },
+  ]);
+  for (const f of WMX.features) if (f.name === 'achievements') f.init();
+  await sleep(400);
+  const banner = () => w.document.querySelector('.wmx-ach');
+  assert.ok(banner(), 'bandeau affiché');
+  assert.match(banner().textContent, /3 succès à réclamer/);
+  assert.match(banner().textContent, /\+1\s650 wikibidous/, 'total des récompenses');
+  assert.equal(banner().querySelector('.wmx-ach-go').textContent, 'Tout réclamer (3)');
+  assert.equal(banner().parentElement.className, 'flex-1 p-4', 'en haut du contenu de la page');
+  banner().querySelector('.wmx-ach-go').click();
+  await sleep(500);
+  assert.match(banner().textContent, /Réclamation en cours… \d\/3/, 'progression');
+  for (let i = 0; i < 80 && claimed.length < 3; i++) await sleep(100);
+  assert.deepEqual([...claimed], ['Stockeur', 'Wiki Légende', 'Day trader'], 'réclamés dans l’ordre de la page, un à la fois');
+  for (let i = 0; i < 30 && !banner().classList.contains('is-ok'); i++) await sleep(100);
+  assert.match(banner().textContent, /3 succès réclamés/);
+  assert.match(banner().textContent, /\+1\s650 wikibidous/);
+  assert.ok(banner().classList.contains('is-ok'));
+  assert.equal([...w.document.querySelectorAll('main button')].filter((x) => !x.closest('.wmx-ach')).length, 0, 'plus aucun bouton du jeu');
+  env.close();
+});
+
+test('succès : un seul succès à réclamer — le bandeau le propose quand même ; refusé deux fois de suite : arrêt avec un message, jamais de boucle', async () => {
+  const env = createEnv({ fetchImpl: async () => json({}) });
+  const { w, WMX } = env;
+  achievementsPage(w, [{ title: 'Stockeur', reward: 500, claim: true }]);
+  for (const f of WMX.features) if (f.name === 'achievements') f.init();
+  await sleep(400);
+  const banner = () => w.document.querySelector('.wmx-ach');
+  assert.match(banner().textContent, /1 succès à réclamer/);
+  assert.match(banner().textContent, /Stockeur/);
+  assert.equal(banner().querySelector('.wmx-ach-go').textContent, 'Réclamer le succès');
+  env.close();
+
+  const env2 = createEnv({ fetchImpl: async () => json({}) });
+  const refuse = new Set(['A', 'B', 'C']);
+  const claimed = achievementsPage(env2.w, [{ title: 'A', reward: 5, claim: true }, { title: 'B', reward: 5, claim: true }, { title: 'C', reward: 5, claim: true }], { refuse });
+  for (const f of env2.WMX.features) if (f.name === 'achievements') f.init();
+  await sleep(400);
+  env2.w.document.querySelector('.wmx-ach-go').click();
+  for (let i = 0; i < 100 && !env2.w.document.querySelector('.wmx-ach.is-warn'); i++) await sleep(100);
+  const b2 = env2.w.document.querySelector('.wmx-ach');
+  assert.ok(b2.classList.contains('is-warn'), 'avertissement');
+  assert.match(b2.textContent, /Aucune récompense réclamée/);
+  assert.deepEqual([...claimed], [], 'rien réclamé');
+  assert.equal(claimed.clicks, 2, 'le troisième n’a pas été tenté (arrêt après deux refus)');
+  assert.match(b2.textContent, /Réessayer \(3\)/, 'bouton pour réessayer');
+  env2.close();
+
+  const env3 = createEnv({ fetchImpl: async () => json({}) });
+  achievementsPage(env3.w, [{ title: 'Débutant', reward: 10 }]);
+  for (const f of env3.WMX.features) if (f.name === 'achievements') f.init();
+  await sleep(400);
+  assert.ok(!env3.w.document.querySelector('.wmx-ach'), 'rien à réclamer : pas de bandeau');
+  env3.close();
+});
+
+test.done();
