@@ -61,19 +61,21 @@
   let priceVer = 0;
   let orderTimer = null;
   let lastReorder = 0;
+  const REORDER_MS = 60000; // relance de la page au plus une fois par minute (voir watchOrder)
   const inOrder = (items) => { let prev = Infinity; for (const it of items) { const a = avg(it); if (a > prev) return false; prev = a; } return true; };
   function watchOrder() {
     priceVer += 1;
     if (orderTimer || !S.on || !S.price || !S.served || S.served.page !== 0 || !isPage()) return;
-    // Vérification au plus toutes les 10 s, même si des moyennes arrivent sans arrêt (cartes à l'écran relues une à une).
+    // Une seule vérification par minute (depuis l'affichage de la page ou la dernière relance), en un seul « train » : les moyennes arrivent une à une
+    // (cartes à l'écran relues), mais la page ne bouge pas à chaque moyenne, ce qui empêchait de la parcourir.
+    const wait = Math.max(2500, Math.max(lastReorder, S.servedAt || 0) + REORDER_MS - Date.now());
     orderTimer = setTimeout(() => {
       orderTimer = null;
       if (!S.on || !S.price || !S.served || S.served.page !== 0 || !isPage() || inOrder(S.served.items)) return;
-      if (Date.now() - lastReorder < 10000) { watchOrder(); return; }
       lastReorder = Date.now();
       S.memo.key = ''; // nouvel ordre avec les moyennes à jour
-      nudge();
-    }, 2500);
+      nudgeSoft();
+    }, wait);
   }
   WMX.prices?.onProgress?.(watchOrder);
 
@@ -137,7 +139,7 @@
     const was = S.readySent;
     S.readySent = ok;
     window.dispatchEvent(new CustomEvent('wmx:coll-ready', { detail: JSON.stringify({ ok }) }));
-    if (ok && was === false && isPage() && !byUser) { window.dispatchEvent(new CustomEvent('wmx:coll-reset')); nudge(); WMX.toast?.('Vue étendue prête : la collection s’affiche depuis la copie.', 5000); }
+    if (ok && was === false && isPage() && !byUser) { window.dispatchEvent(new CustomEvent('wmx:coll-reset')); nudgeSoft(); WMX.toast?.('Vue étendue prête : la collection s’affiche depuis la copie.', 5000); }
     paintTools();
   }
 
@@ -168,7 +170,7 @@
         if (n) WMX.journal?.add('Collection', `vue étendue : ${n} nouvelle${n > 1 ? 's' : ''} carte${n > 1 ? 's' : ''} ajoutée${n > 1 ? 's' : ''} à la copie`);
         // Page 1 affichée AVANT l'arrivée de ces cartes (lecture de la minute, ou trop lente pour la page) : relancée pour les montrer ; les
         // autres pages les verront à la navigation.
-        if (n) { const t = Date.now(); setTimeout(() => { if (S.on && (S.servedAt || 0) < t && S.lastPage === 0 && isPage()) { S.memo.key = ''; nudge(); } }, 1600); }
+        if (n) { const t = Date.now(); setTimeout(() => { if (S.on && (S.servedAt || 0) < t && S.lastPage === 0 && isPage()) { S.memo.key = ''; nudgeSoft(); } }, 1600); }
       }
       if (S.lastReal != null) reconcile(S.lastReal);
     } catch (_) { /* jeu injoignable : nouvel essai à la prochaine visite */ } finally { S.syncing = false; }
@@ -205,7 +207,7 @@
     if (mine === opt.cardCount) return;
     tagSynced.set(id, Date.now());
     WMX.journal?.add('Collection', `vue étendue : étiquette « ${opt.name} » : ${mine} carte(s) dans la copie, ${opt.cardCount} pour le jeu : relue`);
-    WMX.inventory.refreshTagged?.([opt.name], new Map([[String(opt.name).trim().toLowerCase(), id]])).then((ok) => { if (ok && isPage()) { S.memo.key = ''; nudge(); } }).catch(() => {});
+    WMX.inventory.refreshTagged?.([opt.name], new Map([[String(opt.name).trim().toLowerCase(), id]])).then((ok) => { if (ok && isPage()) { S.memo.key = ''; nudgeSoft(); } }).catch(() => {});
   }
 
   /** Étiquettes posées sans nom connu (« … », étiquette pas encore dans la liste du jeu) : nommées dès que le jeu donne sa liste d'étiquettes. */
@@ -302,6 +304,24 @@
   // --- Relance de la liste de la page du jeu (après un changement de taille, de tri par moyenne ou de mode) -------------------------
   // Un filtre de rareté coché puis décoché : la page du jeu relit ses nombres et sa liste (servis depuis la copie : instantané) et revient
   // sur la première page, sans rien changer d'autre. Sans pastille de rareté : rechargement de la page.
+  /** Sélection native en cours (« N cartes sélectionnées », barre du bas) : relancer la liste du jeu l'annulerait. */
+  const selecting = () => [...document.querySelectorAll('span')].some((e) => !e.children.length && /^cartes?\s+sélectionnées?$/i.test(e.textContent.trim()) && !e.closest('.wmx-dc, .wmx-dc-run'));
+  // Dernière action de l'utilisateur sur la page (clic, touche, molette, doigt) : on ne relance pas la liste pendant qu'il la parcourt.
+  let lastInput = 0;
+  for (const ev of ['pointerdown', 'keydown', 'wheel', 'touchmove']) document.addEventListener(ev, () => { lastInput = Date.now(); }, { capture: true, passive: true });
+  /** Une action est en cours : sélection, défausse de l'extension, fenêtre ouverte (étiquette, confirmation…), ou page tout juste parcourue. */
+  const userBusy = () => selecting() || !!document.querySelector('.wmx-dc-run, [role="dialog"], [aria-modal="true"]') || Date.now() - lastInput < 8000;
+  let softT = null;
+  /**
+   * Relance voulue par l'extension (nouvel ordre des moyennes, nouvelles cartes, étiquette relue), pas par un clic de l'utilisateur : elle attend la fin
+   * de l'action en cours (sélection, défausse, fenêtre) et que la page ne soit plus parcourue. Avant : elle annulait la sélection toutes les 10 s environ.
+   */
+  function nudgeSoft(tries = 0) {
+    clearTimeout(softT);
+    if (!isPage()) return;
+    if (tries < 450 && userBusy()) { softT = setTimeout(() => nudgeSoft(tries + 1), 2000); return; } // 15 min au plus
+    nudge();
+  }
   async function nudge() {
     if (!isPage()) return;
     const chip = [...document.querySelectorAll('main button')].find((b) => /^(L|UR|SR|R|PC|C)$/.test(b.textContent.trim()) && !b.closest('h3, [class*="rounded-2xl"][class*="cursor-pointer"]') && b.getBoundingClientRect().top < 420);
@@ -417,7 +437,7 @@
     obs.observe(document.body, { childList: true, subtree: true });
   }
 
-  WMX.collView = { serve, parse, sync, listed, ready, /* copie prête : la vue étendue peut servir la page */ state: () => ({ ...S, memo: undefined }), setOn, setSize: (n, reload = false) => { if (!SIZES.includes(n)) return; S.size = n; savePrefs(); paintTools(); if (reload) nudge(); }, /* reload : la page du jeu relit sa liste */ setPrice: (v) => { S.price = !!v; savePrefs(); } };
+  WMX.collView = { nudgeSoft, serve, parse, sync, listed, ready, /* copie prête : la vue étendue peut servir la page */ state: () => ({ ...S, memo: undefined }), setOn, setSize: (n, reload = false) => { if (!SIZES.includes(n)) return; S.size = n; savePrefs(); paintTools(); if (reload) nudge(); }, /* reload : la page du jeu relit sa liste */ setPrice: (v) => { S.price = !!v; savePrefs(); } };
 
   WMX.register({
     name: 'collection-view',

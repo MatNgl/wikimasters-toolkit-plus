@@ -7,6 +7,10 @@
   // Nouveautés, de la plus récente à la plus ancienne. Écrites pour les joueurs : ce qu'ils voient et ce que ça change pour eux.
   // kind : 'new' (nouveau), 'better' (amélioré), 'fix' (corrigé). highlights : les grandes nouveautés, mises en avant en tête de la fenêtre.
   const CHANGES = [
+    { v: '1.1.23', title: 'Vue étendue plus calme', items: [
+      ['fix', 'La liste ne se relance plus à chaque moyenne reçue : une mise à jour par minute au plus.'],
+      ['fix', 'Pas de mise à jour pendant une sélection, une défausse ou une fenêtre ouverte : votre sélection n’est plus annulée.'],
+    ] },
     { v: '1.1.22', title: 'Paquets automatiques plus fiables', items: [
       ['fix', 'L’ouverture automatique des paquets ne reste plus bloquée après une erreur : le menu répond toujours et l’ouverture reprend à l’échéance suivante.'],
     ] },

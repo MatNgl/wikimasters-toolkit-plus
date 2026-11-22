@@ -444,3 +444,24 @@ test('nouvelles cartes pendant une relecture complète : gardées à la fin (ava
   assert.equal(reloads, 0, 'petit écart : lectures légères seulement');
   env.close();
 });
+
+test('relance automatique de la liste (moyennes reçues, nouvelles cartes) : jamais pendant une sélection de cartes, elle attend qu’elle soit finie', async () => {
+  const env = setup(120, { on: true, size: 50, price: false });
+  const { w } = env;
+  const main = w.document.createElement('main');
+  main.innerHTML = `<div id="chips">${RAR.map((r) => `<button>${r}</button>`).join('')}</div>`;
+  w.document.body.append(main);
+  const clicks = [];
+  main.querySelectorAll('#chips button').forEach((b) => b.addEventListener('click', () => clicks.push(b.textContent)));
+  await init(env);
+  const bar = w.document.createElement('div');
+  bar.innerHTML = '<span>3</span><span>cartes sélectionnées</span>';
+  w.document.body.append(bar);
+  env.WMX.collView.nudgeSoft();
+  await sleep(2600);
+  assert.deepEqual(clicks, [], 'sélection en cours : la liste n’est pas relancée');
+  bar.remove();
+  await sleep(2600);
+  assert.deepEqual(clicks, ['L', 'L'], 'sélection finie : la liste est relancée');
+  env.close();
+});
