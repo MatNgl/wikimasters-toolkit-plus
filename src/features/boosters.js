@@ -183,8 +183,17 @@
   /** Ouverture en cours arrêtée par l'utilisateur (« Passer » de l'écran de révélation). */
   const stopped = (session) => !!session?.stopped;
 
+  /** Ouvre un paquet ; une exception ne laisse jamais l'écran masqué ni la page invisible « en vérification » (puis elle est relancée à l'appelant). */
   async function openOne(session) {
-    const btn = [...D().querySelectorAll('button')]
+    try { return await openOneInner(session); } catch (err) {
+      try { session?.yield(false); CTX?.human(false); } catch (_) { /* page invisible déjà fermée */ }
+      if (!CTX) { document.documentElement.classList.remove('wmx-opening'); document.querySelector('.wmx-cover')?.replaceChildren(); }
+      throw err;
+    }
+  }
+
+  async function openOneInner(session) {
+    const btn =[...D().querySelectorAll('button')]
       .find((b) => !b.disabled && !b.closest('.wmx-cover, .wmx-panel') && b.textContent.trim().toLowerCase() === 'ouvrir');
     if (!btn) return null;
     lastCards = null;
@@ -388,8 +397,13 @@
       if (i > 0) await cooldown();
       if (!state.auto) return;
       state.busy = true;
-      const cards = await openOne();
-      state.busy = false;
+      let cards;
+      try { cards = await openOne(); } catch (err) {
+        // Panne imprévue pendant l'ouverture : elle est notée au journal, le menu reste utilisable et la boucle repart à la prochaine échéance.
+        WMX.journal?.add('Paquets', `ouverture interrompue par une erreur : ${String(err?.message || err).slice(0, 200)}`, 'error');
+        setStatus('Ouverture interrompue par une erreur (voir le journal) : nouvel essai à la prochaine échéance');
+        return;
+      } finally { state.busy = false; }
       if (!cards) {
         if (dailyLimit) { dailyLimit = false; stopAuto(); setStatus('Ouverture auto arrêtée : le jeu indique une limite d’ouvertures pour aujourd’hui (réponse du jeu dans le journal)'); } // remis à zéro : une prochaine ouverture repart normalement
         return;
@@ -415,18 +429,30 @@
   async function autoLoop(initialNextAt = null) {
     const id = ++state.loopId;
     setNextAt(Number.isFinite(initialNextAt) ? initialNextAt : Date.now() + nextInterval());
-    let lastBeat = Date.now();
+    state.lastBeat = Date.now();
     while (state.auto && id === state.loopId) {
       await sleep(1000);
       if (id !== state.loopId) break; // une autre boucle a pris le relais
-      if (Date.now() - lastBeat > 15000) { lastBeat = Date.now(); persistAuto(); } // « toujours en cours » : sert à décider de la reprise après un rechargement
+      try { if (await autoTick()) break; } catch (err) {
+        // Une erreur dans un tour ne tue plus la boucle (avant : elle s'arrêtait en silence, « Ouvrir auto » ne répondait plus).
+        state.busy = false;
+        setNextAt(Date.now() + 60000); // pas de nouvel essai chaque seconde si l'erreur se répète
+        WMX.journal?.add('Paquets', `ouverture auto : erreur ignorée, la boucle continue : ${String(err?.message || err).slice(0, 200)}`, 'error');
+      }
+    }
+  }
+
+  /** Un tour de la boucle (chaque seconde). Renvoie vrai quand la boucle doit s'arrêter. */
+  async function autoTick() {
+    {
+      if (Date.now() - state.lastBeat > 15000) { state.lastBeat = Date.now(); persistAuto(); } // « toujours en cours » : sert à décider de la reprise après un rechargement
       if (!WMX.alive()) { // extension rechargée : ce script orphelin s'arrête et retire son interface
         state.auto = false;
         document.querySelectorAll('.wmx-panel, .wmx-cover').forEach((e) => e.remove());
-        break;
+        return true;
       }
-      if (!state.auto) break;
-      if (state.busy) continue;
+      if (!state.auto) return true;
+      if (state.busy) return false;
       // Hors de la page Paquets : avec l'ouverture en parallèle (par défaut), le compte à rebours continue sur n'importe quelle page et, à
       // l'échéance, les paquets s'ouvrent dans une page Paquets invisible ; sans elle, l'ouverture attend le retour sur la page Paquets.
       const onPulls = /^\/pulls/.test(location.pathname);
@@ -434,7 +460,7 @@
       if (!onPulls && !par) {
         const w = (state.nextAt - Date.now()) / 1000;
         setStatus(w > 0 ? `Prochaine ouverture dans ${mmss(w)} · elle se fera sur la page Paquets` : 'Ouverture prête : retournez sur la page Paquets');
-        continue;
+        return false;
       }
       let packs; let max; let nextIn;
       if (onPulls) { ({ packs, max } = packInfo()); nextIn = nextPackIn(); } else {
@@ -467,6 +493,7 @@
           : `Prochaine ouverture dans ${mmss(Math.max(0, wait))} · ${onPulls ? '' : '~'}${packs} paquet${packs > 1 ? 's' : ''} en attente${ready === 0 && packs > 0 ? ' (réserve)' : ''}${where}`);
       }
     }
+    return false;
   }
 
   /**
@@ -476,8 +503,7 @@
   async function autoInvisible(reserve, why) {
     setStatus(why ? `Ouverture anticipée en parallèle (${why})…` : 'Ouverture auto en parallèle…');
     state.busy = true;
-    CTX = await pullsFrame();
-    state.busy = false;
+    try { CTX = await pullsFrame(); } finally { state.busy = false; }
     if (!CTX) { setStatus('Page Paquets invisible indisponible : nouvel essai à la prochaine échéance'); return; }
     try {
       let real = packsLeft();

@@ -7,6 +7,9 @@
   // Nouveautés, de la plus récente à la plus ancienne. Écrites pour les joueurs : ce qu'ils voient et ce que ça change pour eux.
   // kind : 'new' (nouveau), 'better' (amélioré), 'fix' (corrigé). highlights : les grandes nouveautés, mises en avant en tête de la fenêtre.
   const CHANGES = [
+    { v: '1.1.22', title: 'Paquets automatiques plus fiables', items: [
+      ['fix', 'L’ouverture automatique des paquets ne reste plus bloquée après une erreur : le menu répond toujours et l’ouverture reprend à l’échéance suivante.'],
+    ] },
     { v: '1.1.21', title: 'Moyennes, vue étendue et défausse', highlights: [
       { icon: 'chart', title: 'La moyenne de la semaine', text: 'Les prix suivent la vue du marché du jeu, avec la tendance de la semaine.', visual: 'avg',
         settings: { label: 'Choisir où et comment', section: 'Moyennes du marché' } },
