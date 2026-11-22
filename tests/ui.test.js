@@ -181,7 +181,7 @@ test('moyennes : zones masquées et forme « étiquette » (Paramètres → Moye
 
 test('nouveautés 1.1.20 : points forts avec icône, aperçu des formes de la moyenne et lien vers le réglage ; corrections regroupées (pas de mots « Corrigé » / « Amélioré »)', async () => {
   const env = createEnv({ fetchImpl: async () => json({}) });
-  env.w.chrome.runtime.getManifest = () => ({ version: '1.1.24', version_name: '1.1.24' });
+  env.w.chrome.runtime.getManifest = () => ({ version: '1.1.25', version_name: '1.1.25' });
   let opened = null;
   env.WMX.openSettings = (section) => { opened = section; };
   env.WMX.whatsNew.showChanges('1.1.20');

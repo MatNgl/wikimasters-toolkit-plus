@@ -111,7 +111,7 @@
       const go = el('button', { type: 'button', class: 'wmx-ach-go', onclick: claimAll }, one ? 'Réclamer le succès' : `Tout réclamer (${list.length})`);
       kids = [icon(GIFT), el('div', { class: 'wmx-ach-txt' },
         el('b', {}, one ? '1 succès à réclamer' : `${list.length} succès à réclamer`),
-        el('small', {}, one ? `« ${list[0].title} »${list[0].reward ? ` · +${fmt(list[0].reward)} wikibidous` : ''}` : `${sum ? `+${fmt(sum)} wikibidous à récupérer` : 'Récompenses à récupérer'} · un seul clic`)), go];
+        el('small', {}, one ? `« ${list[0].title} »${list[0].reward ? ` · +${fmt(list[0].reward)} wikibidous` : ''}` : `${sum ? `+${fmt(sum)} wikibidous à récupérer` : 'Récompenses à récupérer'}`)), go];
       b.className = 'wmx-ach';
     }
     // Pas de réécriture inutile : le texte et les boutons ne changent pas à chaque balayage (le bouton garde son focus).
