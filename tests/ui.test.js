@@ -181,7 +181,7 @@ test('moyennes : zones masquées et forme « étiquette » (Paramètres → Moye
 
 test('nouveautés 1.1.20 : points forts avec icône, aperçu des formes de la moyenne et lien vers le réglage ; corrections regroupées (pas de mots « Corrigé » / « Amélioré »)', async () => {
   const env = createEnv({ fetchImpl: async () => json({}) });
-  env.w.chrome.runtime.getManifest = () => ({ version: '1.1.28', version_name: '1.1.28' });
+  env.w.chrome.runtime.getManifest = () => ({ version: '1.1.30', version_name: '1.1.30' });
   let opened = null;
   env.WMX.openSettings = (section) => { opened = section; };
   env.WMX.whatsNew.showChanges('1.1.20');
@@ -194,7 +194,7 @@ test('nouveautés 1.1.20 : points forts avec icône, aperçu des formes de la mo
   assert.match(box.querySelector('.wmx-wn-grp').textContent, /Corrections/);
   assert.ok(box.querySelectorAll('.wmx-wn-grp li').length >= 3 && box.querySelectorAll('.wmx-wn-grp li').length <= 5, 'quelques corrections courtes');
   assert.doesNotMatch(box.textContent, /\b(Corrigé|Amélioré|Nouveau)\b/, 'des icônes, pas des mots');
-  const later = [...box.querySelectorAll('.wmx-wn-ver')].filter((v) => /^v1.1.2[2-9]$/.test(v.querySelector('.wmx-wn-vtag')?.textContent || '')); // versions publiées après la 1.1.21
+  const later = [...box.querySelectorAll('.wmx-wn-ver')].filter((v) => { const [a, b, c] = String(v.querySelector('.wmx-wn-vtag')?.textContent || '').replace(/^v/, '').split('.').map(Number); return a > 1 || (a === 1 && (b > 1 || (b === 1 && c > 21))); }); // versions publiées après la 1.1.21
   const len = box.textContent.length - later.reduce((n, v) => n + v.textContent.length, 0);
   assert.ok(len < 900, `peu de texte (${len} caractères)`);
   assert.match(box.textContent, /Paquets automatiques plus fiables/, 'la version 1.1.22 est listée');

@@ -516,16 +516,20 @@ test('veille : un prix déjà au-dessus du plafond ouvre la fenêtre « jusqu’
   const dlg = async () => { for (let i = 0; i < 60 && !w.document.querySelector('.wmx-wc'); i++) await sleep(100); return w.document.querySelector('.wmx-wc'); };
   const type = (input, v) => { input.value = String(v); input.dispatchEvent(new w.Event('input', { bubbles: true })); };
   const seg = (label) => [...w.document.querySelectorAll('.wmx-wc .wmx-wc-seg button')].find((x) => x.textContent === label);
-  const okBtn = () => [...w.document.querySelectorAll('.wmx-wc .wmx-dlg-row button')].find((x) => /Surveiller avec ce plafond/.test(x.textContent));
+  const okBtn = () => [...w.document.querySelectorAll('.wmx-wc .wmx-dlg-row button')].find((x) => x.textContent === 'Surveiller');
 
   // 1) Moyenne ± % : la fenêtre s'ouvre dans un état valide (pourcentage juste suffisant), on choisit +80 %.
   const p1 = WMX.auctions.toggleWatch('w5', 'Carte w5');
   const d1 = await dlg();
   assert.ok(d1, 'fenêtre de confirmation');
-  assert.match(d1.textContent, /Prix actuel : 30 W · mise minimale : 31 W/);
-  assert.match(d1.textContent, /Moyenne du marché : 20 W · la carte est 50 % au-dessus de la moyenne/, 'prix actuel et écart avec la moyenne');
-  assert.match(d1.textContent, /Votre plafond habituel : 18 W/);
-  assert.equal(seg('Moyenne du marché ± %').getAttribute('aria-pressed'), 'true');
+  assert.match(d1.textContent, /Prix actuel\s*30 W/);
+  assert.match(d1.textContent, /Mise min\. 31 W/, 'mise minimale sous le prix actuel');
+  assert.match(d1.textContent, /Moyenne\s*20 W/);
+  assert.equal(d1.querySelector('.wmx-wc-pill').textContent, '+50 %', 'écart avec la moyenne');
+  assert.ok(d1.querySelector('.wmx-wc-pill').classList.contains('up'), 'au-dessus de la moyenne : orange');
+  assert.match(d1.textContent, /Plafond pour cette enchère seulement/);
+  assert.doesNotMatch(d1.textContent, /plafond habituel|Vos réglages ne changent pas/, 'peu de texte');
+  assert.equal(seg('Moyenne ± %').getAttribute('aria-pressed'), 'true');
   const pct = d1.querySelector('input[aria-label^="Pourcentage"]');
   assert.equal(pct.value, '55', 'pourcentage minimal pour atteindre la mise minimale (31 W)');
   assert.equal(okBtn().disabled, false);
@@ -533,7 +537,7 @@ test('veille : un prix déjà au-dessus du plafond ouvre la fenêtre « jusqu’
   assert.equal(okBtn().disabled, true, 'plafond sous la mise minimale : impossible de valider');
   assert.match(d1.textContent, /Sous la mise minimale \(31 W\)/);
   type(pct, 80);
-  assert.match(d1.textContent, /Plafond pour cette enchère : 36 W \(\+80 % par rapport à la moyenne\)/);
+  assert.match(d1.textContent, /Plafond : 36 W · \+80 % de la moyenne/);
   okBtn().click();
   assert.equal(await p1, 'watch');
   assert.equal(env.mem.autoBids.w5.capMode, 'avg'); assert.equal(env.mem.autoBids.w5.capPct, 80); assert.equal(env.mem.autoBids.w5.watch, true);
@@ -548,7 +552,7 @@ test('veille : un prix déjà au-dessus du plafond ouvre la fenêtre « jusqu’
   seg('Valeur fixe').click();
   const abs = d2.querySelector('input[aria-label^="Valeur maximale"]');
   type(abs, 45);
-  assert.match(d2.textContent, /Plafond pour cette enchère : 45 W/);
+  assert.match(d2.textContent, /Plafond : 45 W/);
   okBtn().click();
   assert.equal(await p2, 'watch');
   assert.equal(env.mem.autoBids.w6.capMode, 'abs'); assert.equal(env.mem.autoBids.w6.cap, 45);
@@ -573,7 +577,8 @@ test('bouton « Marché » : panneau des enchères en cours de la carte (titre e
   const mk = (id, title, over = {}) => ({ id, status: 'active', card_id: `c-${id}`, snapshot_rarity: 'R', base_amount: 10, current_bid: null, seller_id: 'seller', end_at: inMin(30), card: { wikipedia_title: title, rarity: 'R' }, ...over });
   const asked = [];
   const env = createEnv({ fetchImpl: async (u) => {
-    if (/\/api\/marketplace\?/.test(String(u))) { asked.push(String(u)); return json({ auctions: [mk('m1', 'Beretta'), mk('m2', 'Beretta 70'), mk('m3', 'Beretta', { current_bid: 12 })], hasMore: false }); }
+    if (/\/api\/marketplace\?/.test(String(u))) { asked.push(String(u)); return json({ auctions: [mk('m3', 'Beretta', { current_bid: 12 }), mk('m2', 'Beretta 70'), mk('m1', 'Beretta')], hasMore: false }); }
+    if (/price-history/.test(String(u))) return json({ by_rarity: { R: { weekly: [{ start: new Date().toISOString().slice(0, 10), avg: 11, count: 3 }] } } });
     return json({});
   } });
   const { w, WMX } = env;
@@ -592,6 +597,15 @@ test('bouton « Marché » : panneau des enchères en cours de la carte (titre e
   assert.match(w.document.querySelector('.wmx-mks').textContent, /2 enchères en cours/);
   assert.match(w.document.querySelector('.wmx-mks').textContent, /Départ 10 W/);
   assert.match(w.document.querySelector('.wmx-mks').textContent, /Mise 12 W/);
+  const items = () => [...w.document.querySelectorAll('.wmx-mks-item')];
+  assert.match(items()[0].textContent, /Départ 10 W/, 'les moins chères d’abord (ordre croissant)');
+  assert.match(items()[1].textContent, /Mise 12 W/);
+  for (let i = 0; i < 80 && !w.document.querySelector('.wmx-mks-pill'); i++) await sleep(100);
+  assert.ok(items()[0].querySelector('.wmx-mks-pill.down'), 'moins chère que la moyenne : vert');
+  assert.equal(items()[0].querySelector('.wmx-mks-pill').textContent, '−9 %');
+  assert.ok(items()[1].querySelector('.wmx-mks-pill.up'), 'plus chère que la moyenne : rouge');
+  assert.equal(items()[1].querySelector('.wmx-mks-pill').textContent, '+9 %');
+  assert.match(w.document.querySelector('.wmx-mks-count').textContent, /moyenne 11 W/);
   // Recherche pré-remplie
   [...w.document.querySelectorAll('.wmx-mks .wmx-dlg-row button')].find((b) => b.textContent === 'Voir sur le Marché').click();
   for (let i = 0; i < 60 && !searched; i++) await sleep(100);

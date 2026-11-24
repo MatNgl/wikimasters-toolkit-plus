@@ -1116,31 +1116,31 @@
       const need = avg ? Math.max(-90, Math.min(500, Math.ceil(Math.round((price / avg - 1) * 1e4) / 100))) : null; // pourcentage juste suffisant pour atteindre la mise minimale
       const st = { mode: capPrefs.mode === 'abs' || !avg ? 'abs' : 'avg', pct: Number.isFinite(Number(capPrefs.pct)) ? Number(capPrefs.pct) : 30, abs: Math.floor(Number(capPrefs.abs)) || 0 };
       if (avg && Math.round(avg * (1 + st.pct / 100)) < price) st.pct = need;   // la fenêtre s'ouvre dans un état valide
-      if (st.abs < price) st.abs = Math.ceil(price * 1.1);
+      if (st.abs < price || st.abs > price * 2) st.abs = Math.ceil(price * 1.1); // la valeur fixe retenue ne vaut que pour un prix proche : sinon +10 %
       const capNow = () => (st.mode === 'abs' ? Math.floor(Number(st.abs)) : avg ? Math.max(1, Math.round(avg * (1 + Number(st.pct) / 100))) : null);
 
-      const infoLine = (txt, cls = '') => el('p', { class: `wmx-wc-line ${cls}`.trim() }, txt);
       const pctIn = el('input', { type: 'number', class: 'wmx-input wmx-wc-in', step: '1', min: '-90', max: '500', value: String(st.pct), 'aria-label': 'Pourcentage par rapport à la moyenne' });
       const absIn = el('input', { type: 'number', class: 'wmx-input wmx-wc-in', step: '1', min: '1', value: String(st.abs), 'aria-label': 'Valeur maximale en W' });
       const chip = (label, onClick, title = '') => el('button', { type: 'button', class: 'wmx-seg-btn wmx-wc-chip', title, onclick: onClick }, label);
       const setPct = (v) => { st.pct = v; pctIn.value = String(v); refresh(); };
       const setAbs = (v) => { st.abs = v; absIn.value = String(v); refresh(); };
       const avgPanel = el('div', { class: 'wmx-wc-panel' },
-        el('label', { class: 'wmx-wc-field' }, el('span', {}, 'Je veux bien payer jusqu’à'), pctIn, el('span', {}, '% par rapport à la moyenne')),
+        el('label', { class: 'wmx-wc-field' }, el('span', {}, 'Moyenne ±'), pctIn, el('span', {}, '%')),
         el('div', { class: 'wmx-wc-chips' }, chip('+10 %', () => setPct(10)), chip('+25 %', () => setPct(25)), chip('+50 %', () => setPct(50)),
-          ...(need != null ? [chip(`Juste au-dessus (+${need} %)`, () => setPct(need), 'Le plus bas pourcentage qui permet de miser le minimum demandé')] : [])));
+          ...(need != null ? [chip(`Mini +${need} %`, () => setPct(need), 'Le plus bas pourcentage qui permet de miser le minimum demandé')] : [])));
       const absPanel = el('div', { class: 'wmx-wc-panel' },
-        el('label', { class: 'wmx-wc-field' }, el('span', {}, 'Je veux bien payer au plus'), absIn, el('span', {}, 'W')),
-        el('div', { class: 'wmx-wc-chips' }, chip(`Mise minimale (${fmt(price)} W)`, () => setAbs(price)), chip(`+10 % (${fmt(Math.ceil(price * 1.1))} W)`, () => setAbs(Math.ceil(price * 1.1))), chip(`+25 % (${fmt(Math.ceil(price * 1.25))} W)`, () => setAbs(Math.ceil(price * 1.25)))));
+        el('label', { class: 'wmx-wc-field' }, el('span', {}, 'Maximum'), absIn, el('span', {}, 'W')),
+        el('div', { class: 'wmx-wc-chips' }, chip(`Mini ${fmt(price)} W`, () => setAbs(price)), chip(`+10 % · ${fmt(Math.ceil(price * 1.1))} W`, () => setAbs(Math.ceil(price * 1.1))), chip(`+25 % · ${fmt(Math.ceil(price * 1.25))} W`, () => setAbs(Math.ceil(price * 1.25)))));
       const modeBtn = (mode, label) => el('button', { type: 'button', class: 'wmx-seg-btn', 'aria-pressed': 'false', onclick: () => { if (mode === 'avg' && !avg) return; st.mode = mode; refresh(); } }, label);
       const bAbs = modeBtn('abs', 'Valeur fixe');
-      const bAvg = modeBtn('avg', 'Moyenne du marché ± %');
+      const bAvg = modeBtn('avg', 'Moyenne ± %');
       if (!avg) { bAvg.disabled = true; bAvg.title = 'La moyenne du marché de cette carte est inconnue pour le moment'; }
       const capOut = el('p', { class: 'wmx-wc-out' });
       const warn = el('p', { class: 'wmx-wc-warn' });
-      const ok = el('button', { type: 'button', class: 'wmx-btn' }, 'Surveiller avec ce plafond');
+      const ok = el('button', { type: 'button', class: 'wmx-btn' }, 'Surveiller');
       const done = (v) => { document.removeEventListener('keydown', onKey, true); back.remove(); resolve(v); };
       const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); done(null); } };
+      const sign = (n) => (n >= 0 ? '+' : '−') + Math.abs(n);
       function refresh() {
         bAbs.setAttribute('aria-pressed', String(st.mode === 'abs'));
         bAvg.setAttribute('aria-pressed', String(st.mode === 'avg'));
@@ -1148,9 +1148,11 @@
         absPanel.hidden = st.mode !== 'abs';
         st.pct = Number(pctIn.value); st.abs = Number(absIn.value);
         const c = capNow();
-        const valid = c != null && Number.isFinite(c) && c > 0 && c >= price && (st.mode !== 'avg' || Number.isFinite(st.pct));
-        capOut.textContent = c != null && Number.isFinite(c) ? `Plafond pour cette enchère : ${fmt(c)} W${avg ? ` (${Math.round((c / avg - 1) * 100) >= 0 ? '+' : '−'}${Math.abs(Math.round((c / avg - 1) * 100))} % par rapport à la moyenne)` : ''}` : 'Plafond : à saisir';
-        warn.textContent = !valid && c != null && Number.isFinite(c) && c > 0 ? `Sous la mise minimale (${fmt(price)} W) : l’extension ne miserait jamais.` : '';
+        const known = c != null && Number.isFinite(c) && c > 0;
+        const valid = known && c >= price && (st.mode !== 'avg' || Number.isFinite(st.pct));
+        capOut.textContent = '';
+        capOut.append(known ? `Plafond : ${fmt(c)} W` : 'Plafond : à saisir', ...(known && avg ? [el('small', {}, ` · ${sign(Math.round((c / avg - 1) * 100))} % de la moyenne`)] : []));
+        warn.textContent = known && !valid ? `Sous la mise minimale (${fmt(price)} W)` : '';
         ok.disabled = !valid;
       }
       pctIn.addEventListener('input', refresh);
@@ -1161,17 +1163,20 @@
         WMX.store.set('watchCapPrefs', capPrefs);
         done(st.mode === 'abs' ? { capMode: 'abs', cap: Math.floor(Number(st.abs)) } : { capMode: 'avg', capPct: Math.round(Number(st.pct)) });
       });
+      // Prix actuel (en grand), moyenne à côté, et l'écart en pastille : orange au-dessus de la moyenne, verte sinon.
+      const figure = (label, value, extra = '') => el('div', { class: 'wmx-wc-fig' }, el('small', {}, label), el('b', {}, value), extra ? el('small', { class: 'wmx-wc-sub' }, extra) : '');
+      const gap = el('div', { class: 'wmx-wc-gap' },
+        figure('Prix actuel', `${fmt(cur)} W`, price !== cur ? `Mise min. ${fmt(price)} W` : ''),
+        el('div', { class: 'wmx-wc-right' },
+          figure('Moyenne', avg ? `${fmt(avg)} W` : '—'),
+          avg ? el('span', { class: `wmx-wc-pill ${over > 0 ? 'up' : over < 0 ? 'down' : 'flat'}`, title: 'Écart du prix actuel avec la moyenne' }, over === 0 ? '0 %' : `${sign(over)} %`) : ''));
       const dlg = el('div', { class: 'wmx-dlg wmx-wc-dlg', role: 'dialog', 'aria-label': 'Surveiller au-dessus du plafond' },
         el('button', { type: 'button', class: 'wmx-dlg-x', title: 'Fermer', 'aria-label': 'Fermer', onclick: () => done(null) }, '×'),
-        el('h3', {}, `Surveiller « ${name} » ?`),
-        el('p', { class: 'wmx-dlg-note' }, 'Cette carte est déjà au-dessus de votre plafond habituel. Choisissez jusqu’où l’extension peut miser, pour cette enchère seulement.'),
-        el('div', { class: 'wmx-wc-info' },
-          infoLine(`Prix actuel : ${fmt(cur)} W · mise minimale : ${fmt(price)} W`),
-          infoLine(avg ? `Moyenne du marché : ${fmt(avg)} W · la carte est ${over >= 0 ? `${over} % au-dessus` : `${-over} % en dessous`} de la moyenne` : 'Moyenne du marché : inconnue (valeur fixe seulement)', avg && over > 25 ? 'hot' : ''),
-          infoLine(`Votre plafond habituel : ${fmt(capW)} W (${capSource(rule, a)})`, 'dim')),
+        el('h3', {}, `Surveiller « ${name} »`),
+        el('p', { class: 'wmx-wc-for' }, 'Plafond pour cette enchère seulement'),
+        gap,
         el('div', { class: 'wmx-seg wmx-wc-seg' }, bAbs, bAvg),
         avgPanel, absPanel, capOut, warn,
-        el('p', { class: 'wmx-dlg-note' }, 'Vos réglages ne changent pas : ce plafond ne vaut que pour cette enchère. Votre choix vous sera reproposé la prochaine fois.'),
         el('div', { class: 'wmx-dlg-row' }, el('button', { type: 'button', class: 'wmx-btn wmx-btn--ghost', onclick: () => done(null) }, 'Annuler'), ok));
       const back = el('div', { class: 'wmx-dlg-back wmx-wc' }, dlg);
       document.addEventListener('keydown', onKey, true);

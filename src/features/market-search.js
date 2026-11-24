@@ -77,11 +77,17 @@
   const closePanel = () => { panel?.remove(); panel = null; document.removeEventListener('keydown', onKey, true); };
   const onKey = (e) => { if (e.key === 'Escape' && panel) { e.stopPropagation(); closePanel(); } };
 
+  /** Prix de l'enchère : la mise actuelle, sinon le prix de départ. */
+  const priceOf = (a) => a.current_bid || a.base_amount || 0;
   function rowOf(a, me) {
     const mine = !!me && a.seller_id === me;
     const rarity = WMX.normRarity(a.snapshot_rarity || a.card?.rarity) || '';
     const price = a.current_bid ? `Mise ${fmt(a.current_bid)} W` : `Départ ${fmt(a.base_amount)} W`;
     const left = Math.max(0, new Date(a.end_at).getTime() - Date.now());
+    // Écart avec la moyenne du marché : vert si moins cher, rouge si plus cher (rien tant que la moyenne n'est pas connue).
+    const avg = WMX.prices?.get?.(a.card_id, rarity || 'C')?.avg;
+    const pct = avg > 0 ? Math.round((priceOf(a) / avg - 1) * 100) : null;
+    const pill = pct == null ? '' : el('span', { class: `wmx-mks-pill ${pct > 0 ? 'up' : pct < 0 ? 'down' : 'flat'}`, title: `Moyenne du marché : ${fmt(avg)} W` }, `${pct > 0 ? '+' : pct < 0 ? '−' : ''}${Math.abs(pct)} %`);
     const title = a.card?.wikipedia_title || '';
     const watch = el('button', { type: 'button', class: 'wmx-btn wmx-btn--ghost wmx-mks-watch' }, 'Surveiller');
     const paintWatch = () => { const s = WMX.auctions?.watchState?.(a.id); watch.textContent = s === 'watch' ? 'Surveillée' : s === 'auto' ? 'Mise auto' : 'Surveiller'; watch.disabled = s === 'auto'; watch.classList.toggle('on', s === 'watch'); };
@@ -95,7 +101,7 @@
     });
     return el('div', { class: 'wmx-mks-item' },
       el('b', { class: 'wmx-mks-rar', style: `--rgb:${WMX.RARITY_RGB?.[rarity] || '160 175 168'}` }, rarity || '?'),
-      el('div', { class: 'wmx-mks-info' }, el('strong', {}, price), el('small', {}, `${WMX.logic.fmtLeft(left)} restant${mine ? ' · votre vente' : ''}`)),
+      el('div', { class: 'wmx-mks-info' }, el('strong', {}, price, pill), el('small', {}, `${WMX.logic.fmtLeft(left)} restant${mine ? ' · votre vente' : ''}`)),
       mine ? el('span', { class: 'wmx-mks-mine' }, 'Votre vente') : el('div', { class: 'wmx-mks-acts' }, watch, see));
   }
 
@@ -120,10 +126,20 @@
       if (panel !== mine) return; // fermé entre-temps
       const me = WMX.auctions?.state?.()?.me || null;
       const rar = WMX.normRarity(card.rarity);
-      const sorted = [...found].sort((a, b) => (WMX.normRarity(b.snapshot_rarity || b.card?.rarity) === rar) - (WMX.normRarity(a.snapshot_rarity || a.card?.rarity) === rar)); // la même rareté d'abord
-      if (!sorted.length) list.replaceChildren(el('p', { class: 'wmx-mks-wait' }, 'Aucune enchère en cours pour cette carte.'));
-      else list.replaceChildren(el('p', { class: 'wmx-mks-count' }, `${sorted.length} enchère${sorted.length > 1 ? 's' : ''} en cours`), ...sorted.slice(0, 8).map((a) => rowOf(a, me)),
-        ...(sorted.length > 8 ? [el('p', { class: 'wmx-mks-wait' }, `… et ${sorted.length - 8} autre${sorted.length - 8 > 1 ? 's' : ''} : « Voir sur le Marché ».`)] : []));
+      const rarOf = (a) => WMX.normRarity(a.snapshot_rarity || a.card?.rarity);
+      // Les moins chères d'abord (ordre croissant) ; la rareté de la carte regardée passe avant les autres, dont les prix ne se comparent pas.
+      const sorted = [...found].sort((a, b) => ((rarOf(b) === rar) - (rarOf(a) === rar)) || priceOf(a) - priceOf(b) || new Date(a.end_at) - new Date(b.end_at));
+      const paint = () => {
+        if (panel !== mine) return;
+        if (!sorted.length) { list.replaceChildren(el('p', { class: 'wmx-mks-wait' }, 'Aucune enchère en cours pour cette carte.')); return; }
+        const avg = WMX.prices?.get?.(sorted[0].card_id, rarOf(sorted[0]) || 'C')?.avg;
+        list.replaceChildren(el('p', { class: 'wmx-mks-count' }, `${sorted.length} enchère${sorted.length > 1 ? 's' : ''} en cours${avg > 0 ? ` · moyenne ${fmt(avg)} W` : ''}`), ...sorted.slice(0, 8).map((a) => rowOf(a, me)),
+          ...(sorted.length > 8 ? [el('p', { class: 'wmx-mks-wait' }, `… et ${sorted.length - 8} autre${sorted.length - 8 > 1 ? 's' : ''} : « Voir sur le Marché ».`)] : []));
+      };
+      paint();
+      // Moyennes du marché (une seule lecture par carte) : les écarts vert / rouge s'ajoutent dès qu'elles arrivent.
+      const missing = [...new Set(sorted.slice(0, 8).map((a) => a.card_id).filter((id) => id && !WMX.prices?.has?.(id)))];
+      if (missing.length) Promise.all(missing.map((id) => Promise.race([WMX.prices.fetchOne(id), sleep(8000)]))).then(paint).catch(() => {});
     } catch (err) {
       if (panel !== mine) return;
       list.replaceChildren(el('p', { class: 'wmx-mks-wait' }, err?.message === 'blocked' ? 'Le jeu demande de patienter : réessayez dans un instant.' : 'Le Marché ne répond pas pour le moment. « Voir sur le Marché » ouvre la recherche.'));
