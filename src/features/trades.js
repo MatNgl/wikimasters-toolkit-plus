@@ -184,7 +184,20 @@
       if (id && c?.wikipedia_title && rarity) comp.ids.set(compKey(c.wikipedia_title, rarity), id);
     }
   }
-  const compModal = () => [...document.querySelectorAll('[class*="max-w-5xl"]')].find((m) => /^\s*Échanger avec/i.test(m.firstElementChild?.textContent || ''));
+  // « Échanger avec X » (nouvelle offre) ou « Contre-offre avec X » (réponse à une offre reçue) : même fenêtre, même ligne de compteurs.
+  const compModal = () => [...document.querySelectorAll('[class*="max-w-5xl"]')].find((m) => /^\s*(Échanger|Contre-offre) avec/i.test(m.firstElementChild?.textContent || ''));
+  /**
+   * Wikibidous de l'offre en cours, lus sur la ligne de compteurs du jeu : « Moi : 50 cartes · 5 wb ⇆ X : 0 cartes · 500 wb » (la partie « · N wb »
+   * n'est là que s'il y a des wikibidous). Ils comptent dans le bilan : 1 wikibidou = 1 W.
+   */
+  function compWb(modal, partner) {
+    const txt = modal.textContent.replace(/\s+/g, ' ');
+    const one = (who) => {
+      const m = new RegExp(`${who}\\s*:\\s*\\d+\\s*cartes?(?:\\s*·\\s*([\\d\\s\\u00a0\\u202f.]+?)\\s*wb)?`, 'i').exec(txt);
+      return m && m[1] ? Number(m[1].replace(/\D/g, '')) || 0 : 0;
+    };
+    return { me: one('Moi'), them: partner ? one(partner.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) : 0 };
+  }
   function compCards(modal) {
     return [...modal.querySelectorAll('button')].filter((b) => b.querySelector('h3') && b.querySelector('[class*="top-2"][class*="left-2"]')).map((b) => {
       const title = (b.querySelector('h3').textContent || '').replace(/\s+/g, ' ').trim();
@@ -210,7 +223,7 @@
     const modal = compModal();
     if (!modal) { comp.key = ''; comp.mine.clear(); comp.theirs.clear(); return; }
     const head = modal.firstElementChild.textContent.replace(/\s+/g, ' ').trim();
-    const partner = (/^Échanger avec\s*(.+?)\s*×?$/i.exec(head)?.[1] || '').trim();
+    const partner = (/^(?:Échanger|Contre-offre) avec\s*(.+?)\s*×?$/i.exec(head)?.[1] || '').trim();
     if (comp.key !== partner) { comp.key = partner; comp.mine.clear(); comp.theirs.clear(); } // autre ami : nouvelle offre
     const tab = [...modal.querySelectorAll('button')].find((x) => /^(Mes cartes|Cartes de )/.test(x.textContent.trim()) && x.className.includes('border-b-2'));
     const side = tab && /^Mes cartes/.test(tab.textContent.trim()) ? comp.mine : comp.theirs;
@@ -236,13 +249,15 @@
     if (!bar) { bar = el('div', { class: 'wmx-tc-bar' }); foot.before(bar); }
     const items = [...[...comp.mine.values()].map((i) => ({ ...i, by: 'me' })), ...[...comp.theirs.values()].map((i) => ({ ...i, by: 'them' }))];
     const loading = items.filter((i) => WMX.prices.loading(i.id)).length;
-    const sig = `${loading}|${items.map((i) => { const v = cardValue(i); return `${i.by}${i.id}${v.avg ?? ''}${v.fresh?.state || ''}`; }).join(',')}`;
+    const wb = compWb(modal, partner); // wikibidous donnés / demandés : comptés dans le bilan (avant : ignorés, un échange contre des wikibidous paraissait perdu à 100 %)
+    const sig = `${loading}|${wb.me}|${wb.them}|${items.map((i) => { const v = cardValue(i); return `${i.by}${i.id}${v.avg ?? ''}${v.fresh?.state || ''}`; }).join(',')}`;
     if (bar.dataset.sig === sig && bar.firstChild) return;
     bar.dataset.sig = sig;
-    if (!items.length) { bar.replaceChildren(el('p', { class: 'wmx-tc-empty' }, 'Cochez des cartes : le bilan de l’offre (valeur donnée / reçue, d’après les moyennes du marché) s’affiche ici avant l’envoi.')); return; }
-    const t = { id: 'compose', items, sides: [{ uid: 'me', name: 'Vous', w: 0 }, { uid: 'them', name: partner || 'votre ami', w: 0 }] };
+    if (!items.length && !wb.me && !wb.them) { bar.replaceChildren(el('p', { class: 'wmx-tc-empty' }, 'Cochez des cartes : le bilan de l’offre (valeur donnée / reçue, d’après les moyennes du marché) s’affiche ici avant l’envoi.')); return; }
+    const t = { id: 'compose', items, sides: [{ uid: 'me', name: 'Vous', w: wb.me }, { uid: 'them', name: partner || 'votre ami', w: wb.them }] };
+    const wbNote = wb.me || wb.them ? `wikibidous comptés (${[wb.me ? `vous donnez ${fmt(wb.me)}` : '', wb.them ? `${partner || 'votre ami'} donne ${fmt(wb.them)}` : ''].filter(Boolean).join(', ')} ; 1 wikibidou = 1 W)` : 'aucun wikibidou dans l’offre';
     bar.replaceChildren(summary(t, 0),
-      el('small', { class: 'wmx-tc-note' }, `${loading ? `↻ ${loading} moyenne${loading > 1 ? 's' : ''} en cours d’actualisation : le bilan s’affine tout seul · ` : ''}wikibidous ajoutés non comptés`));
+      el('small', { class: 'wmx-tc-note' }, `${loading ? `↻ ${loading} moyenne${loading > 1 ? 's' : ''} en cours d’actualisation : le bilan s’affine tout seul · ` : ''}${wbNote}`));
   }
   const compSchedule = () => { clearTimeout(comp.timer); comp.timer = setTimeout(compScan, 200); };
 

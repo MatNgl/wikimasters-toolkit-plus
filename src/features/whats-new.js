@@ -7,6 +7,9 @@
   // Nouveautés, de la plus récente à la plus ancienne. Écrites pour les joueurs : ce qu'ils voient et ce que ça change pour eux.
   // kind : 'new' (nouveau), 'better' (amélioré), 'fix' (corrigé). highlights : les grandes nouveautés, mises en avant en tête de la fenêtre.
   const CHANGES = [
+    { v: '1.1.26', title: 'Échanges : les wikibidous comptent', items: [
+      ['fix', 'Contre-offre et nouvelle offre : les wikibidous donnés ou demandés sont comptés dans le bilan (avant : un échange contre des wikibidous paraissait perdu à 100 %).'],
+    ] },
     { v: '1.1.24', title: 'Succès : tout réclamer en un clic', items: [
       ['new', 'Page Succès : un bandeau « Tout réclamer » récupère d’un coup toutes les récompenses disponibles (ou la seule qui reste).'],
     ] },

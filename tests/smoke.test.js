@@ -672,6 +672,38 @@ test('échanges : fenêtre « Échanger avec » — moyenne sur chaque carte, ca
   env.close();
 });
 
+test('échanges : les wikibidous de l’offre (fenêtre « Contre-offre avec » ou « Échanger avec ») comptent dans le bilan — plus de « perdu à 100 % » quand on demande des wikibidous', async () => {
+  const env = createEnv({ fetchImpl: async (u) => {
+    const id = String(u).match(/cards\/([^/]+)\//)?.[1];
+    return json({ summary: { R: { average: id === 'a1' ? 100 : 10, count: 9, latest: 1 } } });
+  } });
+  const { w, WMX } = env;
+  w.history.pushState({}, '', '/trades');
+  const card = (title, sel) => `<button class="relative border-2 ${sel ? 'border-[var(--color-accent)]' : 'border-transparent'}"><div class="relative"><div class="absolute top-2 left-2">R</div><h3>${title}</h3></div></button>`;
+  // Même ligne de compteurs que le jeu : deux éléments collés, « · N wb » seulement quand il y a des wikibidous.
+  const modal = (head, mine, theirs) => `<div class="w-full max-w-5xl"><div>${head}</div><div><span>${mine}</span><span>${theirs}</span></div>
+    <button class="border-b-2">Mes cartes</button><button>Cartes de bob</button><div>${card('Alpha', true)}</div><div><button>Annuler</button><button>Envoyer l'offre</button></div></div>`;
+  for (const f of WMX.features) if (f.name === 'trade-composer') await f.init();
+  w.dispatchEvent(new w.CustomEvent('wmx:api', { detail: { url: '/api/my-collection?owned_by=bob', method: 'GET', status: 200, data: { collection: [
+    { card_id: 'a1', snapshot_rarity: 'R', card: { wikipedia_title: 'Alpha' } }] } } }));
+  const bar = () => w.document.querySelector('.wmx-tc-bar')?.textContent || '';
+  // Je donne une carte de 100 W et je demande 90 wikibidous : quasi équivalent.
+  w.document.body.innerHTML = modal('Contre-offre avec bob', 'Moi : 1 carte', 'bob : 0 cartes · 90 wb');
+  for (let i = 0; i < 60 && !/Vous recevez\s*90 W/.test(bar()); i++) await sleep(100);
+  assert.match(bar(), /Vous donnez\s*100 W/);
+  assert.match(bar(), /Vous recevez\s*90 W/, 'les wikibidous demandés sont comptés');
+  assert.match(bar(), /Équilibré|équilibré|Désavantageux : vous perdez 10 W/, 'plus de « perdu à 100 % »');
+  assert.doesNotMatch(bar(), /-100|\(−100|100 %/);
+  assert.match(bar(), /wikibidous comptés/);
+  // Mes wikibidous ajoutés (« Moi : 1 carte · 5 wb ») : comptés de mon côté ; espace insécable dans les milliers.
+  w.document.body.innerHTML = modal('Échanger avec bob', 'Moi : 1 carte · 5 wb', 'bob : 0 cartes · 1 500 wb');
+  for (let i = 0; i < 60 && !/Vous recevez\s*1\s?500 W/.test(bar()); i++) await sleep(100);
+  assert.match(bar(), /Vous donnez\s*105 W/, 'ma carte (100 W) + mes 5 wikibidous');
+  assert.match(bar(), /Vous recevez\s*1\s500 W/);
+  assert.match(bar(), /Avantageux/);
+  env.close();
+});
+
 test('échanges : bilan visible tout de suite, vu de mon côté (je donne / je reçois, verdict), détail des cartes avec « nouvelle / déjà »', async () => {
   const env = createEnv({ fetchImpl: async (u) => {
     const id = String(u).match(/cards\/([^/]+)\//)?.[1];
