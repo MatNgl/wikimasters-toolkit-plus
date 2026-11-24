@@ -85,7 +85,7 @@
       ...(styled ? [el('span', { class: 'wmx-sty-waves' }), el('span', { class: 'wmx-sty-sheen' })] : []),
       el('span', { class: 'wmx-rar' }, r),
       acts,
-      el('div', { class: 'wmx-meta' }, el('strong', {}, c.wikipedia_title || '?'), priceChip, desc, WMX.marketSearch ? WMX.marketSearch.button({ title: c.wikipedia_title, rarity: r }, { compact: true }) : ''));
+      el('div', { class: 'wmx-meta' }, el('strong', {}, c.wikipedia_title || '?'), priceChip, desc));
     // Moyenne du marché : « … » tant qu'elle n'est pas arrivée (chargée en arrière-plan pendant l'ouverture des paquets).
     const paintPrice = () => {
       const p = WMX.prices.get(c.id, r);

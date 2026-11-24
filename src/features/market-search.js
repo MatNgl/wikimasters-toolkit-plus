@@ -4,7 +4,8 @@
 //     de CETTE carte (titre exact), avec « Voir » (ouvre l'enchère) et « Surveiller » ;
 //  2) « Voir sur le Marché » : ouvre la page Marché et recopie le titre dans la barre de recherche du jeu, puis lance la recherche (le jeu ne lit pas
 //     la recherche dans l'adresse de la page : on tape donc le titre comme le ferait le joueur).
-// Le bouton est posé dans la fiche d'une carte du jeu (Collection, Toutes les cartes, profils, révélation des paquets) et sur les tuiles de la révélation.
+// Le bouton est posé UNIQUEMENT dans la fiche (le détail) d'une carte du jeu : Collection, Toutes les cartes, profils. Pas sur les cartes elles-mêmes,
+// ni dans la révélation des paquets (la carte y est déjà sous les yeux).
 (() => {
   const { el, sleep, waitFor } = WMX.dom;
   const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -131,18 +132,17 @@
 
   // --- Bouton ---------------------------------------------------------------------------------------------------------------------------
   const ICON = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>';
-  /** Bouton « Marché » (icône + texte). `compact` : petite pastille (tuiles de la révélation). */
-  function button(card, { compact = false } = {}) {
+  /** Bouton « Marché » (icône + texte). */
+  function button(card) {
     const ico = el('span', { class: 'wmx-mks-ico' });
     WMX.dom.svg(ico, ICON);
-    const b = el('button', { type: 'button', class: `wmx-mks-btn${compact ? ' compact' : ''}`, title: 'Voir si cette carte est en vente sur le Marché' }, ico, 'Marché');
+    const b = el('button', { type: 'button', class: 'wmx-mks-btn', title: 'Voir si cette carte est en vente sur le Marché' }, ico, 'Marché');
     b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); open(card); });
     return b;
   }
 
   // --- Fiche d'une carte du jeu : le bouton est ajouté sous le titre, à côté des onglets Détails / Marché / Cadre -------------------------
   const RAR = /^(L|UR|SR|R|PC|C)$/;
-  const SHEET_CSS = '.wmx-mks-row{margin:8px 0 4px}.wmx-mks-btn{display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border-radius:10px;border:1.5px solid #2dd4a0;background:#2dd4a01f;color:#bff5e0;font:700 13px Outfit,system-ui,sans-serif;cursor:pointer}.wmx-mks-btn:hover{background:#2dd4a03d;color:#fff}.wmx-mks-ico{display:inline-grid;place-items:center}';
   /** Titre et rareté d'une fiche ouverte (racine = élément en position fixe qui porte le titre et les onglets). */
   function sheetCard(root) {
     const h = root.querySelector('h2');
@@ -150,14 +150,13 @@
     const badge = [...root.querySelectorAll('div, span')].find((e) => !e.children.length && RAR.test(e.textContent.trim()) && e.getBoundingClientRect().top < (root.getBoundingClientRect().top + 120));
     return { title, rarity: badge ? WMX.normRarity(badge.textContent.trim()) : '' };
   }
-  /** Ajoute le bouton « Marché » à une fiche (document du jeu : la page, ou le cadre invisible des fiches). Sans effet si déjà fait. */
-  function decorateSheet(root, doc = document) {
+  /** Ajoute le bouton « Marché » à une fiche ouverte dans la page du jeu. Sans effet si déjà fait. */
+  function decorateSheet(root) {
     if (!root || root.querySelector('.wmx-mks-row') || onMarket()) return false;
     const tab = [...root.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Détails' && [...(b.parentElement?.children || [])].some((s) => s.textContent.trim() === 'Marché'));
     const tablist = tab?.parentElement;
     const { title, rarity } = sheetCard(root);
     if (!tablist || !title) return false;
-    if (doc !== document && !doc.getElementById('wmx-mks-style')) { const st = doc.createElement('style'); st.id = 'wmx-mks-style'; st.textContent = SHEET_CSS; doc.head.append(st); } // cadre invisible : il n'a pas nos styles
     const row = el('div', { class: 'wmx-mks-row' }, button({ title, rarity }));
     tablist.after(row);
     return true;

@@ -1410,7 +1410,6 @@ html.wmx-avg-strip [class*="rounded-2xl"]:has(> .wmx-nt-price) > div[class*="top
 .wmx-mks-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 13px; border-radius: 10px; border: 1.5px solid #2dd4a0; background: #2dd4a01f; color: #bff5e0; font: 700 13px Outfit, system-ui, sans-serif; cursor: pointer; }
 .wmx-mks-btn:hover { background: #2dd4a03d; color: #fff; }
 .wmx-mks-ico { display: inline-grid; place-items: center; }
-.wmx-mks-btn.compact { margin-top: 5px; padding: 3px 9px; border-radius: 8px; font-size: 11px; background: #000a; border-color: #2dd4a099; }
 .wmx-mks-dlg { width: min(460px, calc(100vw - 32px)); position: relative; }
 .wmx-mks-list { display: flex; flex-direction: column; gap: 8px; margin: 6px 0 4px; }
 .wmx-mks-wait, .wmx-mks-count { margin: 0; color: #9db5a8; font-size: 13px; }

@@ -507,7 +507,6 @@
         d.head.append(st);
       }
       root.classList.add('wmx-keep');
-      try { WMX.marketSearch?.decorateSheet(root, d); } catch (_) { /* bouton « Marché » facultatif */ }
       frame.classList.add('wmx-on');
       w.focus();
 
