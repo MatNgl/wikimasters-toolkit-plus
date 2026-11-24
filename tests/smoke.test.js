@@ -508,24 +508,105 @@ test('veille : un prix déjà au-dessus du plafond arrête la veille sans rien m
   env.close();
 });
 
-test('veille : un prix déjà au-dessus du plafond n\'est pas surveillé, et la notification explique pourquoi avec un bouton vers les réglages', async () => {
-  const a = auction('w5', { seller_id: 'other', current_bid: 30, current_bidder_id: 'rival', end_at: inMin(60) });
+test('veille : un prix déjà au-dessus du plafond ouvre la fenêtre « jusqu’à combien ? » (moyenne ± % ou valeur fixe), pour cette enchère seulement ; le choix est mémorisé et reproposé', async () => {
+  const a = auction('w5', { seller_id: 'other', current_bid: 30, current_bidder_id: 'rival', end_at: inMin(60) }); // mise minimale 31 W, moyenne 20 W
+  const b = auction('w6', { seller_id: 'other', current_bid: 40, current_bidder_id: 'rival', end_at: inMin(60) }); // mise minimale 41 W
+  const { env, w, WMX } = await watchEnv({ auctions: [a, b] });
+  WMX.settings.autoCapMode = 'avg'; WMX.settings.autoCapPct = -10; // plafond habituel : moyenne (20 W) −10 % = 18 W
+  const dlg = async () => { for (let i = 0; i < 60 && !w.document.querySelector('.wmx-wc'); i++) await sleep(100); return w.document.querySelector('.wmx-wc'); };
+  const type = (input, v) => { input.value = String(v); input.dispatchEvent(new w.Event('input', { bubbles: true })); };
+  const seg = (label) => [...w.document.querySelectorAll('.wmx-wc .wmx-wc-seg button')].find((x) => x.textContent === label);
+  const okBtn = () => [...w.document.querySelectorAll('.wmx-wc .wmx-dlg-row button')].find((x) => /Surveiller avec ce plafond/.test(x.textContent));
+
+  // 1) Moyenne ± % : la fenêtre s'ouvre dans un état valide (pourcentage juste suffisant), on choisit +80 %.
+  const p1 = WMX.auctions.toggleWatch('w5', 'Carte w5');
+  const d1 = await dlg();
+  assert.ok(d1, 'fenêtre de confirmation');
+  assert.match(d1.textContent, /Prix actuel : 30 W · mise minimale : 31 W/);
+  assert.match(d1.textContent, /Moyenne du marché : 20 W · la carte est 50 % au-dessus de la moyenne/, 'prix actuel et écart avec la moyenne');
+  assert.match(d1.textContent, /Votre plafond habituel : 18 W/);
+  assert.equal(seg('Moyenne du marché ± %').getAttribute('aria-pressed'), 'true');
+  const pct = d1.querySelector('input[aria-label^="Pourcentage"]');
+  assert.equal(pct.value, '55', 'pourcentage minimal pour atteindre la mise minimale (31 W)');
+  assert.equal(okBtn().disabled, false);
+  type(pct, 10); // 22 W : sous la mise minimale
+  assert.equal(okBtn().disabled, true, 'plafond sous la mise minimale : impossible de valider');
+  assert.match(d1.textContent, /Sous la mise minimale \(31 W\)/);
+  type(pct, 80);
+  assert.match(d1.textContent, /Plafond pour cette enchère : 36 W \(\+80 % par rapport à la moyenne\)/);
+  okBtn().click();
+  assert.equal(await p1, 'watch');
+  assert.equal(env.mem.autoBids.w5.capMode, 'avg'); assert.equal(env.mem.autoBids.w5.capPct, 80); assert.equal(env.mem.autoBids.w5.watch, true);
+  assert.equal(WMX.settings.autoCapMode, 'avg'); assert.equal(WMX.settings.autoCapPct, -10, 'réglages généraux inchangés');
+  assert.deepEqual({ mode: env.mem.watchCapPrefs.mode, pct: env.mem.watchCapPrefs.pct }, { mode: 'avg', pct: 80 }, 'choix mémorisé');
+  assert.ok(!w.document.querySelector('.wmx-wc'), 'fenêtre fermée');
+
+  // 2) Valeur fixe : le dernier choix (+80 % = 36 W, sous la mise minimale 41 W) est ajusté, on bascule en valeur fixe et on saisit 45 W.
+  const p2 = WMX.auctions.toggleWatch('w6', 'Carte w6');
+  const d2 = await dlg();
+  assert.ok(Number(d2.querySelector('input[aria-label^="Pourcentage"]').value) >= 105, 'proposition ajustée pour atteindre 41 W (moyenne 20 W)');
+  seg('Valeur fixe').click();
+  const abs = d2.querySelector('input[aria-label^="Valeur maximale"]');
+  type(abs, 45);
+  assert.match(d2.textContent, /Plafond pour cette enchère : 45 W/);
+  okBtn().click();
+  assert.equal(await p2, 'watch');
+  assert.equal(env.mem.autoBids.w6.capMode, 'abs'); assert.equal(env.mem.autoBids.w6.cap, 45);
+  assert.equal(env.mem.watchCapPrefs.mode, 'abs'); assert.equal(env.mem.watchCapPrefs.abs, 45);
+  env.close();
+});
+
+test('veille : « Annuler » dans la fenêtre du plafond ne surveille rien', async () => {
+  const a = auction('w7', { seller_id: 'other', current_bid: 30, current_bidder_id: 'rival', end_at: inMin(60) });
   const { env, w, WMX } = await watchEnv({ auctions: [a] });
-  WMX.settings.autoCapMode = 'avg'; WMX.settings.autoCapPct = -10; // plafond : moyenne (20 W) −10 % = 18 W
-  const state = await WMX.auctions.toggleWatch('w5', 'Carte w5');
-  assert.equal(state, 'none', 'aucune veille créée');
-  assert.equal(env.mem.autoBids.w5, undefined);
-  const note = w.document.querySelector('.wmx-note.warn');
-  assert.ok(note, 'notification affichée');
-  assert.match(note.textContent, /Prix au-dessus de votre plafond/);
-  assert.match(note.textContent, /30 W/);
-  assert.match(note.textContent, /18 W/);
-  assert.match(note.textContent, /moyenne du marché −10 %/, 'on dit d\'où vient le plafond');
-  assert.match(note.textContent, /ne la surveillera pas/);
-  note.querySelector('.wmx-note-act').click();
-  await sleep(100);
-  assert.ok(w.document.querySelector('.wmx-modal'), 'les réglages s\'ouvrent');
-  assert.equal(w.document.querySelector('.wmx-sec-hl h3')?.textContent, 'Mises automatiques', 'à la partie « Mises automatiques », mise en évidence');
+  WMX.settings.autoCapMode = 'abs'; WMX.settings.autoCapW = 10;
+  const p = WMX.auctions.toggleWatch('w7', 'Carte w7');
+  for (let i = 0; i < 60 && !w.document.querySelector('.wmx-wc'); i++) await sleep(100);
+  [...w.document.querySelectorAll('.wmx-wc .wmx-dlg-row button')].find((x) => x.textContent === 'Annuler').click();
+  assert.equal(await p, 'none');
+  assert.equal(env.mem.autoBids.w7, undefined, 'aucune règle créée');
+  assert.ok(!w.document.querySelector('.wmx-wc'));
+  env.close();
+});
+
+test('bouton « Marché » : panneau des enchères en cours de la carte (titre exact), « Voir sur le Marché » recopie le titre dans la recherche du jeu, bouton ajouté une fois à la fiche', async () => {
+  const mk = (id, title, over = {}) => ({ id, status: 'active', card_id: `c-${id}`, snapshot_rarity: 'R', base_amount: 10, current_bid: null, seller_id: 'seller', end_at: inMin(30), card: { wikipedia_title: title, rarity: 'R' }, ...over });
+  const asked = [];
+  const env = createEnv({ fetchImpl: async (u) => {
+    if (/\/api\/marketplace\?/.test(String(u))) { asked.push(String(u)); return json({ auctions: [mk('m1', 'Beretta'), mk('m2', 'Beretta 70'), mk('m3', 'Beretta', { current_bid: 12 })], hasMore: false }); }
+    return json({});
+  } });
+  const { w, WMX } = env;
+  w.history.pushState({}, '', '/marketplace');
+  w.document.body.innerHTML = '<main><input type="search" placeholder="Rechercher une carte…"><button disabled>Rechercher</button></main>';
+  const input = w.document.querySelector('input'); const searchBtn = w.document.querySelector('main button');
+  input.addEventListener('input', () => { searchBtn.disabled = !input.value; });
+  let searched = '';
+  searchBtn.addEventListener('click', () => { searched = input.value; });
+  for (const f of WMX.features) if (f.name === 'market-search') await f.init?.();
+  // Panneau
+  WMX.marketSearch.open({ title: 'Beretta', rarity: 'R' });
+  for (let i = 0; i < 60 && w.document.querySelectorAll('.wmx-mks-item').length < 2; i++) await sleep(100);
+  assert.equal(w.document.querySelectorAll('.wmx-mks-item').length, 2, 'seulement les enchères de « Beretta » (pas « Beretta 70 »)');
+  assert.match(asked[0], /q=Beretta/, 'même recherche que la barre du jeu');
+  assert.match(w.document.querySelector('.wmx-mks').textContent, /2 enchères en cours/);
+  assert.match(w.document.querySelector('.wmx-mks').textContent, /Départ 10 W/);
+  assert.match(w.document.querySelector('.wmx-mks').textContent, /Mise 12 W/);
+  // Recherche pré-remplie
+  [...w.document.querySelectorAll('.wmx-mks .wmx-dlg-row button')].find((b) => b.textContent === 'Voir sur le Marché').click();
+  for (let i = 0; i < 60 && !searched; i++) await sleep(100);
+  assert.equal(input.value, 'Beretta', 'titre recopié dans la barre de recherche du Marché');
+  assert.equal(searched, 'Beretta', 'recherche lancée');
+  assert.ok(!w.document.querySelector('.wmx-mks'), 'panneau fermé');
+  // Fiche d'une carte (autre page) : bouton ajouté une seule fois
+  w.history.pushState({}, '', '/collection');
+  w.document.body.innerHTML = '<div class="fixed inset-0"><div><h2>Beretta</h2><div><button>Détails</button><button>Marché</button><button>Cadre</button></div><div><div>R</div></div></div></div>';
+  const root = w.document.querySelector('.fixed');
+  assert.equal(WMX.marketSearch.decorateSheet(root), true);
+  assert.equal(WMX.marketSearch.decorateSheet(root), false, 'une seule fois');
+  assert.equal(root.querySelectorAll('.wmx-mks-btn').length, 1);
+  assert.match(root.querySelector('.wmx-mks-btn').textContent, /Marché/);
+  assert.equal(WMX.marketSearch.sheetCard(root).title, 'Beretta');
   env.close();
 });
 

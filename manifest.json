@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WikiMasters Toolkit+",
-  "version": "1.1.26",
+  "version": "1.1.27",
   "description": "Prix du marché, ouverture de paquets en un clic, enchères automatiques et style de cartes pour WikiMasters.",
   "permissions": [
     "storage",
@@ -62,6 +62,7 @@
         "src/features/dashboard.js",
         "src/features/market.js",
         "src/features/trades.js",
+        "src/features/market-search.js",
         "src/features/profile-prices.js",
         "src/features/achievements.js",
         "src/features/update-banner.js",

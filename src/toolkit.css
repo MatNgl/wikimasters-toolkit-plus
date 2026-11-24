@@ -1404,3 +1404,29 @@ html.wmx-avg-strip [class*="rounded-2xl"]:has(> .wmx-nt-price) > div[class*="top
 @keyframes wmx-ach-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
 @media (max-width: 640px) { .wmx-ach { flex-wrap: wrap; } .wmx-ach-txt { flex-basis: calc(100% - 70px); } .wmx-ach-go, .wmx-ach-stop { width: 100%; } .wmx-ach-txt small { white-space: normal; } }
 @media (prefers-reduced-motion: reduce) { .wmx-ach, .wmx-ach-go, .wmx-ach-ico.busy svg { animation: none; } }
+
+/* 1.1.27 : bouton « Marché » (panneau des enchères d'une carte + recherche pré-remplie) et fenêtre « Surveiller au-dessus du plafond ». */
+.wmx-mks-row { margin: 8px 0 4px; }
+.wmx-mks-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 13px; border-radius: 10px; border: 1.5px solid #2dd4a0; background: #2dd4a01f; color: #bff5e0; font: 700 13px Outfit, system-ui, sans-serif; cursor: pointer; }
+.wmx-mks-btn:hover { background: #2dd4a03d; color: #fff; }
+.wmx-mks-ico { display: inline-grid; place-items: center; }
+.wmx-mks-btn.compact { margin-top: 5px; padding: 3px 9px; border-radius: 8px; font-size: 11px; background: #000a; border-color: #2dd4a099; }
+.wmx-mks-dlg { width: min(460px, calc(100vw - 32px)); position: relative; }
+.wmx-mks-list { display: flex; flex-direction: column; gap: 8px; margin: 6px 0 4px; }
+.wmx-mks-wait, .wmx-mks-count { margin: 0; color: #9db5a8; font-size: 13px; }
+.wmx-mks-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 12px; background: #ffffff08; border: 1px solid #ffffff14; }
+.wmx-mks-rar { flex: none; min-width: 30px; text-align: center; padding: 3px 6px; border-radius: 8px; color: rgb(var(--rgb)); border: 1px solid rgb(var(--rgb) / .6); background: rgb(var(--rgb) / .12); font-size: 12px; }
+.wmx-mks-info { flex: 1; min-width: 0; display: flex; flex-direction: column; } .wmx-mks-info small { color: #8fa89c; font-size: 12px; }
+.wmx-mks-acts { display: flex; gap: 6px; } .wmx-mks-acts .wmx-btn { padding: 6px 11px; font-size: 12px; } .wmx-mks-watch.on { border-color: #facc15; color: #facc15; }
+.wmx-mks-mine { color: #8fa89c; font-size: 12px; }
+.wmx-wc-dlg { width: min(500px, calc(100vw - 32px)); position: relative; }
+.wmx-wc-info { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 12px; padding: 10px 12px; border-radius: 12px; background: #ffffff08; border: 1px solid #ffffff14; }
+.wmx-wc-line { margin: 0 !important; font-size: 13px; } .wmx-wc-line.dim { color: #8fa89c; } .wmx-wc-line.hot { color: #fbbf24; font-weight: 700; }
+.wmx-wc-seg { margin-bottom: 10px; }
+.wmx-wc-panel { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; } .wmx-wc-panel[hidden] { display: none; }
+.wmx-wc-field { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+.wmx-wc-in { width: 96px; text-align: right; }
+.wmx-wc-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.wmx-wc-out { margin: 6px 0 4px !important; font-weight: 800; color: #bff5e0; font-size: 14px !important; }
+.wmx-wc-warn { margin: 0 0 8px !important; min-height: 16px; color: #fca5a5; font-size: 12.5px !important; }
+.wmx-wc-warn:empty { display: none; }

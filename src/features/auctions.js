@@ -1100,6 +1100,87 @@
     return WMX.logic.parseAutoRule(input);
   }
 
+  // --- Veille d'une enchère déjà au-dessus du plafond : « jusqu'à combien ? », pour cette enchère seulement ----------------------------------
+  // Au lieu de refuser, l'extension propose un plafond propre à cette enchère : valeur fixe, ou moyenne du marché ± un pourcentage. Les réglages
+  // généraux ne changent pas. Le dernier choix (mode, pourcentage, valeur) est mémorisé et proposé de nouveau la fois suivante.
+  let capPrefs = { mode: 'avg', pct: 30, abs: 0 };
+  const capPrefsLoaded = WMX.store.get('watchCapPrefs', null).then((v) => { if (v && typeof v === 'object') capPrefs = { ...capPrefs, ...v }; }).catch(() => {});
+  /** Fenêtre de choix du plafond. Renvoie { capMode, cap | capPct } ou null (annulé). */
+  async function askWatchCap(a, rule, capW, price) {
+    await capPrefsLoaded;
+    return new Promise((resolve) => {
+      const name = cardTitle(a);
+      const avg = avgOf(a);                                  // moyenne du marché de la carte, ou null (jamais chargée)
+      const cur = a.current_bid || a.base_amount || price;   // prix affiché
+      const over = avg ? Math.round((cur / avg - 1) * 100) : null;
+      const need = avg ? Math.max(-90, Math.min(500, Math.ceil(Math.round((price / avg - 1) * 1e4) / 100))) : null; // pourcentage juste suffisant pour atteindre la mise minimale
+      const st = { mode: capPrefs.mode === 'abs' || !avg ? 'abs' : 'avg', pct: Number.isFinite(Number(capPrefs.pct)) ? Number(capPrefs.pct) : 30, abs: Math.floor(Number(capPrefs.abs)) || 0 };
+      if (avg && Math.round(avg * (1 + st.pct / 100)) < price) st.pct = need;   // la fenêtre s'ouvre dans un état valide
+      if (st.abs < price) st.abs = Math.ceil(price * 1.1);
+      const capNow = () => (st.mode === 'abs' ? Math.floor(Number(st.abs)) : avg ? Math.max(1, Math.round(avg * (1 + Number(st.pct) / 100))) : null);
+
+      const infoLine = (txt, cls = '') => el('p', { class: `wmx-wc-line ${cls}`.trim() }, txt);
+      const pctIn = el('input', { type: 'number', class: 'wmx-input wmx-wc-in', step: '1', min: '-90', max: '500', value: String(st.pct), 'aria-label': 'Pourcentage par rapport à la moyenne' });
+      const absIn = el('input', { type: 'number', class: 'wmx-input wmx-wc-in', step: '1', min: '1', value: String(st.abs), 'aria-label': 'Valeur maximale en W' });
+      const chip = (label, onClick, title = '') => el('button', { type: 'button', class: 'wmx-seg-btn wmx-wc-chip', title, onclick: onClick }, label);
+      const setPct = (v) => { st.pct = v; pctIn.value = String(v); refresh(); };
+      const setAbs = (v) => { st.abs = v; absIn.value = String(v); refresh(); };
+      const avgPanel = el('div', { class: 'wmx-wc-panel' },
+        el('label', { class: 'wmx-wc-field' }, el('span', {}, 'Je veux bien payer jusqu’à'), pctIn, el('span', {}, '% par rapport à la moyenne')),
+        el('div', { class: 'wmx-wc-chips' }, chip('+10 %', () => setPct(10)), chip('+25 %', () => setPct(25)), chip('+50 %', () => setPct(50)),
+          ...(need != null ? [chip(`Juste au-dessus (+${need} %)`, () => setPct(need), 'Le plus bas pourcentage qui permet de miser le minimum demandé')] : [])));
+      const absPanel = el('div', { class: 'wmx-wc-panel' },
+        el('label', { class: 'wmx-wc-field' }, el('span', {}, 'Je veux bien payer au plus'), absIn, el('span', {}, 'W')),
+        el('div', { class: 'wmx-wc-chips' }, chip(`Mise minimale (${fmt(price)} W)`, () => setAbs(price)), chip(`+10 % (${fmt(Math.ceil(price * 1.1))} W)`, () => setAbs(Math.ceil(price * 1.1))), chip(`+25 % (${fmt(Math.ceil(price * 1.25))} W)`, () => setAbs(Math.ceil(price * 1.25)))));
+      const modeBtn = (mode, label) => el('button', { type: 'button', class: 'wmx-seg-btn', 'aria-pressed': 'false', onclick: () => { if (mode === 'avg' && !avg) return; st.mode = mode; refresh(); } }, label);
+      const bAbs = modeBtn('abs', 'Valeur fixe');
+      const bAvg = modeBtn('avg', 'Moyenne du marché ± %');
+      if (!avg) { bAvg.disabled = true; bAvg.title = 'La moyenne du marché de cette carte est inconnue pour le moment'; }
+      const capOut = el('p', { class: 'wmx-wc-out' });
+      const warn = el('p', { class: 'wmx-wc-warn' });
+      const ok = el('button', { type: 'button', class: 'wmx-btn' }, 'Surveiller avec ce plafond');
+      const done = (v) => { document.removeEventListener('keydown', onKey, true); back.remove(); resolve(v); };
+      const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); done(null); } };
+      function refresh() {
+        bAbs.setAttribute('aria-pressed', String(st.mode === 'abs'));
+        bAvg.setAttribute('aria-pressed', String(st.mode === 'avg'));
+        avgPanel.hidden = st.mode !== 'avg';
+        absPanel.hidden = st.mode !== 'abs';
+        st.pct = Number(pctIn.value); st.abs = Number(absIn.value);
+        const c = capNow();
+        const valid = c != null && Number.isFinite(c) && c > 0 && c >= price && (st.mode !== 'avg' || Number.isFinite(st.pct));
+        capOut.textContent = c != null && Number.isFinite(c) ? `Plafond pour cette enchère : ${fmt(c)} W${avg ? ` (${Math.round((c / avg - 1) * 100) >= 0 ? '+' : '−'}${Math.abs(Math.round((c / avg - 1) * 100))} % par rapport à la moyenne)` : ''}` : 'Plafond : à saisir';
+        warn.textContent = !valid && c != null && Number.isFinite(c) && c > 0 ? `Sous la mise minimale (${fmt(price)} W) : l’extension ne miserait jamais.` : '';
+        ok.disabled = !valid;
+      }
+      pctIn.addEventListener('input', refresh);
+      absIn.addEventListener('input', refresh);
+      ok.addEventListener('click', () => {
+        if (ok.disabled) return;
+        capPrefs = { mode: st.mode, pct: Math.round(Number(st.pct)) || 0, abs: Math.floor(Number(st.abs)) || 0 };
+        WMX.store.set('watchCapPrefs', capPrefs);
+        done(st.mode === 'abs' ? { capMode: 'abs', cap: Math.floor(Number(st.abs)) } : { capMode: 'avg', capPct: Math.round(Number(st.pct)) });
+      });
+      const dlg = el('div', { class: 'wmx-dlg wmx-wc-dlg', role: 'dialog', 'aria-label': 'Surveiller au-dessus du plafond' },
+        el('button', { type: 'button', class: 'wmx-dlg-x', title: 'Fermer', 'aria-label': 'Fermer', onclick: () => done(null) }, '×'),
+        el('h3', {}, `Surveiller « ${name} » ?`),
+        el('p', { class: 'wmx-dlg-note' }, 'Cette carte est déjà au-dessus de votre plafond habituel. Choisissez jusqu’où l’extension peut miser, pour cette enchère seulement.'),
+        el('div', { class: 'wmx-wc-info' },
+          infoLine(`Prix actuel : ${fmt(cur)} W · mise minimale : ${fmt(price)} W`),
+          infoLine(avg ? `Moyenne du marché : ${fmt(avg)} W · la carte est ${over >= 0 ? `${over} % au-dessus` : `${-over} % en dessous`} de la moyenne` : 'Moyenne du marché : inconnue (valeur fixe seulement)', avg && over > 25 ? 'hot' : ''),
+          infoLine(`Votre plafond habituel : ${fmt(capW)} W (${capSource(rule, a)})`, 'dim')),
+        el('div', { class: 'wmx-seg wmx-wc-seg' }, bAbs, bAvg),
+        avgPanel, absPanel, capOut, warn,
+        el('p', { class: 'wmx-dlg-note' }, 'Vos réglages ne changent pas : ce plafond ne vaut que pour cette enchère. Votre choix vous sera reproposé la prochaine fois.'),
+        el('div', { class: 'wmx-dlg-row' }, el('button', { type: 'button', class: 'wmx-btn wmx-btn--ghost', onclick: () => done(null) }, 'Annuler'), ok));
+      const back = el('div', { class: 'wmx-dlg-back wmx-wc' }, dlg);
+      document.addEventListener('keydown', onKey, true);
+      document.body.append(back);
+      refresh();
+      (st.mode === 'avg' ? pctIn : absIn).focus();
+    });
+  }
+
   /** Utilisé par la page Marché : miser le minimum sur une enchère sans ouvrir sa page, ou la surveiller pour miser au dernier moment. */
   WMX.auctions = {
     refresh,
@@ -1146,7 +1227,7 @@
           action: { label: 'Modifier la limite', onClick: () => WMX.openSettings?.('Mises automatiques') } });
         return 'none';
       }
-      const rule = watchRule();
+      let rule = watchRule();
       if (!rule) { WMX.toast('Je n’ai pas pu préparer la veille : vérifiez les réglages des mises automatiques (Paramètres).', 6000, { kind: 'warn' }); return 'none'; }
       S.auto[id] = { ...rule, watch: true };
       S.autoFails[id] = 0;
@@ -1157,14 +1238,23 @@
       if (a && !WMX.prices.has(a.card_id)) WMX.prices.fetchOne(a.card_id).then(() => { if (S.bubbleOpen) renderAll(); });
       // Moyenne du marché inconnue (plafond « selon la moyenne ») : on la demande un court instant pour pouvoir juger tout de suite.
       if (a && rule.capMode === 'avg' && avgOf(a) == null) await Promise.race([WMX.prices.fetchOne(a.card_id), sleep(2500)]);
-      const capW = a ? WMX.logic.resolveCap(rule, avgOf(a)) : null;
-      // Le prix est déjà au-dessus du plafond : il ne redescendra pas, la veille ne servirait à rien. On l'explique au lieu de créer puis supprimer une règle.
+      let capW = a ? WMX.logic.resolveCap(rule, avgOf(a)) : null;
+      // Le prix est déjà au-dessus du plafond : il ne redescendra pas, la veille ne servirait à rien avec ce plafond. On propose un plafond pour CETTE
+      // enchère (valeur fixe, ou moyenne ± %) ; refusé : rien n'est surveillé.
       const price = a ? (a.current_bid ? a.current_bid + 1 : a.base_amount) : 0;
       if (a && capW != null && price > capW) {
         delete S.auto[id]; delete S.autoTry[id]; D.watching = D.watching.filter((w) => w.id !== id);
         saveAuto(); fire(); renderAll(); schedulePoll();
-        capNotice(a, a.current_bid || a.base_amount, capW, rule, { starting: true });
-        return 'none';
+        const pick = await askWatchCap(a, rule, capW, price);
+        const chosen = pick && WMX.logic.parseAutoRule({ mode: 'time', amount: rule.secs, unit: 's', capMode: pick.capMode, cap: pick.cap, capPct: pick.capPct });
+        if (!chosen) return 'none';
+        rule = chosen;
+        S.auto[id] = { ...rule, watch: true };
+        S.autoFails[id] = 0;
+        saveAuto(); fire(); renderAll();
+        await refreshWatching(true, id);
+        capW = WMX.logic.resolveCap(rule, avgOf(D.watching.find((w) => w.id === id) || a));
+        WMX.journal?.add('Veille', `« ${cardTitle(a)} » : plafond choisi pour cette enchère : ${capW != null ? `${fmt(capW)} W` : WMX.logic.capLabel(rule)} (${WMX.logic.capLabel(rule)}) ; les réglages généraux ne changent pas`);
       }
       const secs = rule.secs < 120 ? `${rule.secs} s` : `${Math.round(rule.secs / 60)} min`;
       WMX.notify?.({ kind: 'warn', ms: 9000, key: `watch:${id}`, title: `« ${a ? cardTitle(a) : name} » est surveillée`,

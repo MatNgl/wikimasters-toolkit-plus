@@ -7,6 +7,10 @@
   // Nouveautés, de la plus récente à la plus ancienne. Écrites pour les joueurs : ce qu'ils voient et ce que ça change pour eux.
   // kind : 'new' (nouveau), 'better' (amélioré), 'fix' (corrigé). highlights : les grandes nouveautés, mises en avant en tête de la fenêtre.
   const CHANGES = [
+    { v: '1.1.27', title: 'Bouton Marché et surveillance au-dessus du plafond', items: [
+      ['new', 'Fiche d’une carte et révélation des paquets : un bouton « Marché » montre les enchères en cours de la carte, ou ouvre le Marché avec son nom déjà recherché.'],
+      ['new', '« Surveiller » une carte au-dessus de votre plafond : choisissez un plafond pour cette enchère seulement (valeur fixe, ou moyenne ± %). Votre choix est retenu pour la prochaine fois.'],
+    ] },
     { v: '1.1.26', title: 'Échanges : les wikibidous comptent', items: [
       ['fix', 'Contre-offre et nouvelle offre : les wikibidous donnés ou demandés sont comptés dans le bilan (avant : un échange contre des wikibidous paraissait perdu à 100 %).'],
     ] },
