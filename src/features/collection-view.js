@@ -107,7 +107,7 @@
       const counts = Object.fromEntries(WMX.RARITIES.map((r) => [r, 0]));
       for (const it of WMX.inventory.items()) if (match(f, it, false)) counts[it.rarity] += 1;
       if (Array.isArray(real?.tagOptions)) { S.tagOptions = real.tagOptions; nameTags(); }
-      if (f.tags.size === 1 && Array.isArray(real?.tagOptions)) checkTag([...f.tags][0]);
+      if (Array.isArray(real?.tagOptions)) checkTags(f.tags.size === 1 ? [...f.tags][0] : null);
       // La page du jeu compte ses pages par 50 : le total annoncé donne le bon nombre de pages pour la taille choisie.
       const pages = Math.ceil(rows.length / S.size);
       return JSON.stringify({ ...(real || {}), total: S.size === 50 ? rows.length : pages * 50, rarityCounts: counts });
@@ -199,15 +199,41 @@
    * Vue d'une étiquette : la copie compte-t-elle autant de cartes que le jeu (« #TEST (2) ») ? Sinon (étiquette posée pendant une relecture
    * complète, qui l'a écrasée ; posée dans un autre onglet…), les cartes de cette étiquette sont relues auprès du jeu, puis la page relancée.
    */
-  const tagSynced = new Map(); // id d'étiquette -> heure de la dernière relecture
-  function checkTag(id) {
-    const opt = S.tagOptions.find((o) => o.id === id);
-    if (!opt || !Number.isFinite(opt.cardCount) || Date.now() - (tagSynced.get(id) || 0) < 60000) return;
-    const mine = WMX.inventory.items().filter((it) => it.tags.some((t) => t.id === id)).length;
-    if (mine === opt.cardCount) return;
-    tagSynced.set(id, Date.now());
-    WMX.journal?.add('Collection', `vue étendue : étiquette « ${opt.name} » : ${mine} carte(s) dans la copie, ${opt.cardCount} pour le jeu : relue`);
-    WMX.inventory.refreshTagged?.([opt.name], new Map([[String(opt.name).trim().toLowerCase(), id]])).then((ok) => { if (ok && isPage()) { S.memo.key = ''; nudgeSoft(); } }).catch(() => {});
+  // Contrôlé pour TOUTES les étiquettes à chaque lecture des nombres (n'importe quel filtre, « Sans étiquette » compris) : une copie abîmée (cartes
+  // d'une grande étiquette qui l'avaient perdue, ancienne limite de 2 000 cartes de refreshTagged) se répare d'elle-même. Les étiquettes en écart
+  // sont relues une à une (jamais en parallèle), celle affichée d'abord ; une même étiquette au plus une fois par minute, et si l'écart reste le même
+  // après une relecture (le jeu compte autrement), plus avant 30 min.
+  const tagSynced = new Map(); // id d'étiquette -> { t: heure de la dernière relecture, n: nombre du jeu à ce moment }
+  const tagQueue = [];
+  let tagBusy = false;
+  function checkTags(first) {
+    const mine = new Map();
+    for (const it of WMX.inventory.items()) for (const t of it.tags) mine.set(t.id, (mine.get(t.id) || 0) + 1);
+    const opts = [...S.tagOptions].sort((a, b) => (b.id === first) - (a.id === first));
+    for (const opt of opts) {
+      if (!opt?.id || !Number.isFinite(opt.cardCount)) continue;
+      const n = mine.get(opt.id) || 0;
+      if (n === opt.cardCount || tagQueue.some((o) => o.id === opt.id)) continue;
+      const last = tagSynced.get(opt.id);
+      if (last && (Date.now() - last.t < 60000 || (last.n === opt.cardCount && Date.now() - last.t < 30 * 60000))) continue;
+      tagSynced.set(opt.id, { t: Date.now(), n: opt.cardCount });
+      WMX.journal?.add('Collection', `vue étendue : étiquette « ${opt.name} » : ${n} carte(s) dans la copie, ${opt.cardCount} pour le jeu : relue`);
+      tagQueue.push(opt);
+    }
+    pumpTags();
+  }
+  async function pumpTags() {
+    if (tagBusy) return;
+    tagBusy = true;
+    try {
+      while (tagQueue.length) {
+        const opt = tagQueue.shift();
+        let ok = false;
+        try { ok = await WMX.inventory.refreshTagged?.([opt.name], new Map([[String(opt.name).trim().toLowerCase(), opt.id]])); } catch (_) { ok = false; }
+        tagSynced.set(opt.id, { t: Date.now(), n: opt.cardCount });
+        try { if (ok && isPage()) { S.memo.key = ''; nudgeSoft(); } } catch (_) { /* page fermée entre-temps */ }
+      }
+    } finally { tagBusy = false; }
   }
 
   /** Étiquettes posées sans nom connu (« … », étiquette pas encore dans la liste du jeu) : nommées dès que le jeu donne sa liste d'étiquettes. */

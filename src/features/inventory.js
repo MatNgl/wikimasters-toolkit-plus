@@ -5,6 +5,7 @@
   const { el, sleep } = WMX.dom;
   const R = WMX.RARITIES;
   const RANK = { L: 5, UR: 4, SR: 3, R: 2, PC: 1, C: 0 };
+  const TAG_PAGES_MAX = 1000; // garde-fou de refreshTagged : 50 000 cartes pour une seule étiquette
   const INV_TTL = 3 * 60 * 60 * 1000; // relecture complète (~335 requêtes) au plus toutes les 3 h : les étiquettes sont relues à la demande (syncTagged), la défausse et les mises en vente tiennent la copie à jour
 
   const S = {
@@ -141,19 +142,27 @@
     const ids = new Map(knownIds || []); // nom d'étiquette (minuscules) -> identifiant : donné par le contrôle du nombre de cartes, sinon appris sur les cartes déjà connues
     for (const it of S.items) for (const t of it.tags) if (t.id && wanted.includes(tagKey(t.name))) ids.set(tagKey(t.name), t.id);
     if (ids.size < wanted.length) return false;
+    // TOUTES les pages de chaque étiquette, jusqu'à une page vide. Avant : 40 pages au plus (2 000 cartes) ; au-delà, les cartes non lues (fin de
+    // l'alphabet) perdaient l'étiquette dans la copie et apparaissaient dans « Sans étiquette » (vue étendue, défausse). Une lecture incomplète
+    // (refus, erreur, garde-fou atteint) ne change RIEN à la copie : on ne retire une étiquette qu'après avoir lu toutes ses cartes.
     const fetched = new Map();
     for (const tagId of ids.values()) {
-      for (let p = 0; p < 40; p++) {
+      let done = false;
+      let blocks = 0;
+      for (let p = 0; p < TAG_PAGES_MAX; p++) {
         const u = new URL('/api/my-collection', location.origin);
         u.searchParams.set('sort', 'name'); u.searchParams.set('tag_id', tagId); u.searchParams.set('page', String(p)); u.searchParams.set('stats', '0');
         let res;
         try { res = await fetch(u); } catch (_) { return false; }
+        if (res.status === 429 && blocks < 5) { blocks += 1; await sleep((3 + blocks) * 1000); p -= 1; continue; } // le jeu demande de ralentir : même page un peu plus tard
         if (!res.ok) return false;
+        blocks = 0;
         const rows = (await res.json()).collection || [];
-        if (!rows.length) break;
+        if (!rows.length) { done = true; break; }
         for (const r of rows) fetched.set(r.id, compact(r));
         await sleep(250);
       }
+      if (!done) return false;
     }
     const byId = new Map(S.items.map((it) => [it.id, it]));
     for (const [id, row] of fetched) byId.set(id, row); // cartes étiquetées : ajoutées ou mises à jour

@@ -957,6 +957,36 @@ test('inventaire : relecture légère des cartes étiquetées (filtre tag_id) : 
   env.close();
 });
 
+test('inventaire : grande étiquette (2 250 cartes, 45 pages) relue en entier ; lecture interrompue : copie inchangée (avant : au-delà de 2 000 cartes, les dernières perdaient l’étiquette)', async () => {
+  const tagV = { id: 'T1', name: 'Animaux' };
+  const N = 2250;
+  const name = (i) => `Carte ${String(i).padStart(4, '0')}`;
+  const row = (i) => ({ id: `r${i}`, card_id: `c${i}`, count: 1, starred: false, tags: [tagV], card: { wikipedia_title: name(i), rarity: 'commune', id: `c${i}` } });
+  const state = { failAt: -1, reads: 0 };
+  const env = createEnv({ fetchImpl: async (u) => {
+    const p = new URL(String(u)).searchParams;
+    if (p.get('tag_id') !== 'T1') return json({ collection: [] });
+    const page = Number(p.get('page'));
+    state.reads += 1;
+    if (page === state.failAt) return json({ code: 'automation_limit' }, 403);
+    return json({ collection: Array.from({ length: 50 }, (_, k) => page * 50 + k).filter((i) => i < N).map(row) });
+  } });
+  const { w, WMX } = env;
+  const fast = w.setTimeout.bind(w);
+  w.setTimeout = (fn, ms, ...a) => fast(fn, Math.min(ms || 0, 1), ...a); // pauses entre les pages raccourcies
+  env.mem.invCacheV2 = { t: Date.now(), complete: true, items: Array.from({ length: N }, (_, i) => ({ id: `r${i}`, card_id: `c${i}`, title: name(i), rarity: 'C', count: 1, starred: false, tags: [tagV] })) };
+  await WMX.inventory.ensure();
+  const untagged = () => [...WMX.inventory.items().filter((it) => !it.tags.length).map((it) => it.title)]; // tableau recréé ici (autre « monde » JavaScript)
+  assert.equal(await WMX.inventory.refreshTagged(['animaux']), true);
+  assert.equal(state.reads, 46, '45 pages pleines puis une page vide');
+  assert.deepEqual(untagged(), [], 'aucune carte ne perd l’étiquette (avant : les 250 dernières)');
+  state.failAt = 30; state.reads = 0; // le jeu refuse une page en cours de route
+  WMX.inventory.patch(['r2200'], (it) => { it.tags = []; }); // marqueur : la copie ne doit pas bouger
+  assert.equal(await WMX.inventory.refreshTagged(['animaux']), false, 'lecture incomplète');
+  assert.deepEqual(untagged(), ['Carte 2200'], 'copie laissée telle quelle : aucune étiquette retirée sur une lecture partielle');
+  env.close();
+});
+
 test('inventaire : contrôle du nombre de cartes par étiquette (1 requête) ; relecture seulement si ce nombre change', async () => {
   const tagV = { id: 'T1', name: 'VENTE' };
   const state = { count: 2, reads: 0, checks: 0 };

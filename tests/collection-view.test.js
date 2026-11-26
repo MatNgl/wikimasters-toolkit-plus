@@ -418,6 +418,32 @@ test('vue d’une étiquette : la copie n’a pas le même nombre de cartes que 
   env.close();
 });
 
+test('« Sans étiquette » : les étiquettes dont le nombre diffère du jeu sont relues (toutes, une à une, celle affichée d’abord) ; la copie réparée, la carte quitte « Sans étiquette »', async () => {
+  const env = setup(40);
+  const { WMX } = env;
+  await init(env);
+  const OTHER = { id: 'tag-animaux', name: 'Animaux', color: '#0f0', user_id: 'me', created_at: '2026-10-01T00:00:00Z' };
+  WMX.inventory.patch(['row-5'], (it) => { it.tags = [{ ...OTHER }]; });
+  const asked = [];
+  WMX.inventory.refreshTagged = async (names, ids) => {
+    asked.push(names[0]);
+    await sleep(5);
+    if (names[0] === 'VENTE') WMX.inventory.patch(['row-1'], (it) => { it.tags = [{ ...TAG }]; }); // carte étiquetée « VENTE » dans le jeu, sans étiquette dans la copie
+    return true;
+  };
+  const real = { totalUnique: null, rarityCounts: {}, tagOptions: [{ ...OTHER, cardCount: 2 }, { ...TAG, cardCount: 5 }] }; // copie : 1 et 4
+  assert.ok(list(env, 'sort=rarity&untagged=true&page=0&stats=0').collection.some((r) => r.id === 'row-1'), 'avant : affichée sans étiquette');
+  stats(env, 'sort=rarity&untagged=true', real);
+  await sleep(40);
+  assert.deepEqual(asked, ['Animaux', 'VENTE'], 'les deux étiquettes en écart, une à une');
+  assert.ok(!list(env, 'sort=rarity&untagged=true&page=0&stats=0').collection.some((r) => r.id === 'row-1'), 'après : la carte n’est plus « sans étiquette »');
+  asked.length = 0;
+  stats(env, `sort=rarity&tag_id=${OTHER.id}`, real);
+  await sleep(20);
+  assert.deepEqual(asked, [], 'pas deux fois dans la minute');
+  env.close();
+});
+
 test('nouvelles cartes pendant une relecture complète : gardées à la fin (avant : effacées) ; petit écart avec le jeu (≤ 3 cartes) : pas de relecture complète', async () => {
   let gate = null;
   const pageRows = Array.from({ length: 10 }, (_, i) => WMX_ROW(i));
