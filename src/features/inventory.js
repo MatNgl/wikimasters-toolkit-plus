@@ -117,6 +117,7 @@
       await sleep(500); // un peu plus lent : ~335 requêtes d'affilée font réagir la protection du jeu
     }
     S.loading = false;
+    S.lastLoad = { ok: complete, at: Date.now(), read: byId.size }; // bandeau de la vue étendue : relecture allée au bout ou interrompue (jeu qui refuse, erreurs)
     if (complete) { S.loadedAt = Date.now(); S.ext = true; S.complete = true; } // AVANT setItems : ceux qui écoutent la copie (vue étendue) la voient complète
     // Cartes arrivées PENDANT la relecture (paquets, achats, échanges : ajoutées par la vue étendue) et absentes des pages déjà lues : gardées
     // (avant : la relecture remplaçait la copie par ses pages, et les cartes du jour disparaissaient jusqu'à la relecture suivante).
@@ -457,6 +458,8 @@
     isLoading: () => S.loading,
     /** Cartes lues pendant le chargement en cours (première lecture : les nombres montent jusqu'à la fin). */
     loaded: () => S.loadedCount,
+    /** Dernière relecture complète : { ok, at, read } (ok = allée jusqu'à la dernière page), ou null. */
+    lastLoad: () => S.lastLoad || null,
     /** Âge (ms) de la dernière lecture complète de la collection ; `reload` la relit en arrière-plan (sans vider l'affichage). */
     age: () => (S.loadedAt ? Date.now() - S.loadedAt : Infinity),
     reload: () => loadInventory(),

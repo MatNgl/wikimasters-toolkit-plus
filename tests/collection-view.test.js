@@ -444,6 +444,44 @@ test('« Sans étiquette » : les étiquettes dont le nombre diffère du jeu son
   env.close();
 });
 
+test('bandeau de la vue étendue : cartes chargées sur le total du jeu, cartes manquantes, étiquettes vérifiées ou en cours de vérification', async () => {
+  const game = { total: 42, tagCount: 4 };
+  const env = setup(40, { on: true, size: 100, price: false }, async (u) => (/\/api\/my-collection\/stats/.test(String(u))
+    ? json({ total: game.total, rarityCounts: {}, tagOptions: [{ ...TAG, cardCount: game.tagCount }] }) : json({ collection: [] })));
+  const { w, WMX } = env;
+  const main = w.document.createElement('main');
+  main.innerHTML = `<div id="row"><input placeholder="Rechercher"><div id="bar"><div class="relative"><button aria-label="Filtrer par étiquette">Toutes</button></div>
+    <div class="relative"><button aria-label="Trier la collection"><span>Rareté</span></button></div></div></div><div id="chips"></div>`;
+  w.document.body.append(main);
+  await init(env);
+  await sleep(50); // nombres du jeu relus à l'ouverture (verify)
+  const banner = main.querySelector('#row + .wmx-cv-status');
+  assert.ok(banner, 'bandeau sous la rangée recherche + menus');
+  assert.equal(banner.hidden, false);
+  assert.match(banner.textContent, /40 \/ 42 cartes chargées \(95 %\) : 2 cartes manquantes/);
+  assert.match(banner.textContent, /relecture complète dans 10 min/, 'petit écart : relecture complète s’il dure');
+  assert.match(banner.textContent, /1 étiquette vérifiée/);
+  assert.ok(banner.className.includes('wmx-cv-status-warn'));
+  // Le jeu compte 40 cartes (page sans filtre) : collection complète.
+  stats(env, 'sort=rarity', { total: 40, rarityCounts: {}, tagOptions: [{ ...TAG, cardCount: 4 }] });
+  assert.equal(WMX.collView.health().text, 'Collection complète : 40 / 40 cartes (100 %) · 1 étiquette vérifiée');
+  assert.equal(WMX.collView.health().cls, 'ok');
+  // Étiquette en écart : relue, et le bandeau le dit pendant la relecture puis après (écart persistant).
+  let release;
+  WMX.inventory.refreshTagged = () => new Promise((r) => { release = r; });
+  stats(env, 'sort=rarity', { total: 40, rarityCounts: {}, tagOptions: [{ ...TAG, cardCount: 6 }] });
+  assert.match(WMX.collView.health().text, /vérification de l’étiquette « VENTE » \(6 cartes\)…/);
+  assert.equal(WMX.collView.health().cls, 'busy');
+  release(false);
+  await sleep(10);
+  assert.match(WMX.collView.health().text, /étiquette à revérifier : « VENTE » 4 \/ 6/);
+  assert.equal(WMX.collView.health().cls, 'warn');
+  // Vue étendue désactivée : bandeau caché.
+  WMX.collView.setOn(false);
+  assert.equal(banner.hidden, true);
+  env.close();
+});
+
 test('nouvelles cartes pendant une relecture complète : gardées à la fin (avant : effacées) ; petit écart avec le jeu (≤ 3 cartes) : pas de relecture complète', async () => {
   let gate = null;
   const pageRows = Array.from({ length: 10 }, (_, i) => WMX_ROW(i));

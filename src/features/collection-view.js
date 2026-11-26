@@ -101,7 +101,7 @@
     const f = parse(url);
     if (kind === 'stats') {
       // Nombre de cartes du jeu (sans filtre) comparé à la copie AVANT de servir : une copie abîmée n'est jamais montrée.
-      if (!f.q && !f.rar.size && !f.tags.size && !f.untagged && Number.isFinite(real?.total)) reconcile(real.total);
+      if (!f.q && !f.rar.size && !f.tags.size && !f.untagged && Number.isFinite(real?.total)) { H.total = real.total; H.totalAt = Date.now(); reconcile(real.total); }
       if (!ready()) return null;
       const rows = list(f, true);
       const counts = Object.fromEntries(WMX.RARITIES.map((r) => [r, 0]));
@@ -189,7 +189,10 @@
     }
     // Petit écart (1 à 3 cartes : vente, achat en cours de lecture…) : les lectures légères (nouvelles cartes, cartes en vente) s'en chargent ;
     // une relecture complète (plusieurs minutes, freinée par le jeu) seulement au-delà, au plus toutes les 30 min.
-    if (Math.abs(mine - realTotal) <= 3 || WMX.inventory.isLoading() || Date.now() - S.fullAt < 30 * 60000) return;
+    // Un petit écart qui dure plus de 10 min n'est plus passager : relecture complète aussi.
+    const gap = Math.abs(mine - realTotal);
+    if (!gap) H.gapSince = 0; else if (!H.gapSince) H.gapSince = Date.now();
+    if (!gap || (gap <= 3 && Date.now() - H.gapSince < 10 * 60000) || WMX.inventory.isLoading() || Date.now() - S.fullAt < 30 * 60000) return;
     S.fullAt = Date.now();
     WMX.journal?.add('Collection', `vue étendue : la copie compte ${mine} cartes, le jeu ${realTotal} : relecture complète en arrière-plan`);
     WMX.inventory.reload();
@@ -228,9 +231,11 @@
     try {
       while (tagQueue.length) {
         const opt = tagQueue.shift();
+        H.tagNow = opt; paintStatus();
         let ok = false;
         try { ok = await WMX.inventory.refreshTagged?.([opt.name], new Map([[String(opt.name).trim().toLowerCase(), opt.id]])); } catch (_) { ok = false; }
         tagSynced.set(opt.id, { t: Date.now(), n: opt.cardCount });
+        H.tagNow = null; paintStatus();
         try { if (ok && isPage()) { S.memo.key = ''; nudgeSoft(); } } catch (_) { /* page fermée entre-temps */ }
       }
     } finally { tagBusy = false; }
@@ -357,6 +362,76 @@
     chip.click();
   }
 
+  // --- Toute la collection est-elle chargée ? Bandeau sous la barre du jeu ------------------------------------------------------------
+  // La copie est comparée au jeu : nombre total de cartes (réponse « stats » du jeu sans filtre, relue par l'extension toutes les 5 min si la page
+  // n'en a pas demandé) et nombre de cartes de chaque étiquette. Tout écart déclenche une relecture (étiquette seule, ou collection entière) ; le
+  // bandeau dit où on en est : pourcentage chargé, cartes manquantes ou en trop, étiquettes en cours de vérification, relecture interrompue.
+  // Favoris et étiquettes changés sur un autre appareil : la relecture complète (au moins toutes les 3 h tant que la vue est utilisée) les reprend.
+  const H = { total: null, totalAt: 0, gapSince: 0, verifying: false, tagNow: null };
+  const FULL_EVERY = 3 * 60 * 60000;
+  async function verify(force = false) {
+    if (H.verifying || !S.on || !isPage() || (!force && Date.now() - H.totalAt < 5 * 60000)) return;
+    H.verifying = true;
+    try {
+      const r = await fetch('/api/my-collection/stats?sort=rarity'); // lecture seule : les nombres du jeu, sans filtre
+      if (!r.ok) return;
+      const j = await r.json();
+      if (Array.isArray(j?.tagOptions)) { S.tagOptions = j.tagOptions; nameTags(); }
+      if (Number.isFinite(j?.total)) { H.total = j.total; H.totalAt = Date.now(); if (ready()) reconcile(j.total); }
+      if (ready() && Array.isArray(j?.tagOptions)) checkTags(null);
+    } catch (_) { /* jeu injoignable : nouvel essai plus tard */ } finally { H.verifying = false; paintStatus(); }
+  }
+  const nf = (x) => Math.round(x).toLocaleString('fr-FR');
+  const plural = (n, one, many = `${one}s`) => `${nf(n)} ${n > 1 ? many : one}`;
+  const inMin = (ms) => `${Math.max(1, Math.ceil(ms / 60000))} min`;
+  /** Texte et état du bandeau : { cls: 'ok' | 'busy' | 'warn', text, title }. */
+  function health() {
+    const inv = WMX.inventory;
+    const total = H.total ?? S.lastReal;
+    const last = inv.lastLoad?.();
+    const read = inv.loaded?.() || 0;
+    const pctOf = (a, b) => (b ? Math.min(100, Math.floor((a / b) * 100)) : 0);
+    const title = 'L’extension garde une copie de votre collection (étiquettes et favoris compris) et la compare au jeu : nombre de cartes et nombre de cartes de chaque étiquette. '
+      + 'Tout écart est relu automatiquement. Les favoris et étiquettes changés sur un autre appareil sont repris à la relecture complète (au moins toutes les 3 h).';
+    if (!ready()) {
+      if (!inv.isLoading() && last && !last.ok) return { cls: 'warn', title, text: `Chargement de votre collection interrompu par le jeu (${nf(last.read)}${total ? ` / ${nf(total)}` : ''} cartes) : nouvel essai automatique. La page du jeu reste affichée en attendant.` };
+      const pct = total && read ? ` : ${Math.min(99, pctOf(read, total))} %` : '…';
+      return { cls: 'busy', title, text: `Chargement de votre collection${pct}${total ? ` (${nf(read)} / ${nf(total)} cartes)` : read ? ` (${nf(read)} cartes lues)` : ''}. La page du jeu reste affichée en attendant.` };
+    }
+    const n = inv.items().length;
+    const parts = [];
+    let cls = 'ok';
+    if (total == null) { cls = 'busy'; parts.push(`${plural(n, 'carte chargée', 'cartes chargées')} · vérification auprès du jeu…`); }
+    else if (n === total) parts.push(`Collection complète : ${nf(n)} / ${nf(total)} cartes (100 %)`);
+    else if (n < total) { cls = 'warn'; parts.push(`${nf(n)} / ${nf(total)} cartes chargées (${pctOf(n, total)} %) : ${plural(total - n, 'carte manquante', 'cartes manquantes')}`); }
+    else { cls = 'warn'; parts.push(`${nf(n)} cartes dans la copie pour ${nf(total)} dans le jeu : ${plural(n - total, 'carte en trop', 'cartes en trop')} (vendues, échangées…)`); }
+    if (inv.isLoading()) { if (cls === 'ok') cls = 'busy'; parts.push(`relecture complète en cours : ${total ? `${Math.min(99, pctOf(read, total))} %` : `${nf(read)} cartes lues`}`); }
+    else if (total != null && n !== total) {
+      const next = Math.max(S.fullAt + 30 * 60000, Math.abs(n - total) <= 3 ? H.gapSince + 10 * 60000 : 0) - Date.now();
+      parts.push(`${last && !last.ok && last.at > S.fullAt - 1000 ? 'dernière relecture interrompue par le jeu · ' : ''}${next > 0 ? `relecture complète dans ${inMin(next)}` : 'relecture complète imminente'}`);
+    }
+    const mine = new Map();
+    for (const it of inv.items()) for (const t of it.tags) mine.set(t.id, (mine.get(t.id) || 0) + 1);
+    const known = S.tagOptions.filter((o) => o?.id && Number.isFinite(o.cardCount));
+    const off = known.filter((o) => (mine.get(o.id) || 0) !== o.cardCount);
+    if (H.tagNow) { if (cls === 'ok') cls = 'busy'; parts.push(`vérification de l’étiquette « ${H.tagNow.name} » (${nf(H.tagNow.cardCount)} cartes)…`); }
+    else if (off.length) { cls = 'warn'; parts.push(`${off.length > 1 ? `${off.length} étiquettes à revérifier` : 'étiquette à revérifier'} : ${off.slice(0, 3).map((o) => `« ${o.name} » ${nf(mine.get(o.id) || 0)} / ${nf(o.cardCount)}`).join(', ')}${off.length > 3 ? '…' : ''}`); }
+    else if (known.length) parts.push(`${plural(known.length, 'étiquette vérifiée', 'étiquettes vérifiées')}`);
+    return { cls, title, text: parts.join(' · ') };
+  }
+  let statusEl = null;
+  function paintStatus() {
+    if (!statusEl) return;
+    const show = S.on && isPage();
+    statusEl.hidden = !show;
+    if (!show) return;
+    const h = health();
+    statusEl.className = `wmx-cv-status wmx-cv-status-${h.cls}`;
+    statusEl.title = h.title;
+    const icon = h.cls === 'ok' ? '✓' : h.cls === 'busy' ? '↻' : '!';
+    if (statusEl.dataset.text !== h.text) { statusEl.dataset.text = h.text; statusEl.replaceChildren(el('span', { class: 'wmx-cv-status-ic', 'aria-hidden': 'true' }, icon), el('span', {}, h.text)); }
+  }
+
   // --- Contrôles dans la barre du jeu -------------------------------------------------------------------------------------------------
   const sortBtn = () => document.querySelector('button[aria-label="Trier la collection"]');
   let tools = null;
@@ -368,6 +443,7 @@
     window.dispatchEvent(new CustomEvent('wmx:coll-reset')); // page-hook.js redécide (copie ou serveur) à la prochaine lecture
     announce(true);
     paintTools();
+    if (v) verify(true);
     nudge();
   }
   function paintTools() {
@@ -387,13 +463,14 @@
     size.hidden = !S.on;
     size.querySelector('.wmx-cv-label').textContent = `${S.size} / page`;
     paintSortLabel();
+    paintStatus();
   }
   function ensureTools() {
     if (!isPage()) return;
     const sb = sortBtn();
     const bar = sb?.parentElement?.parentElement; // rangée des menus (étiquettes, tri) à côté de la recherche
     if (!bar) return;
-    if (tools?.isConnected && tools.parentElement === bar) { paintSortLabel(); return; }
+    if (tools?.isConnected && tools.parentElement === bar) { if (!statusEl?.isConnected) placeStatus(bar); paintSortLabel(); return; }
     tools?.remove();
     const tpl = sb.className; // même apparence que les menus du jeu
     const mk = (label, cls) => el('button', { type: 'button', class: `${tpl} wmx-cv-btn ${cls}` }, el('span', { class: 'wmx-cv-label' }, label));
@@ -406,7 +483,15 @@
     size.addEventListener('click', (e) => { e.stopPropagation(); openSize(size); });
     tools = el('div', { class: 'wmx-cv-tools' }, toggle, size);
     bar.prepend(tools);
+    placeStatus(bar);
     paintTools();
+  }
+  /** Bandeau d'état sous la rangée recherche + menus (au-dessus des pastilles de rareté). */
+  function placeStatus(bar) {
+    statusEl?.remove();
+    statusEl = el('div', { class: 'wmx-cv-status', role: 'status', 'aria-live': 'polite' });
+    const row = bar.parentElement && bar.parentElement !== document.body ? bar.parentElement : bar;
+    row.after(statusEl);
   }
   function openSize(anchor) {
     closeSize();
@@ -463,7 +548,7 @@
     obs.observe(document.body, { childList: true, subtree: true });
   }
 
-  WMX.collView = { nudgeSoft, serve, parse, sync, listed, ready, /* copie prête : la vue étendue peut servir la page */ state: () => ({ ...S, memo: undefined }), setOn, setSize: (n, reload = false) => { if (!SIZES.includes(n)) return; S.size = n; savePrefs(); paintTools(); if (reload) nudge(); }, /* reload : la page du jeu relit sa liste */ setPrice: (v) => { S.price = !!v; savePrefs(); } };
+  WMX.collView = { nudgeSoft, serve, parse, sync, listed, ready, health, verify, /* copie prête : la vue étendue peut servir la page */ state: () => ({ ...S, memo: undefined }), setOn, setSize: (n, reload = false) => { if (!SIZES.includes(n)) return; S.size = n; savePrefs(); paintTools(); if (reload) nudge(); }, /* reload : la page du jeu relit sa liste */ setPrice: (v) => { S.price = !!v; savePrefs(); } };
 
   WMX.register({
     name: 'collection-view',
@@ -480,6 +565,23 @@
       ensureTools();
       setInterval(() => { if (WMX.alive() && S.on && isPage() && !document.hidden) sync(); }, 60000);
       setInterval(() => { if (WMX.alive() && S.on && !ready() && tools?.isConnected) paintTools(); }, 2000); // avancement de la première lecture
+      // Bandeau à jour (avancement des relectures) ; nombres du jeu relus toutes les 5 min ; relecture complète au moins toutes les 3 h (favoris et
+      // étiquettes changés sur un autre appareil) ; première lecture interrompue par le jeu : nouvel essai 2 min après.
+      setInterval(() => {
+        if (!WMX.alive() || !S.on || !isPage() || document.hidden) return;
+        paintStatus();
+        verify();
+        const inv = WMX.inventory;
+        if (inv.isLoading()) return;
+        const last = inv.lastLoad?.();
+        if (!ready() && last && !last.ok && Date.now() - last.at > 2 * 60000) { inv.reload(); return; }
+        if (ready() && inv.age() > FULL_EVERY && Date.now() - S.fullAt > 30 * 60000) {
+          S.fullAt = Date.now();
+          WMX.journal?.add('Collection', 'vue étendue : relecture complète périodique (favoris et étiquettes changés ailleurs)');
+          inv.reload();
+        }
+      }, 2000);
+      if (S.on && isPage()) verify(true);
     },
   });
 })();

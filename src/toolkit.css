@@ -1211,6 +1211,15 @@ button.wmx-tc-cancel:hover { background: rgb(239 68 68 / .18) !important; color:
 .wmx-cv-toggle.wmx-cv-on { border-color: var(--color-accent, #2dd4a0) !important; background-color: color-mix(in srgb, var(--color-accent, #2dd4a0) 10%, transparent) !important; box-shadow: 0 0 0 1px var(--color-accent, #2dd4a0), 0 0 14px color-mix(in srgb, var(--color-accent, #2dd4a0) 30%, transparent); }
 .wmx-cv-toggle.wmx-cv-on .wmx-cv-label { color: var(--color-accent, #2dd4a0); }
 .wmx-cv-size[hidden] { display: none !important; }
+.wmx-cv-status { display: flex; align-items: center; gap: 8px; margin: 8px 0 2px; padding: 6px 12px; border-radius: 10px; border: 1px solid var(--color-border, #26332d); background: var(--color-surface, #101614); font: 500 12.5px/1.4 Outfit, system-ui, sans-serif; color: var(--color-muted, #9fb3a9); }
+.wmx-cv-status[hidden] { display: none !important; }
+.wmx-cv-status-ic { flex: none; display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; font-size: 11px; font-weight: 700; }
+.wmx-cv-status-ok .wmx-cv-status-ic { background: color-mix(in srgb, var(--color-accent, #2dd4a0) 18%, transparent); color: var(--color-accent, #2dd4a0); }
+.wmx-cv-status-busy .wmx-cv-status-ic { background: #3b82f62e; color: #60a5fa; animation: wmx-cv-spin 1.4s linear infinite; }
+.wmx-cv-status-warn { border-color: #f59e0b66; color: #fcd34d; }
+.wmx-cv-status-warn .wmx-cv-status-ic { background: #f59e0b2e; color: #f59e0b; }
+@keyframes wmx-cv-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .wmx-cv-status-busy .wmx-cv-status-ic { animation: none; } }
 .wmx-cv-menu { position: fixed; z-index: 2147483000; display: flex; flex-direction: column; padding: 4px 0; border-radius: 10px; border: 1px solid var(--color-border, #26332d); background: var(--color-surface, #101614); box-shadow: 0 16px 40px #000a; overflow: hidden; }
 .wmx-cv-menu button { all: unset; cursor: pointer; padding: 8px 14px; font: 500 13.5px Outfit, system-ui, sans-serif; color: var(--color-foreground, #e6efe9); }
 .wmx-cv-menu button:hover { background: var(--color-surface-light, #18211d); }
