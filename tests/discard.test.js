@@ -250,11 +250,11 @@ test('défausse : « Sans étiquette » sur plusieurs pages, favorites laissées
   env.close();
 });
 
-test('défausse : vue étendue désactivée au lancement → activée à 500 cartes par page pendant la défausse, puis remise comme avant ; compteur lu vite, cartes sans image seulement', async () => {
+test('défausse : vue étendue désactivée (réglée à 500) au lancement → activée à 100 cartes par page (limite du jeu) pendant la défausse, puis remise comme avant ; compteur lu vite, cartes sans image seulement', async () => {
   const cards = Array.from({ length: 80 }, (_, i) => ({ title: `Commune ${String(i).padStart(3, '0')}`, rarity: 'C', image: i % 2 ? '' : 'x.jpg' }));
-  const { env, WMX, game } = setup(cards, { perPage: 500 });
+  const { env, WMX, game } = setup(cards, { perPage: 100 });
   const calls = [];
-  const V = { on: false, size: 100 };
+  const V = { on: false, size: 500 };
   let during = null;
   WMX.collView = { state: () => ({ ...V }), ready: () => V.on, setSize: (n) => { calls.push(`size ${n}`); V.size = n; }, setOn: (v) => { calls.push(`on ${v}`); V.on = v; } };
   game.onDiscard = () => { during = during || { ...V }; };
@@ -268,8 +268,8 @@ test('défausse : vue étendue désactivée au lancement → activée à 500 car
   assert.equal(pl.copies, 40);
   await WMX.discard.start(pl, { dry: false, visible: true, prefs: p });
   await sleep(1800); // remise comme avant, peu après la fin
-  assert.deepEqual(during, { on: true, size: 500 }, 'pendant la défausse : vue étendue, 500 cartes par page');
-  assert.deepEqual(calls, ['size 500', 'on true', 'size 100', 'on false'], 'activée au lancement, remise comme avant à la fin');
+  assert.deepEqual(during, { on: true, size: 100 }, 'pendant la défausse : vue étendue, 100 cartes par page');
+  assert.deepEqual(calls, ['size 100', 'on true', 'size 500', 'on false'], 'activée au lancement, remise comme avant à la fin');
   assert.equal(game.discarded.length, 40, 'toutes les cartes sans image');
   assert.ok(game.discarded.every((t) => Number(t.slice(-3)) % 2 === 1), 'jamais une carte avec image');
   env.close();

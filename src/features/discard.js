@@ -5,6 +5,7 @@
 // Garde-fous : jamais une favorite, jamais une carte en vente ou en file d'attente ; « Essai à blanc » (coché par défaut) fait tout sauf la
 // confirmation finale ; une défausse ne reprend jamais toute seule après un rechargement ; bouton « Arrêter » à tout moment.
 (() => {
+  const DISCARD_PAGE = 100; // cartes par page pendant la défausse = nombre maximal de cartes que le jeu défausse en une fois
   const { el, sleep } = WMX.dom;
   const R = ['C', 'PC', 'R', 'SR', 'UR', 'L'];
   const NAMES = { C: 'Commune', PC: 'Peu commune', R: 'Rare', SR: 'Super rare', UR: 'Ultra rare', L: 'Légendaire' };
@@ -626,7 +627,8 @@
     : p.includeTagged ? [{ kind: 'all', label: 'toutes les étiquettes' }] : [{ kind: 'none', label: 'sans étiquette' }]);
 
   /**
-   * Vue étendue à 500 cartes par page pour la défausse : activée si besoin, la copie de la collection attendue si elle se lit encore (première
+   * Vue étendue à 100 cartes par page pour la défausse (le jeu défausse 100 cartes au plus à la fois : à 500 par page, « Tout sélectionner »
+   * dépassait sa limite et la défausse s'arrêtait) : activée si besoin, la copie de la collection attendue si elle se lit encore (première
    * fois : quelques minutes, une seule fois). Rend l'état d'avant ({ on, size }) pour le remettre à la fin, ou null (vue étendue indisponible).
    * Copie pas prête au bout de 15 min (ou « Arrêter ») : la défausse se fait dans la page du jeu (50 cartes par page).
    */
@@ -635,9 +637,9 @@
     const st = cv?.state?.();
     if (!st || !cv.setOn || !cv.ready) return null;
     const before = { on: !!st.on, size: st.size };
-    if (st.on && st.size === 500 && cv.ready()) return before;
-    showRun('vue étendue : passage à 500 cartes par page…');
-    if (st.size !== 500) cv.setSize(500, visible && st.on && cv.ready());
+    if (st.on && st.size === DISCARD_PAGE && cv.ready()) return before;
+    showRun(`vue étendue : passage à ${DISCARD_PAGE} cartes par page…`);
+    if (st.size !== DISCARD_PAGE) cv.setSize(DISCARD_PAGE, visible && st.on && cv.ready());
     if (!st.on) cv.setOn(true); // relance aussi la liste de la page affichée
     let idle = 0; // secondes de suite sans lecture en cours : la copie ne viendra pas (hors ligne, lecture impossible) → page du jeu
     for (const t0 = Date.now(); !cv.ready() && !run.stop && Date.now() - t0 < 15 * 60000 && idle < 5;) {
@@ -667,7 +669,7 @@
     await loadTrades();
     run.on = true; run.stop = false; run.dry = dry; run.prog = { done: 0, total: pl.copies }; run.frame = null;
     let ctx = null;
-    // Vue étendue à 500 cartes par page pendant la défausse, dans les deux modes (bien moins de pages à parcourir et de relectures entre deux
+    // Vue étendue à 100 cartes par page (limite du jeu) pendant la défausse, dans les deux modes (bien moins de pages à parcourir et de relectures entre deux
     // défausses) : activée si besoin, puis remise comme avant à la fin (restoreView, voir finish()).
     const restoreView = await prepareView(visible);
     if (run.stop) { run.on = false; putViewBack(restoreView, visible); showRun('arrêtée à votre demande avant de commencer : rien n’a été défaussé.', 'warn'); return; }
@@ -867,7 +869,7 @@
           if (nx && (!pg || pg.n < pg.of)) { nx.click(); page += 1; await sleep(600); await waitFor(listReady, 15000, 200); await settled(); continue; }
           return '';
         }
-        const room = pl.copies - stats.copies;
+        const room = Math.min(pl.copies - stats.copies, DISCARD_PAGE); // jamais plus de 100 cartes cochées à la fois (limite du jeu), même sur une page plus grande
         // Exemplaires (et non cartes) : jamais plus que le total annoncé.
         const pick = [];
         for (let budget = room, i = 0; i < free.length && budget > 0; i++) { const take = Math.min(free[i].n || 1, budget); pick.push({ ...free[i], take }); budget -= take; }

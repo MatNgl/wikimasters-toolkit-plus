@@ -7,8 +7,9 @@
   // Nouveautés, de la plus récente à la plus ancienne. Écrites pour les joueurs : ce qu'ils voient et ce que ça change pour eux.
   // kind : 'new' (nouveau), 'better' (amélioré), 'fix' (corrigé). highlights : les grandes nouveautés, mises en avant en tête de la fenêtre.
   const CHANGES = [
-    { v: '1.1.31', title: 'Vue étendue : étiquettes retrouvées', items: [
+    { v: '1.1.31', title: 'Étiquettes retrouvées, défausse par 100', items: [
       ['fix', 'Des cartes étiquetées apparaissaient dans « Sans étiquette » (vue étendue, défausse) : les étiquettes de plus de 2 000 cartes n’étaient relues qu’en partie. Elles sont maintenant relues en entier, et les cartes concernées retrouvent leur étiquette d’elles-mêmes.'],
+      ['fix', 'Défausse avec la vue étendue réglée à 500 cartes par page : elle passe à 100 cartes par page le temps de la défausse (le jeu en défausse 100 au plus à la fois), puis revient à votre réglage.'],
     ] },
     { v: '1.1.30', title: 'Bouton Marché et surveillance au-dessus du plafond', items: [
       ['new', 'Détail d’une carte (Collection, Toutes les cartes, profils) : un bouton « Marché » montre les enchères en cours de la carte, de la moins chère à la plus chère (vert ou rouge selon la moyenne), ou ouvre le Marché avec son nom déjà recherché.'],
